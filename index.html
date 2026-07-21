@@ -1044,12 +1044,22 @@ function attemptLogin(){
     render();
   }
 }
-function togglePasswordVisibility(){
-  const inp = document.getElementById('login-password');
-  const btn = document.getElementById('pw-toggle-icon');
+function togglePasswordVisibility(inputId, iconId){
+  const inp = document.getElementById(inputId);
+  const btn = document.getElementById(iconId);
   if(!inp || !btn) return;
   if(inp.type==='password'){ inp.type='text'; btn.innerHTML = iconSm(I.eyeOff); }
   else { inp.type='password'; btn.innerHTML = iconSm(I.eye); }
+}
+// Génère un champ mot de passe avec un bouton "afficher / masquer" — à utiliser partout où un
+// mot de passe est saisi ou défini, pour que la personne puisse toujours vérifier ce qu'elle tape.
+function passwordFieldWithToggle(id, value, placeholder){
+  const valueAttr = value ? ` value="${value}"` : '';
+  const placeholderAttr = placeholder ? ` placeholder="${placeholder}"` : '';
+  return `<div class="login-password-wrap">
+    <input id="${id}" type="password"${valueAttr}${placeholderAttr}>
+    <button type="button" class="pw-toggle" onclick="togglePasswordVisibility('${id}','${id}-toggle-icon')"><span id="${id}-toggle-icon">${iconSm(I.eye)}</span></button>
+  </div>`;
 }
 function login(identity, employeeId){
   state.identity = identity;
@@ -1916,8 +1926,8 @@ function openChangePasswordModal(employeeId){
     <h3>Identifiants — ${name}</h3>
     <div class="modal-sub">${roleLabel}</div>
     <div class="field"><label>Nom d'utilisateur</label><input id="np-username" value="${currentUsername}"></div>
-    <div class="field"><label>Nouveau mot de passe</label><input id="np-pass1" type="password" placeholder="4 caractères minimum"></div>
-    <div class="field"><label>Confirmer le mot de passe</label><input id="np-pass2" type="password"></div>
+    <div class="field"><label>Nouveau mot de passe</label>${passwordFieldWithToggle('np-pass1', '', '4 caractères minimum')}</div>
+    <div class="field"><label>Confirmer le mot de passe</label>${passwordFieldWithToggle('np-pass2')}</div>
     <div class="small muted" style="margin-bottom:14px;">Laissez les mots de passe vides pour ne garder que le mot de passe actuel et changer uniquement le nom d'utilisateur.</div>
     <button class="btn btn-primary btn-block" onclick="saveNewPassword(${employeeId?`'${employeeId}'`:'null'})">Enregistrer</button>
   `);
@@ -3241,11 +3251,11 @@ function renderAccountAuthPage(){
           <div class="field"><label>Email</label><input id="acc-email" type="email" placeholder="vous@restaurant.fr"></div>
           <div class="field">
             <label>Mot de passe</label>
-            <input id="acc-password" type="password">
+            ${passwordFieldWithToggle('acc-password')}
           </div>
           ${mode==='login' ? `<div class="small muted" style="margin:-8px 0 14px 0;">Pas encore de compte ? <a href="#" onclick="setAuthMode('signup');return false;" style="text-decoration:underline;color:inherit;">Créez-en un</a>.</div>` : ''}
           ${mode==='login' ? `<div style="text-align:right;margin:-8px 0 14px 0;"><a href="#" onclick="goToForgotPassword();return false;" class="small muted" style="text-decoration:underline;">Mot de passe oublié ?</a></div>` : ''}
-          ${mode==='signup' ? `<div class="field"><label>Confirmer le mot de passe</label><input id="acc-password2" type="password"></div>` : ''}
+          ${mode==='signup' ? `<div class="field"><label>Confirmer le mot de passe</label>${passwordFieldWithToggle('acc-password2')}</div>` : ''}
           ${state.accountError ? `<div class="login-error">${state.accountError}</div>` : ''}
           <button class="btn btn-primary btn-block" onclick="${mode==='login'?'attemptAccountLogin()':'attemptAccountSignup()'}">${mode==='login'?'Se connecter':'Créer mon compte'}</button>
           <div class="divider"></div>
@@ -3315,8 +3325,8 @@ function renderResetPasswordPage(){
               <label>Code de réinitialisation</label>
               <input id="reset-code" placeholder="------" inputmode="numeric" maxlength="6" style="letter-spacing:6px;font-size:19px;text-align:center;font-family:'IBM Plex Mono',monospace;">
             </div>
-            <div class="field"><label>Nouveau mot de passe</label><input id="reset-pass1" type="password"></div>
-            <div class="field"><label>Confirmer le mot de passe</label><input id="reset-pass2" type="password"></div>
+            <div class="field"><label>Nouveau mot de passe</label>${passwordFieldWithToggle('reset-pass1')}</div>
+            <div class="field"><label>Confirmer le mot de passe</label>${passwordFieldWithToggle('reset-pass2')}</div>
             ${state.resetError ? `<div class="login-error">${state.resetError}</div>` : ''}
             <button class="btn btn-primary btn-block" onclick="confirmPasswordReset()">Réinitialiser le mot de passe</button>
             <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="resendResetCode()">Renvoyer le code</button>
@@ -3452,7 +3462,7 @@ function renderLoginScreen(){
               <label>Mot de passe</label>
               <div class="login-password-wrap">
                 <input id="login-password" type="password" value="${stepPassword}" onkeydown="if(event.key==='Enter')attemptLogin()">
-                <button type="button" class="pw-toggle" onclick="togglePasswordVisibility()"><span id="pw-toggle-icon">${iconSm(I.eye)}</span></button>
+                <button type="button" class="pw-toggle" onclick="togglePasswordVisibility('login-password','login-password-toggle-icon')"><span id="login-password-toggle-icon">${iconSm(I.eye)}</span></button>
               </div>
             </div>
             ${state.loginError ? `<div class="login-error">${state.loginError}</div>` : ''}
@@ -3471,20 +3481,26 @@ function openRecoverPatronCredentialsModal(){
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Récupérer mes identifiants</h3>
     <div class="modal-sub">Vous êtes déjà connecté avec votre compte (${ACCOUNT.email}) — c'est cette connexion, déjà vérifiée, qui confirme votre identité ici. Inutile d'attendre un nouvel email.</div>
-    <div class="field"><label>Votre nom d'utilisateur</label><input value="${CREDENTIALS.patron.username}" readonly style="background:var(--paper);"></div>
-    <div class="field"><label>Nouveau mot de passe</label><input id="recover-pass1" type="password" placeholder="4 caractères minimum"></div>
-    <div class="field"><label>Confirmer le mot de passe</label><input id="recover-pass2" type="password"></div>
-    <button class="btn btn-primary btn-block" onclick="confirmRecoverPatronCredentials()">Définir ce mot de passe</button>
+    <div class="field"><label>Nom d'utilisateur</label><input id="recover-username" value="${CREDENTIALS.patron.username}"></div>
+    <div class="field"><label>Nouveau mot de passe</label>${passwordFieldWithToggle('recover-pass1', '', '4 caractères minimum')}</div>
+    <div class="field"><label>Confirmer le mot de passe</label>${passwordFieldWithToggle('recover-pass2')}</div>
+    <div class="small muted" style="margin-bottom:14px;">Laissez les mots de passe vides pour ne changer que le nom d'utilisateur.</div>
+    <button class="btn btn-primary btn-block" onclick="confirmRecoverPatronCredentials()">Enregistrer</button>
   `);
 }
 function confirmRecoverPatronCredentials(){
+  const username = document.getElementById('recover-username').value.trim();
+  if(!username){ toast("Le nom d'utilisateur est requis",'alert'); return; }
   const p1 = document.getElementById('recover-pass1').value;
   const p2 = document.getElementById('recover-pass2').value;
-  if(p1.length<4){ toast('4 caractères minimum','alert'); return; }
-  if(p1!==p2){ toast('Les mots de passe ne correspondent pas','alert'); return; }
-  CREDENTIALS.patron.password = p1;
+  if(p1 || p2){
+    if(p1.length<4){ toast('4 caractères minimum','alert'); return; }
+    if(p1!==p2){ toast('Les mots de passe ne correspondent pas','alert'); return; }
+  }
+  CREDENTIALS.patron.username = username;
+  if(p1) CREDENTIALS.patron.password = p1;
   closeModal();
-  toast('Mot de passe mis à jour — vous pouvez vous reconnecter');
+  toast('Identifiants mis à jour — vous pouvez vous reconnecter');
   render();
 }
 function renderBanner(){
