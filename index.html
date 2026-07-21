@@ -511,12 +511,18 @@ function photoFor(role, employeeId){
   }
   return CREDENTIALS.patron.photoDataUrl;
 }
+function patronDisplayName(){
+  if(ACCOUNT && ACCOUNT.firstName){
+    return `${ACCOUNT.firstName} ${ACCOUNT.lastName||''}`.trim();
+  }
+  return 'Patron';
+}
 function currentPersonDisplayName(){
   if(state.loggedInEmployeeId){
     const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
     if(m) return m.name;
   }
-  return state.identity==='patron' ? 'Marc Petit' : ROLE_META[state.identity].name.split(' — ')[0];
+  return state.identity==='patron' ? patronDisplayName() : ROLE_META[state.identity].name.split(' — ')[0];
 }
 function slugifyFirstName(name){
   const first = name.split(' ')[0] || 'user';
@@ -630,7 +636,11 @@ async function apiRequest(path, options={}){
   });
   let data = {};
   try { data = await res.json(); } catch(e) {}
-  if(!res.ok) throw new Error(data.error || 'Une erreur est survenue. Merci de réessayer.');
+  if(!res.ok){
+    const err = new Error(data.error || 'Une erreur est survenue. Merci de réessayer.');
+    err.code = data.code;
+    throw err;
+  }
   if(data.token) AUTH_TOKEN = data.token;
   return data;
 }
@@ -810,42 +820,23 @@ function goToSite(site){
 function setBillingCycle(c){ state.billingCycle = c; render(); }
 function choosePlan(planId){
   state.selectedPlan = planId;
-  goToSite('payment');
-}
-function luhnCheck(num){
-  let sum = 0, alt = false;
-  for(let i=num.length-1; i>=0; i--){
-    let d = parseInt(num.charAt(i), 10);
-    if(alt){ d *= 2; if(d>9) d -= 9; }
-    sum += d;
-    alt = !alt;
-  }
-  return sum % 10 === 0;
-}
-function attemptPayment(){
-  const name = ((document.getElementById('pay-name')||{}).value || '').trim();
-  const number = ((document.getElementById('pay-number')||{}).value || '').replace(/\s/g,'');
-  const expiry = ((document.getElementById('pay-expiry')||{}).value || '').trim();
-  const cvc = ((document.getElementById('pay-cvc')||{}).value || '').trim();
-  if(!name){ state.accountError = 'Merci de renseigner le nom sur la carte.'; render(); return; }
-  if(!/^[a-zA-ZÀ-ÿ' -]{2,}$/.test(name)){ state.accountError = 'Nom sur la carte invalide.'; render(); return; }
-  if(!number){ state.accountError = 'Merci de renseigner le numéro de carte.'; render(); return; }
-  if(!/^\d{13,19}$/.test(number)){ state.accountError = 'Numéro de carte invalide (13 à 19 chiffres).'; render(); return; }
-  if(!luhnCheck(number)){ state.accountError = 'Numéro de carte invalide.'; render(); return; }
-  if(!expiry){ state.accountError = "Merci de renseigner la date d'expiration."; render(); return; }
-  if(!/^\d{2}\/\d{2}$/.test(expiry)){ state.accountError = "Format d'expiration invalide (MM/AA)."; render(); return; }
-  const monthNum = parseInt(expiry.split('/')[0], 10);
-  const yearNum = parseInt(expiry.split('/')[1], 10);
-  if(monthNum<1 || monthNum>12){ state.accountError = "Mois d'expiration invalide."; render(); return; }
-  const now = new Date();
-  const currentYear2 = now.getFullYear() % 100;
-  const currentMonth = now.getMonth()+1;
-  if(yearNum<currentYear2 || (yearNum===currentYear2 && monthNum<currentMonth)){ state.accountError = 'Cette carte est expirée.'; render(); return; }
-  if(!cvc){ state.accountError = 'Merci de renseigner le CVC.'; render(); return; }
-  if(!/^\d{3,4}$/.test(cvc)){ state.accountError = 'CVC invalide (3 ou 4 chiffres).'; render(); return; }
-  toast('Paiement accepté — bienvenue sur Mise & Sûre');
   state.authMode = 'signup';
   goToSite('account-auth');
+}
+// Après la création du compte (email vérifié, ou retour Google/Apple), on tente un vrai paiement
+// Stripe. Si Stripe n'est pas encore configuré côté serveur (clés absentes), le serveur répond
+// une erreur — dans ce cas précis on laisse passer vers la création d'établissement, pour ne pas
+// bloquer les tests avant d'avoir renseigné de vraies clés Stripe.
+async function proceedToPaymentOrApp(){
+  try{
+    const data = await apiRequest('/api/billing/create-checkout-session', {
+      method:'POST',
+      body:{ plan: (ACCOUNT && ACCOUNT.plan) || 'essentiel', billingCycle: (ACCOUNT && ACCOUNT.billing) || state.billingCycle },
+    });
+    window.location.href = data.url; // vraie page de paiement hébergée par Stripe
+  } catch(err){
+    goToSite('setup-restaurant');
+  }
 }
 function setAuthMode(mode){ state.authMode = mode; state.accountError = null; render(); }
 function goToLogin(){
@@ -868,6 +859,45 @@ async function attemptAccountLogin(){
 }
 function isValidEmail(email){
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/* ============================================================
+   REMPLISSAGE INTELLIGENT DES ADRESSES — API gouvernementale gratuite, sans clé requise.
+============================================================ */
+async function autofillCityFromPostal(postalId, cityId){
+  const postalEl = document.getElementById(postalId);
+  const cityEl = document.getElementById(cityId);
+  if(!postalEl || !cityEl) return;
+  const code = postalEl.value.trim();
+  if(!/^\d{5}$/.test(code)) return;
+  try{
+    const res = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${code}&fields=nom&format=json`);
+    const data = await res.json();
+    if(Array.isArray(data) && data.length){
+      cityEl.value = data[0].nom;
+    }
+  } catch(e){
+    // Silencieux : si l'API est indisponible, le champ reste simplement modifiable à la main.
+  }
+}
+let addressAutocompleteTimer = null;
+async function wireAddressAutocomplete(addressId, datalistId){
+  const input = document.getElementById(addressId);
+  const list = document.getElementById(datalistId);
+  if(!input || !list) return;
+  const query = input.value.trim();
+  if(query.length < 4) return;
+  clearTimeout(addressAutocompleteTimer);
+  addressAutocompleteTimer = setTimeout(async () => {
+    try{
+      const res = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`);
+      const data = await res.json();
+      const suggestions = (data.features||[]).map(f=>f.properties.label);
+      list.innerHTML = suggestions.map(s=>`<option value="${s}">`).join('');
+    } catch(e){
+      // Silencieux : pas de suggestions si l'API est indisponible, le champ reste utilisable.
+    }
+  }, 300);
 }
 async function attemptAccountSignup(){
   const firstName = ((document.getElementById('acc-firstname')||{}).value || '').trim();
@@ -910,7 +940,7 @@ async function attemptVerifyEmail(){
     state.pendingSignup = null;
     state.verifyError = null;
     toast('Email vérifié — bienvenue sur Mise & Sûre');
-    goToSite('setup-restaurant');
+    await proceedToPaymentOrApp();
   } catch(err){
     state.verifyError = err.message;
     render();
@@ -1048,7 +1078,7 @@ function toggleTheme(){
 function openMyProfileModal(){
   const employeeId = state.loggedInEmployeeId;
   const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
-  const name = member ? member.name : 'Marc Petit';
+  const name = member ? member.name : patronDisplayName();
   const roleLabel = member ? member.role : 'Patron';
   const photo = photoFor(state.identity, employeeId);
   openModal(`
@@ -1177,7 +1207,9 @@ function renderShell(){
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
     ? { label: ROLE_META[state.role].label, initials: initialsFor(loggedInMember.name), name: loggedInMember.name + ' — ' + loggedInMember.role }
-    : ROLE_META[state.role];
+    : (isOwnSpace && state.identity==='patron')
+      ? { label: 'Patron', initials: initialsFor(patronDisplayName()), name: patronDisplayName() + ' — Patron' }
+      : ROLE_META[state.role];
   const resto = RESTOS.find(r=>r.id===state.resto) || {name:'Mon restaurant', city:'', accentColor:null, logoDataUrl:null};
   const fallbackAccent = state.theme==='dark' ? '#EDEDE6' : '#111111';
   document.documentElement.style.setProperty('--accent', resto.accentColor || fallbackAccent);
@@ -1800,9 +1832,9 @@ function viewParametres(){
       <div class="card">
         <div class="card-title">Informations établissement</div>
         <div class="field"><label>Nom du restaurant</label><input id="set-name" value="${resto.name}"></div>
-        <div class="field"><label>Adresse</label><input id="set-address" value="${resto.address||''}" placeholder="12 rue de la République"></div>
+        <div class="field"><label>Adresse</label><input id="set-address" value="${resto.address||''}" placeholder="12 rue de la République" list="set-address-list" oninput="wireAddressAutocomplete('set-address','set-address-list')"><datalist id="set-address-list"></datalist></div>
         <div class="field-row">
-          <div class="field"><label>Code postal</label><input id="set-postal" value="${resto.postalCode||''}" placeholder="69001"></div>
+          <div class="field"><label>Code postal</label><input id="set-postal" value="${resto.postalCode||''}" placeholder="69001" oninput="autofillCityFromPostal('set-postal','set-city')"></div>
           <div class="field"><label>Ville</label><input id="set-city" value="${resto.city}"></div>
         </div>
         <div class="field"><label>Devise</label><select id="set-currency"><option ${resto.currency==='EUR'?'selected':''}>EUR</option><option ${resto.currency==='CHF'?'selected':''}>CHF</option><option ${resto.currency==='USD'?'selected':''}>USD</option></select></div>
@@ -1876,7 +1908,7 @@ function removeLogo(){
 }
 function openChangePasswordModal(employeeId){
   const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
-  const name = member ? member.name : 'Marc Petit';
+  const name = member ? member.name : patronDisplayName();
   const roleLabel = member ? member.role : 'Patron';
   const currentUsername = member ? member.username : CREDENTIALS.patron.username;
   openModal(`
@@ -1899,7 +1931,7 @@ function saveNewPassword(employeeId){
     if(p1.length<4){ toast('4 caractères minimum recommandés','alert'); return; }
     if(p1!==p2){ toast('Les deux mots de passe ne correspondent pas','alert'); return; }
   }
-  let name = 'Marc Petit';
+  let name = patronDisplayName();
   if(employeeId){
     const m = TEAM.find(t=>t.id===employeeId);
     if(m){ m.username = username; if(p1) m.password = p1; name = m.name; }
@@ -2990,9 +3022,9 @@ function openNewRestoModal(){
     <h3>Ajouter un établissement</h3>
     <div class="modal-sub">Chaque établissement a son propre catalogue et ses propres fournisseurs.</div>
     <div class="field"><label>Nom de l'établissement</label><input id="nr-name" placeholder="Ex : Table de Léon"></div>
-    <div class="field"><label>Adresse</label><input id="nr-address" placeholder="Ex : 5 place du Commerce"></div>
+    <div class="field"><label>Adresse</label><input id="nr-address" placeholder="Ex : 5 place du Commerce" list="nr-address-list" oninput="wireAddressAutocomplete('nr-address','nr-address-list')"><datalist id="nr-address-list"></datalist></div>
     <div class="field-row">
-      <div class="field"><label>Code postal</label><input id="nr-postal" placeholder="Ex : 44000"></div>
+      <div class="field"><label>Code postal</label><input id="nr-postal" placeholder="Ex : 44000" oninput="autofillCityFromPostal('nr-postal','nr-city')"></div>
       <div class="field"><label>Ville</label><input id="nr-city" placeholder="Ex : Nantes"></div>
     </div>
     <div class="field"><label>Devise</label><select id="nr-currency"><option>EUR</option><option>CHF</option><option>USD</option></select></div>
@@ -3178,41 +3210,6 @@ function renderPricingPage(){
     </div>
   `;
 }
-function renderPaymentPage(){
-  const plan = PLANS.find(p=>p.id===state.selectedPlan) || PLANS[0];
-  const price = state.billingCycle==='monthly' ? plan.monthly : planAnnualPrice(plan.monthly);
-  const per = state.billingCycle==='monthly' ? '/ mois' : '/ an';
-  return `
-    <div class="login-shell">
-      <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
-        <h1>Mise &amp; Sûre</h1>
-        <p>Vous vous abonnez au forfait <b>${plan.name}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.</p>
-        <div class="login-feature">${I.check} Sans engagement</div>
-        <div class="login-feature">${I.check} Résiliable à tout moment</div>
-        <div class="login-feature">${I.check} Paiement sécurisé</div>
-      </div>
-      <div class="login-form-side">
-        <div class="login-form-inner">
-          <button class="back-link" onclick="goToSite('pricing')">← Retour aux tarifs</button>
-          <div class="login-step-label">Étape 1 sur 2 — Paiement</div>
-          <div class="payment-summary">
-            <div class="flex between center"><span>Forfait ${plan.name} · ${state.billingCycle==='monthly'?'mensuel':'annuel'}</span><span class="mono" style="font-weight:700;">${price}&nbsp;€${per}</span></div>
-          </div>
-          <div class="field"><label>Nom sur la carte</label><input id="pay-name" value="Marc Petit"></div>
-          <div class="field"><label>Numéro de carte</label><input id="pay-number" value="4111 1111 1111 1111" inputmode="numeric" maxlength="19"></div>
-          <div class="field-row">
-            <div class="field"><label>Expiration (MM/AA)</label><input id="pay-expiry" value="12/28" inputmode="numeric" maxlength="5" placeholder="MM/AA"></div>
-            <div class="field"><label>CVC</label><input id="pay-cvc" value="123" inputmode="numeric" maxlength="4"></div>
-          </div>
-          ${state.accountError ? `<div class="login-error">${state.accountError}</div>` : ''}
-          <button class="btn btn-primary btn-block" onclick="attemptPayment()">${iconSm(I.lock)} Payer ${price}&nbsp;€ et continuer</button>
-          <div class="login-hint">Démonstration — aucun paiement réel n'est effectué. Champs pré-remplis pour tester.</div>
-        </div>
-      </div>
-    </div>
-  `;
-}
 function renderAccountAuthPage(){
   const mode = state.authMode;
   const plan = PLANS.find(p=>p.id===state.selectedPlan);
@@ -3346,9 +3343,9 @@ function renderSetupRestaurantPage(){
         <div class="login-form-inner">
           <div class="login-step-label">Dernière étape — Votre établissement</div>
           <div class="field"><label>Nom du restaurant</label><input id="setup-name" placeholder="Ex : Le Petit Bistrot"></div>
-          <div class="field"><label>Adresse</label><input id="setup-address" placeholder="Ex : 12 rue de la République"></div>
+          <div class="field"><label>Adresse</label><input id="setup-address" placeholder="Ex : 12 rue de la République" list="setup-address-list" oninput="wireAddressAutocomplete('setup-address','setup-address-list')"><datalist id="setup-address-list"></datalist></div>
           <div class="field-row">
-            <div class="field"><label>Code postal</label><input id="setup-postal" placeholder="69001"></div>
+            <div class="field"><label>Code postal</label><input id="setup-postal" placeholder="69001" oninput="autofillCityFromPostal('setup-postal','setup-city')"></div>
             <div class="field"><label>Ville</label><input id="setup-city" placeholder="Lyon"></div>
           </div>
           <div class="field"><label>Devise</label><select id="setup-currency"><option>EUR</option><option>CHF</option><option>USD</option></select></div>
@@ -3403,7 +3400,7 @@ function renderLoginScreen(){
   const step = state.loginStep;
   const employeeId = state.loginSelectedEmployeeId;
   const selectedMember = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
-  const stepName = selectedMember ? selectedMember.name : 'Marc Petit';
+  const stepName = selectedMember ? selectedMember.name : patronDisplayName();
   const stepRoleLabel = selectedMember ? selectedMember.role : 'Patron';
   const stepPhoto = photoFor(state.loginSelectedRole || 'patron', employeeId);
   const stepUsername = selectedMember ? selectedMember.username : CREDENTIALS.patron.username;
@@ -3426,8 +3423,8 @@ function renderLoginScreen(){
             <div class="login-step-label">Étape 1 sur 2 — Qui êtes-vous ?</div>
             <div class="login-person-list">
               <button class="login-person-row" onclick="chooseLoginPerson('patron', null)">
-                <div class="avatar">${avatarInner(CREDENTIALS.patron.photoDataUrl, 'Marc Petit')}</div>
-                <div><div class="login-person-name">Marc Petit</div><div class="login-person-role">Patron</div></div>
+                <div class="avatar">${avatarInner(CREDENTIALS.patron.photoDataUrl, patronDisplayName())}</div>
+                <div><div class="login-person-name">${patronDisplayName()}</div><div class="login-person-role">Patron</div></div>
               </button>
               ${TEAM.map(t=>`
                 <button class="login-person-row" onclick="chooseLoginPerson('${identityForTeamRole(t.role)}','${t.id}')">
@@ -3460,12 +3457,35 @@ function renderLoginScreen(){
             </div>
             ${state.loginError ? `<div class="login-error">${state.loginError}</div>` : ''}
             <button class="btn btn-primary btn-block" onclick="attemptLogin()">${iconSm(I.lock)} Se connecter</button>
+            ${(!selectedMember && ACCOUNT) ? `<div style="text-align:center;margin-top:10px;"><a href="#" onclick="openRecoverPatronCredentialsModal();return false;" class="small muted" style="text-decoration:underline;">Identifiant ou mot de passe oublié ?</a></div>` : ''}
             <div class="login-hint">Champs pré-remplis pour cette démonstration.</div>
           `}
         </div>
       </div>
     </div>
   `;
+}
+function openRecoverPatronCredentialsModal(){
+  if(!ACCOUNT) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Récupérer mes identifiants</h3>
+    <div class="modal-sub">Vous êtes déjà connecté avec votre compte (${ACCOUNT.email}) — c'est cette connexion, déjà vérifiée, qui confirme votre identité ici. Inutile d'attendre un nouvel email.</div>
+    <div class="field"><label>Votre nom d'utilisateur</label><input value="${CREDENTIALS.patron.username}" readonly style="background:var(--paper);"></div>
+    <div class="field"><label>Nouveau mot de passe</label><input id="recover-pass1" type="password" placeholder="4 caractères minimum"></div>
+    <div class="field"><label>Confirmer le mot de passe</label><input id="recover-pass2" type="password"></div>
+    <button class="btn btn-primary btn-block" onclick="confirmRecoverPatronCredentials()">Définir ce mot de passe</button>
+  `);
+}
+function confirmRecoverPatronCredentials(){
+  const p1 = document.getElementById('recover-pass1').value;
+  const p2 = document.getElementById('recover-pass2').value;
+  if(p1.length<4){ toast('4 caractères minimum','alert'); return; }
+  if(p1!==p2){ toast('Les mots de passe ne correspondent pas','alert'); return; }
+  CREDENTIALS.patron.password = p1;
+  closeModal();
+  toast('Mot de passe mis à jour — vous pouvez vous reconnecter');
+  render();
 }
 function renderBanner(){
   if(state.identity==='patron' && state.role!==state.identity){
@@ -3488,11 +3508,6 @@ function render(){
   if(state.site==='pricing'){
     document.title = 'Tarifs — Mise & Sûre';
     document.getElementById('app').innerHTML = renderPricingPage();
-    return;
-  }
-  if(state.site==='payment'){
-    document.title = 'Paiement — Mise & Sûre';
-    document.getElementById('app').innerHTML = renderPaymentPage();
     return;
   }
   if(state.site==='account-auth'){
@@ -3536,11 +3551,12 @@ function render(){
 }
 
 async function checkExistingSession(){
-  // Si on revient d'une connexion Google/Apple, le jeton arrive dans l'URL — on le récupère
-  // et on nettoie l'adresse tout de suite après, pour ne pas le laisser traîner visible.
+  // Si on revient d'une connexion Google/Apple (ou d'un paiement Stripe), les indications
+  // arrivent dans l'URL — on les récupère et on nettoie l'adresse tout de suite après.
   const urlParams = new URLSearchParams(window.location.search);
   const tokenFromUrl = urlParams.get('token');
   const oauthError = urlParams.get('oauth') === 'error';
+  const checkoutCancelled = urlParams.get('checkout') === 'cancelled';
   if(tokenFromUrl){
     AUTH_TOKEN = tokenFromUrl;
     window.history.replaceState({}, document.title, window.location.pathname);
@@ -3549,11 +3565,26 @@ async function checkExistingSession(){
     toast("La connexion via Google/Apple a échoué. Merci de réessayer.", 'alert');
     window.history.replaceState({}, document.title, window.location.pathname);
   }
+  if(checkoutCancelled){
+    toast("Paiement annulé — vous pouvez réessayer à tout moment.", 'alert');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
   try{
     const meData = await apiRequest('/api/auth/me');
     ACCOUNT = meData.user;
-    const restosData = await apiRequest('/api/restaurants');
-    state.site = (restosData.restaurants && restosData.restaurants.length) ? 'team-login' : 'setup-restaurant';
+    try{
+      // C'est CETTE étape qui vérifie réellement l'abonnement, quelle que soit la façon dont
+      // la personne s'est connectée (email, Google ou Apple) — le serveur bloque avec le code
+      // SUBSCRIPTION_REQUIRED si le paiement n'est pas actif.
+      const restosData = await apiRequest('/api/restaurants');
+      state.site = (restosData.restaurants && restosData.restaurants.length) ? 'team-login' : 'setup-restaurant';
+    } catch(restoErr){
+      if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
+        await proceedToPaymentOrApp();
+        return;
+      }
+      throw restoErr;
+    }
   } catch(err){
     // Pas de session active : reste sur 'marketing' (valeur par défaut de state.site), c'est normal.
   }
