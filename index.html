@@ -1,0 +1,3565 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Mise&Sûre — plateforme de gestion pour restaurants</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+:root{
+  --black:#111111;
+  --ink:#141414;
+  --accent:#111111;
+  --gray-900:#1B1B1B;
+  --gray-700:#4A4A46;
+  --gray-500:#787873;
+  --gray-400:#9A9A94;
+  --gray-300:#CBCBC4;
+  --gray-200:#E3E3DD;
+  --gray-100:#EFEFEA;
+  --urgent:#A93A2E;
+  --urgent-tint:#F3E2DE;
+  --paper:#F7F7F4;
+  --surface:#FFFFFF;
+  --border:#E1E1DA;
+  --text:#141414;
+  --muted:#6B6B65;
+  --muted-2:#A2A29B;
+  --radius:10px;
+  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
+}
+html.theme-dark{
+  --gray-900:#E7E7E0;
+  --gray-700:#B7B7AE;
+  --gray-500:#8D8D84;
+  --gray-400:#75756B;
+  --gray-300:#46463F;
+  --gray-200:#2B2B27;
+  --gray-100:#201F1C;
+  --urgent:#C85C4E;
+  --urgent-tint:#3A211D;
+  --paper:#121210;
+  --surface:#1C1C19;
+  --border:#333330;
+  --text:#EDEDE6;
+  --muted:#A3A399;
+  --muted-2:#6C6C63;
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--paper);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+h1,h2,h3,.display{font-family:'Fraunces',serif;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+button{font-family:inherit;cursor:pointer;}
+a{text-decoration:none;color:inherit;}
+
+#app{display:flex;min-height:100vh;}
+
+/* Sidebar */
+.sidebar{
+  width:250px;flex-shrink:0;background:var(--ink);color:#EDEDE8;
+  display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;
+}
+.brand{
+  display:flex;align-items:center;gap:10px;
+  padding:22px 22px 18px 22px;border-bottom:1px solid rgba(255,255,255,0.1);
+}
+.brand-mark{
+  width:34px;height:34px;border-radius:8px;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-weight:700;font-size:17px;
+  flex-shrink:0;overflow:hidden;
+}
+.brand-mark img{width:100%;height:100%;object-fit:cover;}
+.brand-name{font-family:'Fraunces',serif;font-size:18px;font-weight:600;letter-spacing:0.2px;color:#fff;}
+.brand-sub{font-size:10.5px;color:#ADADA6;text-transform:uppercase;letter-spacing:1.2px;margin-top:1px;}
+
+.role-tag{
+  margin:16px 22px 6px 22px;font-size:10.5px;text-transform:uppercase;letter-spacing:1.3px;color:#8E8E88;font-weight:600;
+}
+.nav{padding:4px 12px;flex:1;overflow-y:auto;}
+.nav-item{
+  display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:8px;
+  color:#C7C7C0;font-size:14px;font-weight:500;margin-bottom:2px;border:none;background:transparent;width:100%;text-align:left;
+  transition:background .12s ease, color .12s ease;
+}
+.nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.85;}
+.nav-item:hover{background:rgba(255,255,255,0.07);color:#fff;}
+.nav-item.active{background:rgba(255,255,255,0.14);color:#fff;box-shadow:inset 3px 0 0 var(--accent);}
+.nav-item.active svg{opacity:1;}
+.nav-badge{
+  margin-left:auto;background:#fff;color:var(--black);font-size:10.5px;font-weight:700;
+  padding:1px 7px;border-radius:20px;font-family:'IBM Plex Mono',monospace;
+}
+.sidebar-foot{
+  padding:14px 22px 20px 22px;border-top:1px solid rgba(255,255,255,0.1);
+  font-size:12px;color:#8E8E88;
+}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.topbar{
+  height:66px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 28px;
+  position:sticky;top:0;z-index:20;
+}
+.topbar-left{display:flex;align-items:center;gap:14px;}
+.page-title{font-family:'Fraunces',serif;font-size:19px;font-weight:600;}
+.topbar-right{display:flex;align-items:center;gap:16px;}
+
+.role-switcher{display:flex;background:var(--paper);border:1px solid var(--border);border-radius:30px;padding:3px;gap:2px;}
+.role-btn{
+  border:none;background:transparent;padding:7px 14px;border-radius:24px;font-size:12.5px;font-weight:600;color:var(--muted);
+  display:flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.role-btn.active{background:var(--accent);color:#fff;}
+.avatar{
+  width:36px;height:36px;border-radius:50%;background:var(--accent);
+  color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;
+  overflow:hidden;flex-shrink:0;
+}
+.avatar img{width:100%;height:100%;object-fit:cover;}
+.avatar-btn{border:none;padding:0;background:none;cursor:pointer;}
+
+.content{padding:26px 28px 60px 28px;flex:1;}
+
+.demo-banner{
+  background:var(--black);color:#EDEDE8;
+  padding:7px 24px;font-size:11.5px;display:flex;align-items:center;gap:8px;
+}
+.demo-banner b{color:#fff;}
+
+.grid{display:grid;gap:18px;}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+.grid-3{grid-template-columns:repeat(3,1fr);}
+.grid-2{grid-template-columns:2fr 1fr;}
+.grid-2b{grid-template-columns:1fr 1fr;}
+@media(max-width:1200px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-3{grid-template-columns:repeat(2,1fr);}.grid-2{grid-template-columns:1fr;}}
+
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;box-shadow:var(--shadow);
+}
+.card-title{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin:32px 0 14px 0;}
+.section-head:first-child{margin-top:0;}
+.section-head h2{font-size:18px;margin:0;font-weight:600;}
+.section-head .sub{font-size:13px;color:var(--muted);margin-top:2px;}
+
+.kpi{position:relative;overflow:hidden;}
+.kpi .val{font-family:'Fraunces',serif;font-size:30px;font-weight:600;margin:6px 0 4px 0;}
+.kpi .delta{font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px;}
+.delta.good{color:var(--text);}
+.delta.bad{color:var(--urgent);}
+.kpi-icon{
+  position:absolute;top:16px;right:16px;width:34px;height:34px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--text);
+}
+.kpi-icon.strong{background:var(--black);color:#fff;}
+.kpi-icon svg{width:17px;height:17px;}
+
+.btn{
+  border:none;border-radius:8px;padding:9px 16px;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;gap:7px;
+}
+.btn svg{width:15px;height:15px;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:#000;}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);}
+.btn-ghost:hover{background:var(--paper);}
+.btn-danger{background:var(--urgent-tint);color:var(--urgent);}
+.btn-danger:hover{background:#EAD0CB;}
+.btn-sm{padding:6px 11px;font-size:12.5px;}
+.btn-block{width:100%;justify-content:center;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+th{
+  text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+  padding:9px 10px;border-bottom:1px solid var(--border);font-weight:600;
+}
+td{padding:12px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr.tr-hover:hover{background:var(--paper);}
+
+.tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;}
+.tag-strong{background:var(--black);color:#fff;}
+.tag-neutral{background:var(--surface);color:var(--text);border:1px solid var(--gray-300);}
+.tag-subtle{background:var(--gray-100);color:var(--gray-700);}
+.tag-red{background:var(--urgent-tint);color:var(--urgent);}
+
+.progress{height:6px;border-radius:4px;background:var(--gray-100);border:1px solid var(--border);overflow:hidden;}
+.progress > div{height:100%;border-radius:4px;}
+
+.rail{display:flex;flex-direction:column;gap:12px;}
+.ticket{
+  position:relative;background:#FFFFFE;border:1px solid var(--border);border-radius:4px;
+  padding:13px 16px 13px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.06);
+}
+.ticket::before{
+  content:'';position:absolute;left:-1px;top:14px;width:10px;height:10px;border-radius:50%;
+  background:var(--paper);border:1px solid var(--border);
+}
+.ticket.urgent{border-left:3px solid var(--urgent);}
+.ticket.normal{border-left:3px solid var(--gray-300);}
+.ticket.done{border-left:3px solid var(--gray-300); opacity:.7;}
+.ticket-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+.ticket-id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted-2);}
+.ticket-from{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.ticket-flag{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;color:var(--urgent);letter-spacing:.5px;margin-left:8px;}
+.ticket-item{font-size:14.5px;font-weight:600;margin:5px 0 2px 0;}
+.ticket-meta{font-size:12px;color:var(--muted);}
+.ticket-actions{display:flex;gap:7px;margin-top:9px;}
+
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;}
+.field input, .field select, .field textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;background:var(--surface);color:var(--text);
+}
+.field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--black);outline-offset:1px;border-color:var(--black);}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+.tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+@media(max-width:900px){.tile-grid{grid-template-columns:repeat(2,1fr);}}
+.tile{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 16px;
+  display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;box-shadow:var(--shadow);
+  border-bottom:3px solid transparent;
+}
+.tile:active{transform:scale(0.98);}
+.tile.urgent-tile{border-bottom-color:var(--urgent);}
+.tile-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--gray-100);color:var(--text);}
+.tile.urgent-tile .tile-icon{background:var(--black);color:#fff;}
+.tile-icon svg{width:24px;height:24px;}
+.tile-label{font-weight:700;font-size:14.5px;}
+.tile-sub{font-size:12px;color:var(--muted);}
+
+/* Écran de connexion */
+.login-shell{min-height:100vh;display:flex;}
+.login-brand{background:var(--black);color:#EDEDE8;flex:0 0 40%;display:flex;flex-direction:column;justify-content:center;padding:60px;}
+.login-brand h1{color:#fff;font-size:28px;margin:18px 0 10px 0;}
+.login-brand p{color:#B8B8B1;font-size:14px;line-height:1.6;max-width:320px;margin:0 0 26px 0;}
+.login-feature{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;color:#C7C7C0;}
+.login-feature svg{width:15px;height:15px;flex-shrink:0;color:#fff;}
+.login-form-side{flex:1;display:flex;align-items:center;justify-content:center;padding:40px;background:var(--surface);}
+.login-form-inner{width:100%;max-width:340px;}
+.login-step-label{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600;margin-bottom:18px;}
+.login-restaurant-tag{display:inline-flex;align-items:center;gap:6px;background:var(--paper);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px;}
+.login-restaurant-tag svg{width:12px;height:12px;}
+.login-person-list{display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto;padding-right:2px;}
+.login-person-row{display:flex;align-items:center;gap:12px;border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:11px 14px;text-align:left;}
+.login-person-row:hover{border-color:var(--black);}
+.login-person-name{font-weight:700;font-size:13.5px;}
+.login-person-role{font-size:11.5px;color:var(--muted);}
+.login-identity{display:flex;align-items:center;gap:11px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+.login-identity .avatar{width:40px;height:40px;font-size:14px;}
+.login-password-wrap{position:relative;}
+.login-password-wrap input{padding-right:42px;}
+.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--muted);padding:6px;display:flex;}
+.login-error{color:var(--urgent);font-size:12.5px;margin:-6px 0 14px 0;}
+.login-hint{font-size:11.5px;color:var(--muted-2);margin-top:10px;text-align:center;}
+.back-link{background:none;border:none;color:var(--muted);font-size:12.5px;font-weight:600;padding:0;margin-bottom:18px;display:inline-flex;align-items:center;gap:5px;}
+@media(max-width:860px){
+  .login-shell{flex-direction:column;}
+  .login-brand{flex:0 0 auto;padding:36px 24px;}
+  .login-brand p{max-width:none;}
+  .login-form-side{padding:28px 22px;}
+}
+
+/* Site public — vitrine et tarifs */
+.site-page{min-height:100vh;background:var(--paper);}
+.site-nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 40px;background:var(--surface);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:10;
+}
+.site-nav-brand{display:flex;align-items:center;gap:10px;background:none;border:none;font-family:'Fraunces',serif;font-weight:700;font-size:16px;color:var(--text);}
+.site-nav-links{display:flex;align-items:center;gap:18px;}
+.site-nav-link{background:none;border:none;font-size:13.5px;font-weight:600;color:var(--muted);padding:0;}
+.site-nav-link.active,.site-nav-link:hover{color:var(--text);}
+.site-hero{max-width:760px;margin:0 auto;padding:90px 24px 70px 24px;text-align:center;}
+.site-hero-tag{font-size:11.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:18px;}
+.site-hero h1{font-family:'Fraunces',serif;font-size:40px;line-height:1.15;font-weight:700;margin:0 0 18px 0;}
+.site-hero p{font-size:15.5px;color:var(--muted);line-height:1.6;max-width:520px;margin:0 auto 30px auto;}
+.site-features{max-width:1040px;margin:0 auto;padding:0 24px 80px 24px;}
+.site-feature-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+.site-feature-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 18px;box-shadow:var(--shadow);}
+.site-cta{text-align:center;padding:70px 24px;background:var(--black);color:#EDEDE8;}
+.site-cta h2{font-family:'Fraunces',serif;font-size:26px;margin:0 0 8px 0;color:#fff;}
+.site-cta .muted{color:#B8B8B1 !important;}
+.site-footer{text-align:center;padding:26px;font-size:11.5px;color:var(--muted-2);}
+.site-pricing-head{max-width:640px;margin:0 auto;padding:70px 24px 40px 24px;text-align:center;}
+.site-pricing-head h1{font-family:'Fraunces',serif;font-size:32px;margin:0 0 10px 0;}
+.site-plans-grid{max-width:760px;margin:0 auto;padding:0 24px 90px 24px;display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.site-plan-card{padding:32px 28px;}
+.site-plan-name{font-family:'Fraunces',serif;font-size:20px;font-weight:700;}
+.site-plan-price{font-family:'Fraunces',serif;font-size:34px;font-weight:700;margin-bottom:22px;}
+.site-plan-features{list-style:none;padding:0;margin:0 0 26px 0;display:flex;flex-direction:column;gap:10px;}
+.site-plan-features li{display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:var(--text);}
+.site-plan-features li svg{flex-shrink:0;margin-top:3px;color:var(--text);}
+.payment-summary{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin:2px 0 20px 0;font-size:13.5px;}
+@media(max-width:760px){
+  .site-nav{padding:14px 20px;}
+  .site-hero{padding:50px 20px 40px 20px;}
+  .site-hero h1{font-size:30px;}
+  .site-feature-grid{grid-template-columns:1fr 1fr;}
+  .site-plans-grid{grid-template-columns:1fr;}
+}
+
+#toast-zone{position:fixed;bottom:22px;right:22px;z-index:999;display:flex;flex-direction:column;gap:9px;}
+.toast{
+  background:var(--black);color:#fff;padding:12px 18px;border-radius:9px;font-size:13.5px;font-weight:500;
+  box-shadow:0 8px 24px rgba(0,0,0,0.25);display:flex;align-items:center;gap:9px;min-width:220px;
+  animation:slidein .22s ease;
+}
+.toast.alert{background:var(--urgent);}
+.toast.mail{background:var(--surface);color:var(--text);border:1px solid var(--black);}
+
+.notif-wrap{position:relative;}
+.notif-panel{position:absolute;top:calc(100% + 10px);right:0;width:320px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.16);z-index:60;overflow:hidden;}
+.notif-panel-head{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:700;font-size:13.5px;}
+.notif-item{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);text-align:left;width:100%;background:none;border-left:none;border-right:none;border-top:none;color:var(--text);}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:var(--paper);}
+.notif-item svg{width:16px;height:16px;flex-shrink:0;margin-top:1px;}
+.notif-empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:13px;}
+@keyframes slidein{from{transform:translateY(10px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+
+.empty{text-align:center;padding:40px 20px;color:var(--muted);}
+.empty svg{width:38px;height:38px;color:var(--muted-2);margin-bottom:10px;}
+
+.modal-bg{position:fixed;inset:0;background:rgba(10,10,10,0.5);display:none;align-items:center;justify-content:center;z-index:100;}
+.modal-bg.open{display:flex;}
+.modal{background:var(--surface);border-radius:14px;padding:26px;width:460px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:86vh;overflow-y:auto;}
+.modal h3{margin:0 0 4px 0;font-size:18px;}
+.modal .modal-sub{font-size:13px;color:var(--muted);margin-bottom:18px;}
+.modal-close{float:right;background:var(--paper);border:none;border-radius:50%;width:28px;height:28px;color:var(--muted);}
+
+.chart-box{position:relative;height:230px;}
+.chart-box.sm{height:170px;}
+
+.ai-box{
+  background:var(--black);color:#EDEDE8;border-radius:12px;padding:18px 20px;
+}
+.ai-box .ai-head{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+.ai-box .ai-head svg{width:18px;height:18px;color:#fff;}
+.ai-box .ai-title{font-weight:700;font-size:13.5px;color:#fff;}
+.ai-line{display:flex;gap:9px;padding:9px 0;border-top:1px solid rgba(255,255,255,0.12);font-size:13px;line-height:1.45;}
+.ai-line:first-of-type{border-top:none;}
+.ai-dot{width:6px;height:6px;border-radius:50%;background:#fff;margin-top:6px;flex-shrink:0;}
+
+.pill-nav{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;}
+.pill-nav button{
+  border:1px solid var(--border);background:var(--surface);padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--muted);
+}
+.pill-nav button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+.stock-bar-wrap{display:flex;align-items:center;gap:8px;}
+.stock-bar-wrap .progress{flex:1;}
+.mini-label{font-size:11.5px;color:var(--muted-2);white-space:nowrap;}
+
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+.divider{height:1px;background:var(--border);margin:18px 0;}
+
+/* Document de commande / facture */
+.invoice-doc{font-family:'Inter',sans-serif;color:var(--text);}
+.invoice-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--black);padding-bottom:16px;margin-bottom:20px;}
+.invoice-resto-name{font-family:'Fraunces',serif;font-size:19px;font-weight:700;}
+.invoice-resto-meta{font-size:12.5px;color:var(--muted);margin-top:2px;}
+.invoice-doctype{text-align:right;}
+.invoice-doctype-label{font-family:'Fraunces',serif;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;}
+.invoice-ref{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin-top:2px;}
+.invoice-meta-row{display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;}
+.invoice-meta-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted-2);font-weight:600;margin-bottom:3px;}
+.invoice-meta-value{font-size:13px;font-weight:600;}
+.invoice-meta-sub{font-size:11.5px;color:var(--muted);}
+.invoice-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+.invoice-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);border-bottom:1.5px solid var(--black);padding:7px 6px;font-weight:600;}
+.invoice-table td{padding:9px 6px;border-bottom:1px solid var(--border);font-size:13px;}
+.invoice-table th:nth-child(2),.invoice-table td:nth-child(2),.invoice-table th:nth-child(3),.invoice-table td:nth-child(3),.invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
+.invoice-table.history th:nth-child(2),.invoice-table.history td:nth-child(2),.invoice-table.history th:nth-child(3),.invoice-table.history td:nth-child(3){text-align:left;}
+.invoice-total-row{display:flex;justify-content:flex-end;align-items:baseline;gap:12px;border-top:2px solid var(--black);padding-top:10px;margin-bottom:16px;}
+.invoice-total-label{font-size:12.5px;font-weight:600;}
+.invoice-total-value{font-family:'Fraunces',serif;font-size:20px;font-weight:700;}
+.invoice-foot{border-top:1px solid var(--border);padding-top:12px;font-size:10.5px;color:var(--muted-2);text-align:center;}
+
+.flex{display:flex;}
+.between{justify-content:space-between;}
+.center{align-items:center;}
+.gap8{gap:8px;}
+.gap12{gap:12px;}
+.muted{color:var(--muted);}
+.small{font-size:12.5px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast-zone"></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalContent"></div></div>
+
+<script>
+/* ============================================================
+   ICONS
+============================================================ */
+const I = {
+  dash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>`,
+  box:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
+  cart:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L22 7H6"/></svg>`,
+  invoice:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3h10a1 1 0 0 1 1 1v17l-3-2-2 2-2-2-2 2-3-2V4a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>`,
+  wallet:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="6" width="19" height="13" rx="2"/><path d="M2.5 10h19"/><circle cx="16.5" cy="14.5" r="1.2" fill="currentColor" stroke="none"/></svg>`,
+  team:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="18" cy="9" r="2.4"/><path d="M15.5 20c0-2.8 1.9-4.7 4.5-5"/></svg>`,
+  truck:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="13" height="9" rx="1"/><path d="M14 10h4l4 3.4V16h-8z"/><circle cx="6" cy="19" r="1.7"/><circle cx="17.5" cy="19" r="1.7"/></svg>`,
+  settings:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>`,
+  bell:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>`,
+  chef:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 13.5a4 4 0 0 1 1-7.9 4.5 4.5 0 0 1 8.6-1.6A4 4 0 0 1 21 8a4 4 0 0 1-3 3.9V19H6v-5.5z"/><path d="M6 19h12"/></svg>`,
+  tray:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="9" width="20" height="12" rx="1.5"/><path d="M6 9V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/></svg>`,
+  plus:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`,
+  check:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>`,
+  x:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg>`,
+  warn:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 1 21h22L12 2z"/><path d="M12 9v5M12 17h.01"/></svg>`,
+  up:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 16l6-6 4 4 6-8M14 6h6v6"/></svg>`,
+  down:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 8l6 6 4-4 6 8M14 18h6v-6"/></svg>`,
+  spark:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 5.6L19 9l-5.2 1.4L12 16l-1.8-5.6L5 9l5.2-1.4L12 2z"/><path d="M19 15l.8 2.4L22 18l-2.2.6L19 21l-.8-2.4L16 18l2.2-.6L19 15z"/></svg>`,
+  doc:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`,
+  mail:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="M3 6.5l9 6.5 9-6.5"/></svg>`,
+  lock:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4.5" y="10.5" width="15" height="10" rx="1.6"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>`,
+  logout:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>`,
+  eye:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  eyeOff:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3l18 18"/><path d="M10.6 5.2A10.4 10.4 0 0 1 12 5c6 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C4 8.3 2 12 2 12s4 7 10 7a10.4 10.4 0 0 0 4.2-.9"/><path d="M9.5 9.5a3 3 0 0 0 4.2 4.2"/></svg>`,
+  trash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3m-9 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg>`,
+  globe:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.6 2.6 4 6 4 9.5s-1.4 6.9-4 9.5c-2.6-2.6-4-6-4-9.5s1.4-6.9 4-9.5z"/></svg>`,
+  device:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>`,
+  sun:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>`,
+  moon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>`,
+  download:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>`,
+  building:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01"/></svg>`,
+  clock:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3.5 2"/></svg>`,
+  mobile:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>`,
+  plug:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 0 1-10 0V8z"/><path d="M12 17v5"/></svg>`,
+};
+function iconXs(svg){ return svg.replace('width="24"','width="12"').replace('height="24"','height="12"'); }
+function iconSm(svg){ return svg.replace('width="24"','width="14"').replace('height="24"','height="14"'); }
+
+/* ============================================================
+   DONNÉES
+============================================================ */
+let uidSeq = 1000;
+const nextId = () => (uidSeq++).toString();
+
+let RESTOS = [];
+
+let SUPPLIERS = [];
+
+let PRODUCTS = [];
+// Modèle d'un produit : {id, name, unit, price, qtyCommande, supplier, cat, department}
+// department : 'cuisine' | 'salle' | 'both' — sert à séparer ce qui est utilisé en cuisine et en salle
+// qtyCommande : quantité commandée par défaut (le site est un outil de commande, pas un inventaire en temps réel)
+
+let REQUESTS = [];
+
+let ORDERS = [];
+
+let BASKETS = {}; // { [supplierId]: [{productId, qty}, ...] } — panier en attente d'envoi, par fournisseur
+
+let CUSTOM_REQUESTS = []; // propositions d'achat libres (hors catalogue), approuvées ou non par le patron
+
+let TEAM = []; // aucun employé pré-créé — chaque établissement démarre avec une équipe vide
+
+// Chaque établissement a son propre catalogue : fournisseurs, produits, commandes, demandes, paniers et équipe
+// ne sont jamais partagés entre deux restaurants d'un même compte patron.
+let RESTO_DATA = {};
+function ensureRestoData(id){
+  if(!RESTO_DATA[id]) RESTO_DATA[id] = { suppliers: [], products: [], requests: [], orders: [], baskets: {}, customRequests: [], team: [] };
+  return RESTO_DATA[id];
+}
+function loadRestoData(id){
+  const d = ensureRestoData(id);
+  SUPPLIERS = d.suppliers;
+  PRODUCTS = d.products;
+  REQUESTS = d.requests;
+  ORDERS = d.orders;
+  BASKETS = d.baskets;
+  CUSTOM_REQUESTS = d.customRequests;
+  TEAM = d.team;
+}
+
+function identityForTeamRole(role){
+  if(role==='Manager') return 'manager';
+  if(role==='Chef de partie' || role==='Commis de cuisine') return 'cuisine';
+  return 'salle'; // Serveur / Serveuse
+}
+function initialsFor(name){
+  return name.split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
+}
+function avatarInner(photoUrl, name){
+  return photoUrl ? `<img src="${photoUrl}" alt="${name}">` : initialsFor(name);
+}
+function photoFor(role, employeeId){
+  if(employeeId){
+    const m = TEAM.find(t=>t.id===employeeId);
+    return m ? m.photoDataUrl : null;
+  }
+  return CREDENTIALS.patron.photoDataUrl;
+}
+function currentPersonDisplayName(){
+  if(state.loggedInEmployeeId){
+    const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+    if(m) return m.name;
+  }
+  return state.identity==='patron' ? 'Marc Petit' : ROLE_META[state.identity].name.split(' — ')[0];
+}
+function slugifyFirstName(name){
+  const first = name.split(' ')[0] || 'user';
+  return first.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+}
+function generateDefaultPassword(name){
+  return slugifyFirstName(name) + '2026';
+}
+function generateUsername(name){
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(' ').filter(Boolean).map(w=>w.replace(/[^a-z]/g,'')).join('.');
+}
+
+function deptLabel(d){ return d==='cuisine'?'Cuisine':d==='salle'?'Salle':'Cuisine & salle'; }
+function deptTag(d){ return d==='cuisine'?'tag-neutral':d==='salle'?'tag-subtle':'tag-strong'; }
+
+function supplierName(id){ return (SUPPLIERS.find(s=>s.id===id)||{}).name || '—'; }
+function supplierSpend(id){ return ORDERS.filter(o=>o.supplier===id && o.status!=='refusee').reduce((a,o)=>a+o.amount,0); }
+function supplierLastOrderDate(id){
+  const withDates = ORDERS.filter(o=>o.supplier===id && o.createdAt);
+  if(withDates.length===0) return '—';
+  const latest = withDates.reduce((a,b)=> new Date(a.createdAt) > new Date(b.createdAt) ? a : b);
+  return fmtDateShort(new Date(latest.createdAt));
+}
+function productName(id){ return (PRODUCTS.find(p=>p.id===id)||{}).name || '—'; }
+function fmtEUR(n){ return n.toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
+function fullAddress(resto){
+  const line2 = [resto.postalCode, resto.city].filter(Boolean).join(' ');
+  return [resto.address, line2].filter(Boolean).join(', ');
+}
+
+const MONTHS_SHORT = ['jan.','fév.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+const MONTHS_LONG = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function fmtTime(d){ return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function fmtMonthYear(d){ return MONTHS_LONG[d.getMonth()] + ' ' + d.getFullYear(); }
+
+/* ============================================================
+   PANIERS PAR FOURNISSEUR — on regroupe les besoins avant d'envoyer
+   une seule commande (et donc une seule facture) par fournisseur.
+============================================================ */
+function addToBasket(supplierId, productId, qty){
+  qty = Math.round(qty);
+  if(!supplierId || !productId || !qty) return;
+  if(!BASKETS[supplierId]) BASKETS[supplierId] = [];
+  const existing = BASKETS[supplierId].find(li=>li.productId===productId);
+  if(existing){ existing.qty = Math.round(existing.qty + qty); }
+  else { BASKETS[supplierId].push({productId, qty}); }
+}
+function removeBasketLine(supplierId, productId){
+  if(!BASKETS[supplierId]) return;
+  BASKETS[supplierId] = BASKETS[supplierId].filter(li=>li.productId!==productId);
+  if(BASKETS[supplierId].length===0) delete BASKETS[supplierId];
+  render();
+}
+function updateBasketLineQty(supplierId, productId, value){
+  if(!BASKETS[supplierId]) return;
+  const qty = Math.round(parseFloat(value));
+  if(!qty || qty<=0){ removeBasketLine(supplierId, productId); return; }
+  const line = BASKETS[supplierId].find(li=>li.productId===productId);
+  if(!line) return;
+  line.qty = Math.round(qty*100)/100;
+  render();
+}
+function basketTotal(supplierId){
+  return (BASKETS[supplierId]||[]).reduce((a,li)=>{
+    const p = PRODUCTS.find(x=>x.id===li.productId);
+    return a + (p ? li.qty*p.price : 0);
+  }, 0);
+}
+function sendBasket(supplierId){
+  if(state.role!=='patron'){ toast('Seul le patron peut envoyer une commande au fournisseur','alert'); return; }
+  const items = BASKETS[supplierId];
+  if(!items || items.length===0) return;
+  const parts = [];
+  let amount = 0;
+  items.forEach(li=>{
+    const p = PRODUCTS.find(x=>x.id===li.productId);
+    if(p){ parts.push(`${p.name} × ${li.qty} ${p.unit}`); amount += li.qty*p.price; }
+  });
+  const now = new Date();
+  ORDERS.unshift({
+    id:'CMD-'+nextId(), supplier:supplierId, items: parts.join(', '),
+    lineItems: items.map(li=>({productId:li.productId, qty:li.qty})),
+    amount: Math.round(amount*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now
+  });
+  delete BASKETS[supplierId];
+  toast('Commande envoyée pour validation — '+supplierName(supplierId));
+  render();
+}
+
+function fmtDateShort(d){ return d.getDate()+' '+MONTHS_SHORT[d.getMonth()]; }
+function fmtDateLong(d){ return d.getDate()+' '+MONTHS_LONG[d.getMonth()]+' '+d.getFullYear(); }
+
+/* ============================================================
+   CONNEXION AU VRAI SERVEUR (compte, connexion, établissements)
+   Le reste de l'application (produits, équipe, commandes...) continue de fonctionner
+   en mémoire pour l'instant — seule la couche compte/authentification est déjà réelle.
+============================================================ */
+const API_URL = 'https://mise-et-sure-backend-production.up.railway.app';
+// Jeton de connexion : le cookie de session seul ne suffit pas partout — Safari bloque par
+// défaut les cookies posés par un serveur sur un autre domaine que celui du site visité. Ce
+// jeton, envoyé dans l'en-tête "Authorization", contourne complètement ce blocage.
+let AUTH_TOKEN = null;
+async function apiRequest(path, options={}){
+  const headers = { 'Content-Type': 'application/json' };
+  if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+  const res = await fetch(API_URL + path, {
+    method: options.method || 'GET',
+    headers,
+    credentials: 'include', // gardé en plus, pour les navigateurs qui acceptent bien le cookie
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  let data = {};
+  try { data = await res.json(); } catch(e) {}
+  if(!res.ok) throw new Error(data.error || 'Une erreur est survenue. Merci de réessayer.');
+  if(data.token) AUTH_TOKEN = data.token;
+  return data;
+}
+
+/* ============================================================
+   ÉTAT GLOBAL
+============================================================ */
+const state = {
+  site: 'marketing', // 'marketing' | 'pricing' | 'payment' | 'account-auth' | 'verify-email' | 'setup-restaurant' | 'reset-password' | 'team-login' | 'app'
+  billingCycle: 'monthly', // 'monthly' | 'annual'
+  selectedPlan: null, // 'essentiel' | 'pro'
+  authMode: 'login', // 'login' | 'signup'
+  accountError: null,
+  pendingSignup: null, // { email, plan, billing } en attente de vérification email
+  verificationCode: null,
+  verifyError: null,
+  resetStep: 'request', // 'request' | 'reset'
+  resetEmail: null,
+  resetCode: null,
+  resetError: null,
+  loggedIn: false,
+  identity: null,   // le rôle réellement authentifié (fixe)
+  role: null,       // l'interface actuellement affichée (le patron peut la changer pour prévisualiser)
+  loggedInEmployeeId: null, // id de l'employé TEAM connecté (null pour le patron)
+  view: 'dashboard',
+  resto: null,
+  loginStep: 'choose',   // 'choose' | 'password'
+  loginSelectedRole: null,
+  loginSelectedEmployeeId: null,
+  loginError: null,
+  notifOpen: false,
+  stockFilter: 'tous',
+  orderFilter: {dept:'tous', supplier:'tous', month:'tous', year:'tous'},
+  theme: 'light', // 'light' | 'dark' — préférence personnelle, par utilisateur
+};
+
+let ACCOUNT = null; // { email, plan, billing, via } une fois le compte connecté pendant la session (vient du vrai serveur)
+const PLANS = [
+  { id:'essentiel', name:'Essentiel', monthly:39, tagline:"Pour un restaurant qui démarre",
+    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Factures et historique d’achats','Notifications par email'] },
+  { id:'pro', name:'Pro', monthly:79, tagline:"Pour les groupes multi-établissements",
+    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export comptable','Support prioritaire'] },
+];
+function planAnnualPrice(monthly){ return monthly*10; }
+const SITE_FEATURES = [
+  { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, une seule facture." },
+  { icon:'team', title:'Un accès par personne', desc:"Patron, manager, cuisine, salle : chacun son espace, ses permissions, son mot de passe." },
+  { icon:'invoice', title:'Factures professionnelles', desc:"Bons de commande et factures générés automatiquement, prêts à télécharger." },
+  { icon:'building', title:'Multi-établissements', desc:"Gérez plusieurs restaurants depuis un même compte, sans jamais mélanger les données." },
+];
+
+let CREDENTIALS = {
+  patron: { username:'', password:'', theme:'light' }, // initialisés à la création du premier établissement
+};
+
+let NOTIF_STATE = {
+  patron:{email:'', enabled:true, events:{urgent:true, commandes:true}},
+  manager:{email:'', enabled:true, events:{demandes:true, commandes:true}},
+  cuisine:{email:'', enabled:true, events:{decision:true}},
+  salle:{email:'', enabled:true, events:{decision:true}},
+};
+
+const NAV = {
+  patron: [
+    {id:'dashboard', label:'Tableau de bord', icon:I.dash},
+    {id:'stocks', label:'Produits', icon:I.doc},
+    {id:'commandes', label:'Commandes', icon:I.cart},
+    {id:'fournisseurs', label:'Fournisseurs', icon:I.truck},
+    {id:'equipe', label:'Équipe', icon:I.team},
+    {id:'multi', label:'Multi-établissements', icon:I.building},
+    {id:'notifications', label:'Notifications', icon:I.mail},
+    {id:'parametres', label:'Paramètres', icon:I.settings},
+  ],
+  manager: [
+    {id:'dashboard', label:'Vue du jour', icon:I.dash},
+    {id:'demandes', label:'Demandes internes', icon:I.bell, badgeKey:'demandes'},
+    {id:'commandes', label:'Commandes fournisseurs', icon:I.cart},
+    {id:'stocks', label:'Produits', icon:I.doc},
+    {id:'livraisons', label:'Livraisons', icon:I.truck},
+    {id:'notifications', label:'Notifications', icon:I.mail},
+  ],
+  cuisine: [
+    {id:'accueil', label:'Accueil cuisine', icon:I.chef},
+    {id:'signaler', label:'Signaler un manque', icon:I.warn},
+    {id:'stocks', label:'Catalogue', icon:I.doc},
+    {id:'livraisons', label:'Livraisons', icon:I.truck},
+    {id:'demandes', label:'Mes demandes', icon:I.tray},
+    {id:'notifications', label:'Notifications', icon:I.mail},
+  ],
+  salle: [
+    {id:'accueil', label:'Accueil salle', icon:I.tray},
+    {id:'signaler', label:'Signaler un manque', icon:I.warn},
+    {id:'stocks', label:'Catalogue', icon:I.doc},
+    {id:'demandes', label:'Mes demandes', icon:I.clock},
+    {id:'notifications', label:'Notifications', icon:I.mail},
+  ],
+};
+
+const ROLE_META = {
+  patron:{label:'Patron', initials:'MP', name:'Marc Petit — Patron', desc:"Vision complète : validation des commandes, finances, équipe, tous les établissements."},
+  manager:{label:'Manager', initials:'SM', name:'Sofia Marchetti — Manager', desc:"Organisation du quotidien : demandes de la salle, commandes fournisseurs, produits, livraisons."},
+  cuisine:{label:'Cuisine', initials:'KB', name:'Karim Belhadj — Chef de partie', desc:"Signaler une commande, consulter le catalogue, suivre ses demandes — pensé pour le service."},
+  salle:{label:'Salle', initials:'LD', name:'Léa Dubreuil — Serveuse', desc:"Signaler un besoin et demander une commande en un tap."},
+};
+
+/* ============================================================
+   UTILITAIRES UI
+============================================================ */
+/* ============================================================
+   SONS — synthétisés (aucun fichier audio requis), sobres et discrets
+============================================================ */
+let audioCtx = null;
+function getAudioCtx(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return null; }
+  }
+  if(audioCtx.state==='suspended'){ audioCtx.resume(); }
+  return audioCtx;
+}
+function playTone(freq, duration, peakGain, type, delay){
+  const ctx = getAudioCtx(); if(!ctx) return;
+  const t0 = ctx.currentTime + (delay||0);
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.linearRampToValueAtTime(peakGain, t0 + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(t0); osc.stop(t0 + duration + 0.03);
+}
+function playClickSound(){ playTone(680, 0.045, 0.045, 'sine'); }
+function playSuccessSound(){ playTone(660, 0.09, 0.06, 'sine'); playTone(920, 0.11, 0.05, 'sine', 0.06); }
+function playAlertSound(){ playTone(320, 0.09, 0.045, 'sine'); }
+document.addEventListener('click', function(e){
+  if(e.target.closest('button')) playClickSound();
+}, false);
+
+function toast(msg, type){
+  const zone = document.getElementById('toast-zone');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type==='alert'?'alert':type==='mail'?'mail':'');
+  el.innerHTML = iconXs(type==='alert'?I.warn:type==='mail'?I.mail:I.check) + `<span>${msg}</span>`;
+  zone.appendChild(el);
+  if(type==='alert') playAlertSound();
+  else if(type!=='mail') playSuccessSound();
+  const life = type==='mail' ? 4600 : 3200;
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),300); }, life);
+}
+function maskEmail(email){
+  const [user, domain] = (email||'').split('@');
+  if(!domain) return email;
+  return user.slice(0,2) + '***@' + domain;
+}
+function notifyByEmail(roleKey, message){
+  const cfg = NOTIF_STATE[roleKey];
+  if(!cfg || !cfg.enabled || !cfg.email) return;
+  setTimeout(()=>{ toast(`<b>Email envoyé</b> à ${maskEmail(cfg.email)} — ${message}`, 'mail'); }, 650);
+}
+function openModal(html){
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalBg').classList.add('open');
+}
+function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
+document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.id==='modalBg') closeModal(); });
+
+/* ============================================================
+   SITE PUBLIC — vitrine, tarifs, compte (au-dessus de l'espace équipe)
+============================================================ */
+function goToSite(site){
+  state.site = site;
+  state.accountError = null;
+  render();
+  window.scrollTo(0,0);
+}
+function setBillingCycle(c){ state.billingCycle = c; render(); }
+function choosePlan(planId){
+  state.selectedPlan = planId;
+  goToSite('payment');
+}
+function luhnCheck(num){
+  let sum = 0, alt = false;
+  for(let i=num.length-1; i>=0; i--){
+    let d = parseInt(num.charAt(i), 10);
+    if(alt){ d *= 2; if(d>9) d -= 9; }
+    sum += d;
+    alt = !alt;
+  }
+  return sum % 10 === 0;
+}
+function attemptPayment(){
+  const name = ((document.getElementById('pay-name')||{}).value || '').trim();
+  const number = ((document.getElementById('pay-number')||{}).value || '').replace(/\s/g,'');
+  const expiry = ((document.getElementById('pay-expiry')||{}).value || '').trim();
+  const cvc = ((document.getElementById('pay-cvc')||{}).value || '').trim();
+  if(!name){ state.accountError = 'Merci de renseigner le nom sur la carte.'; render(); return; }
+  if(!/^[a-zA-ZÀ-ÿ' -]{2,}$/.test(name)){ state.accountError = 'Nom sur la carte invalide.'; render(); return; }
+  if(!number){ state.accountError = 'Merci de renseigner le numéro de carte.'; render(); return; }
+  if(!/^\d{13,19}$/.test(number)){ state.accountError = 'Numéro de carte invalide (13 à 19 chiffres).'; render(); return; }
+  if(!luhnCheck(number)){ state.accountError = 'Numéro de carte invalide.'; render(); return; }
+  if(!expiry){ state.accountError = "Merci de renseigner la date d'expiration."; render(); return; }
+  if(!/^\d{2}\/\d{2}$/.test(expiry)){ state.accountError = "Format d'expiration invalide (MM/AA)."; render(); return; }
+  const monthNum = parseInt(expiry.split('/')[0], 10);
+  const yearNum = parseInt(expiry.split('/')[1], 10);
+  if(monthNum<1 || monthNum>12){ state.accountError = "Mois d'expiration invalide."; render(); return; }
+  const now = new Date();
+  const currentYear2 = now.getFullYear() % 100;
+  const currentMonth = now.getMonth()+1;
+  if(yearNum<currentYear2 || (yearNum===currentYear2 && monthNum<currentMonth)){ state.accountError = 'Cette carte est expirée.'; render(); return; }
+  if(!cvc){ state.accountError = 'Merci de renseigner le CVC.'; render(); return; }
+  if(!/^\d{3,4}$/.test(cvc)){ state.accountError = 'CVC invalide (3 ou 4 chiffres).'; render(); return; }
+  toast('Paiement accepté — bienvenue sur Mise & Sûre');
+  state.authMode = 'signup';
+  goToSite('account-auth');
+}
+function setAuthMode(mode){ state.authMode = mode; state.accountError = null; render(); }
+function goToLogin(){
+  state.selectedPlan = null;
+  state.authMode = 'login';
+  goToSite('account-auth');
+}
+async function attemptAccountLogin(){
+  const email = (document.getElementById('acc-email')||{}).value || '';
+  const pass = (document.getElementById('acc-password')||{}).value || '';
+  if(!email || !pass){ state.accountError = 'Email et mot de passe requis.'; render(); return; }
+  try{
+    const data = await apiRequest('/api/auth/login', { method:'POST', body:{ email, password: pass } });
+    ACCOUNT = data.user;
+    goToSite('team-login');
+  } catch(err){
+    state.accountError = err.message;
+    render();
+  }
+}
+function isValidEmail(email){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+async function attemptAccountSignup(){
+  const firstName = ((document.getElementById('acc-firstname')||{}).value || '').trim();
+  const lastName = ((document.getElementById('acc-lastname')||{}).value || '').trim();
+  const phone = ((document.getElementById('acc-phone')||{}).value || '').trim();
+  const email = ((document.getElementById('acc-email')||{}).value || '').trim();
+  const pass = (document.getElementById('acc-password')||{}).value || '';
+  const pass2 = (document.getElementById('acc-password2')||{}).value || '';
+  if(!firstName){ state.accountError = 'Merci de renseigner votre prénom.'; render(); return; }
+  if(!lastName){ state.accountError = 'Merci de renseigner votre nom.'; render(); return; }
+  if(!phone || !/^[\d+\s.()-]{6,}$/.test(phone)){ state.accountError = 'Merci de renseigner un numéro de téléphone valide.'; render(); return; }
+  if(!email || !isValidEmail(email)){ state.accountError = 'Merci de saisir une adresse email valide (ex : vous@domaine.fr).'; render(); return; }
+  if(pass.length<8){ state.accountError = 'Mot de passe trop court (8 caractères minimum).'; render(); return; }
+  if(pass!==pass2){ state.accountError = 'Les mots de passe ne correspondent pas.'; render(); return; }
+  try{
+    await apiRequest('/api/auth/signup', { method:'POST', body:{ firstName, lastName, phone, email, password: pass, plan: state.selectedPlan || 'essentiel', billingCycle: state.billingCycle } });
+    state.pendingSignup = { firstName, lastName, phone, email, plan: state.selectedPlan || 'essentiel', billing: state.billingCycle };
+    toast('Code de vérification envoyé à ' + email);
+    goToSite('verify-email');
+  } catch(err){
+    state.accountError = err.message;
+    render();
+  }
+}
+async function resendVerificationCode(){
+  if(!state.pendingSignup) return;
+  try{
+    await apiRequest('/api/auth/resend-code', { method:'POST', body:{ email: state.pendingSignup.email, purpose:'signup' } });
+    toast('Nouveau code envoyé à ' + state.pendingSignup.email);
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function attemptVerifyEmail(){
+  const entered = ((document.getElementById('verify-code')||{}).value || '').trim();
+  if(!entered){ state.verifyError = 'Merci de saisir le code reçu par email.'; render(); return; }
+  try{
+    const data = await apiRequest('/api/auth/verify-email', { method:'POST', body:{ email: state.pendingSignup.email, code: entered } });
+    ACCOUNT = data.user;
+    state.pendingSignup = null;
+    state.verifyError = null;
+    toast('Email vérifié — bienvenue sur Mise & Sûre');
+    goToSite('setup-restaurant');
+  } catch(err){
+    state.verifyError = err.message;
+    render();
+  }
+}
+function cancelVerification(){
+  state.pendingSignup = null;
+  state.verifyError = null;
+  goToSite('account-auth');
+}
+function goToForgotPassword(){
+  state.resetStep = 'request';
+  state.resetEmail = null;
+  state.resetError = null;
+  goToSite('reset-password');
+}
+async function requestResetCode(){
+  const email = ((document.getElementById('reset-email')||{}).value || '').trim();
+  if(!email || !isValidEmail(email)){ state.resetError = 'Merci de saisir une adresse email valide.'; render(); return; }
+  try{
+    await apiRequest('/api/auth/forgot-password', { method:'POST', body:{ email } });
+    state.resetEmail = email;
+    state.resetStep = 'reset';
+    state.resetError = null;
+    toast('Si ce compte existe, un code a été envoyé à ' + email);
+    render();
+  } catch(err){
+    state.resetError = err.message;
+    render();
+  }
+}
+async function resendResetCode(){
+  try{
+    await apiRequest('/api/auth/forgot-password', { method:'POST', body:{ email: state.resetEmail } });
+    toast('Nouveau code envoyé à ' + state.resetEmail);
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function confirmPasswordReset(){
+  const code = ((document.getElementById('reset-code')||{}).value || '').trim();
+  const pass = (document.getElementById('reset-pass1')||{}).value || '';
+  const pass2 = (document.getElementById('reset-pass2')||{}).value || '';
+  if(!code){ state.resetError = 'Merci de saisir le code reçu par email.'; render(); return; }
+  if(pass.length<8){ state.resetError = 'Mot de passe trop court (8 caractères minimum).'; render(); return; }
+  if(pass!==pass2){ state.resetError = 'Les mots de passe ne correspondent pas.'; render(); return; }
+  try{
+    await apiRequest('/api/auth/reset-password', { method:'POST', body:{ email: state.resetEmail, code, newPassword: pass } });
+    toast('Mot de passe réinitialisé — connectez-vous avec votre nouveau mot de passe');
+    state.resetStep = 'request';
+    state.resetEmail = null;
+    state.resetError = null;
+    state.authMode = 'login';
+    goToSite('account-auth');
+  } catch(err){
+    state.resetError = err.message;
+    render();
+  }
+}
+async function signOutAccount(){
+  try{ await apiRequest('/api/auth/logout', { method:'POST' }); } catch(e){}
+  ACCOUNT = null;
+  AUTH_TOKEN = null;
+  goToSite('marketing');
+}
+
+function chooseLoginPerson(identity, employeeId){
+  state.loginSelectedRole = identity;
+  state.loginSelectedEmployeeId = employeeId || null;
+  state.loginStep = 'password';
+  state.loginError = null;
+  render();
+  const inp = document.getElementById('login-password');
+  if(inp) inp.focus();
+}
+function backToChooseRole(){
+  state.loginStep = 'choose';
+  state.loginSelectedRole = null;
+  state.loginSelectedEmployeeId = null;
+  state.loginError = null;
+  render();
+}
+function attemptLogin(){
+  const role = state.loginSelectedRole;
+  const employeeId = state.loginSelectedEmployeeId;
+  const userVal = (document.getElementById('login-username')||{}).value || '';
+  const passVal = (document.getElementById('login-password')||{}).value || '';
+  let expectedUser = null, expectedPass = null;
+  if(employeeId){
+    const m = TEAM.find(t=>t.id===employeeId);
+    expectedUser = m ? m.username : null;
+    expectedPass = m ? m.password : null;
+  } else {
+    expectedUser = CREDENTIALS.patron.username;
+    expectedPass = CREDENTIALS.patron.password;
+  }
+  if(expectedUser && expectedPass && userVal===expectedUser && passVal===expectedPass){
+    login(role, employeeId);
+  } else {
+    state.loginError = "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.";
+    render();
+  }
+}
+function togglePasswordVisibility(){
+  const inp = document.getElementById('login-password');
+  const btn = document.getElementById('pw-toggle-icon');
+  if(!inp || !btn) return;
+  if(inp.type==='password'){ inp.type='text'; btn.innerHTML = iconSm(I.eyeOff); }
+  else { inp.type='password'; btn.innerHTML = iconSm(I.eye); }
+}
+function login(identity, employeeId){
+  state.identity = identity;
+  state.role = identity;
+  state.loggedInEmployeeId = employeeId || null;
+  state.loggedIn = true;
+  state.view = NAV[identity][0].id;
+  state.loginStep = 'choose';
+  state.loginSelectedRole = null;
+  state.loginSelectedEmployeeId = null;
+  state.loginError = null;
+  const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  state.theme = (member ? member.theme : CREDENTIALS.patron.theme) || 'light';
+  render();
+}
+function toggleTheme(){
+  state.theme = state.theme==='dark' ? 'light' : 'dark';
+  if(state.loggedInEmployeeId){
+    const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+    if(m) m.theme = state.theme;
+  } else if(state.identity==='patron'){
+    CREDENTIALS.patron.theme = state.theme;
+  }
+  render();
+}
+function openMyProfileModal(){
+  const employeeId = state.loggedInEmployeeId;
+  const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  const name = member ? member.name : 'Marc Petit';
+  const roleLabel = member ? member.role : 'Patron';
+  const photo = photoFor(state.identity, employeeId);
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Mon profil</h3>
+    <div class="modal-sub">${name} — ${roleLabel}</div>
+    <div class="flex center gap12" style="margin-bottom:18px;">
+      <div class="avatar" style="width:60px;height:60px;font-size:20px;">${photo?`<img src="${photo}" alt="${name}">`:initialsFor(name)}</div>
+      ${photo ? `<button class="btn btn-ghost btn-sm" onclick="removeMyPhoto()">Retirer la photo</button>` : ''}
+    </div>
+    <div class="field"><label>${photo?'Changer de photo':'Ajouter une photo'}</label><input type="file" accept="image/*" onchange="handleMyPhotoUpload(this)"></div>
+  `);
+}
+function handleMyPhotoUpload(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    if(state.loggedInEmployeeId){
+      const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+      if(m) m.photoDataUrl = e.target.result;
+    } else if(state.identity==='patron'){
+      CREDENTIALS.patron.photoDataUrl = e.target.result;
+    }
+    toast('Photo de profil mise à jour');
+    render();
+    openMyProfileModal();
+  };
+  reader.readAsDataURL(file);
+}
+function removeMyPhoto(){
+  if(state.loggedInEmployeeId){
+    const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+    if(m) m.photoDataUrl = null;
+  } else if(state.identity==='patron'){
+    CREDENTIALS.patron.photoDataUrl = null;
+  }
+  toast('Photo retirée');
+  render();
+  openMyProfileModal();
+}
+function logout(){
+  state.loggedIn = false;
+  state.identity = null;
+  state.role = null;
+  state.loggedInEmployeeId = null;
+  state.loginStep = 'choose';
+  state.loginSelectedRole = null;
+  state.loginSelectedEmployeeId = null;
+  state.loginError = null;
+  render();
+}
+function previewRole(r){
+  if(state.identity!=='patron') return; // seul le patron peut prévisualiser les autres interfaces
+  state.role = r;
+  state.view = NAV[r][0].id;
+  render();
+}
+function backToOwnSpace(){
+  state.role = state.identity;
+  state.view = NAV[state.identity][0].id;
+  render();
+}
+function setView(v){
+  state.view = v;
+  state.notifOpen = false;
+  render();
+}
+function pendingDemandes(){ return REQUESTS.filter(r=>r.status==='attente').length; }
+function pendingDemandesFor(dept){ return REQUESTS.filter(r=>r.status==='attente' && r.from===dept).length; }
+function canActOnDemande(role, r){
+  if(role==='patron') return true;
+  if(role==='manager') return r.from==='Salle';
+  return false;
+}
+function requirePerm(roles, msg){
+  if(!roles.includes(state.role)){ toast(msg || "Cette action n'est pas autorisée pour ce rôle", 'alert'); return false; }
+  return true;
+}
+
+/* ============================================================
+   CLOCHE DE NOTIFICATIONS
+============================================================ */
+function getNotificationsForRole(role){
+  const items = [];
+  if(role==='patron'){
+    ORDERS.filter(o=>o.status==='en_attente_validation').forEach(o=>items.push({icon:I.cart, text:`Commande ${o.id} en attente de validation`, view:'commandes'}));
+    REQUESTS.filter(r=>r.from==='Cuisine' && r.status==='attente').forEach(r=>items.push({icon:I.chef, text:`Demande cuisine : ${r.item} (${r.by})`, view:'dashboard'}));
+    REQUESTS.filter(r=>r.urgent && r.status==='attente' && r.from==='Salle').forEach(r=>items.push({icon:I.warn, text:`Rupture urgente en salle : ${r.item} (${r.by})`, view:'dashboard'}));
+    CUSTOM_REQUESTS.filter(cr=>cr.status==='attente').forEach(cr=>items.push({icon:I.spark, text:`Proposition d'achat : ${cr.itemName} (${cr.by})`, view:'dashboard'}));
+  } else if(role==='manager'){
+    REQUESTS.filter(r=>r.status==='attente' && r.from==='Salle').forEach(r=>items.push({icon:I.bell, text:`Nouvelle demande : ${r.item} (Salle)`, view:'demandes'}));
+    ORDERS.filter(o=>o.status==='validee').forEach(o=>items.push({icon:I.truck, text:`Commande ${o.id} validée — à réceptionner`, view:'livraisons'}));
+  } else if(role==='cuisine'){
+    ORDERS.filter(o=>o.status==='validee').forEach(o=>items.push({icon:I.truck, text:`Commande ${o.id} validée — à réceptionner`, view:'livraisons'}));
+    REQUESTS.filter(r=>r.from==='Cuisine' && r.status!=='attente').slice(0,4).forEach(r=>{
+      items.push({icon: r.status==='approuvee'?I.check:I.x, text:`Votre demande "${r.item}" a été ${r.status==='approuvee'?'approuvée':'refusée'}`, view:'demandes'});
+    });
+  } else {
+    const from = 'Salle';
+    REQUESTS.filter(r=>r.from===from && r.status!=='attente').slice(0,6).forEach(r=>{
+      items.push({icon: r.status==='approuvee'?I.check:I.x, text:`Votre demande "${r.item}" a été ${r.status==='approuvee'?'approuvée':'refusée'}`, view:'demandes'});
+    });
+  }
+  return items.slice(0,8);
+}
+function renderNotifPanel(){
+  const items = getNotificationsForRole(state.role);
+  return `
+    <div class="notif-panel">
+      <div class="notif-panel-head">Notifications</div>
+      ${items.length ? items.map(n=>`<button class="notif-item" onclick="goToNotification('${n.view}')">${iconSm(n.icon)}<span class="small">${n.text}</span></button>`).join('') : `<div class="notif-empty">Aucune notification pour le moment</div>`}
+    </div>
+  `;
+}
+function toggleNotifPanel(){ state.notifOpen = !state.notifOpen; render(); }
+function goToNotification(view){ state.notifOpen = false; setView(view); }
+
+/* ============================================================
+   SHELL
+============================================================ */
+function renderShell(){
+  const nav = NAV[state.role];
+  const isOwnSpace = state.role === state.identity;
+  const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
+  const meta = (isOwnSpace && loggedInMember)
+    ? { label: ROLE_META[state.role].label, initials: initialsFor(loggedInMember.name), name: loggedInMember.name + ' — ' + loggedInMember.role }
+    : ROLE_META[state.role];
+  const resto = RESTOS.find(r=>r.id===state.resto) || {name:'Mon restaurant', city:'', accentColor:null, logoDataUrl:null};
+  const fallbackAccent = state.theme==='dark' ? '#EDEDE6' : '#111111';
+  document.documentElement.style.setProperty('--accent', resto.accentColor || fallbackAccent);
+  const brandMarkContent = resto.logoDataUrl
+    ? `<img src="${resto.logoDataUrl}" alt="${resto.name}">`
+    : (resto.name||'?').charAt(0).toUpperCase();
+
+  const sidebarHtml = `
+    <div class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">${brandMarkContent}</div>
+        <div>
+          <div class="brand-name">${resto.name}</div>
+          <div class="brand-sub">${resto.city}</div>
+        </div>
+      </div>
+      <div class="role-tag">Espace ${meta.label}${state.identity==='patron' && state.role!=='patron' ? ' · aperçu' : ''}</div>
+      <div class="nav">
+        ${nav.map(item=>{
+          let badge = '';
+          if(item.badgeKey==='demandes' && pendingDemandesFor('Salle')>0) badge = `<span class="nav-badge">${pendingDemandesFor('Salle')}</span>`;
+          return `<button class="nav-item ${state.view===item.id?'active':''}" onclick="setView('${item.id}')">${item.icon}<span>${item.label}</span>${badge}</button>`;
+        }).join('')}
+      </div>
+      <div class="sidebar-foot">
+        Mise&nbsp;&amp;&nbsp;Sûre
+      </div>
+    </div>
+  `;
+
+  const topbarHtml = `
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title">${(NAV[state.role].find(n=>n.id===state.view)||{}).label || ''}</div>
+      </div>
+      <div class="topbar-right">
+        ${state.identity==='patron' ? `
+        <div class="role-switcher">
+          ${Object.keys(ROLE_META).map(r=>`<button class="role-btn ${state.role===r?'active':''}" onclick="previewRole('${r}')">${ROLE_META[r].label}</button>`).join('')}
+        </div>` : `<span class="tag tag-neutral" style="padding:7px 14px;font-size:12.5px;">${meta.label}</span>`}
+        <div class="notif-wrap">
+          <button class="btn btn-ghost btn-sm" style="position:relative" onclick="toggleNotifPanel()">
+            ${I.bell}
+            ${getNotificationsForRole(state.role).length>0?`<span style="position:absolute;top:-4px;right:-4px;background:var(--black);color:#fff;width:16px;height:16px;border-radius:50%;font-size:9.5px;display:flex;align-items:center;justify-content:center;">${getNotificationsForRole(state.role).length}</span>`:''}
+          </button>
+          ${state.notifOpen ? renderNotifPanel() : ''}
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="${state.theme==='dark'?'Passer en mode clair':'Passer en mode sombre'}">${state.theme==='dark'?iconSm(I.sun):iconSm(I.moon)}</button>
+        <button class="avatar avatar-btn" title="${meta.name} — modifier ma photo" onclick="openMyProfileModal()">${photoFor(state.identity, state.loggedInEmployeeId) ? `<img src="${photoFor(state.identity, state.loggedInEmployeeId)}" alt="${meta.name}">` : meta.initials}</button>
+        <button class="btn btn-ghost btn-sm" onclick="logout()" title="Se déconnecter">${iconSm(I.logout)}</button>
+      </div>
+    </div>
+  `;
+
+  return {sidebarHtml, topbarHtml};
+}
+
+/* ============================================================
+   VUES — PATRON
+============================================================ */
+function achatsBySupplier(){
+  const map = {};
+  ORDERS.filter(o=>o.status!=='refusee').forEach(o=>{ map[o.supplier] = (map[o.supplier]||0) + o.amount; });
+  return SUPPLIERS.map(s=>({label:s.name, value:Math.round((map[s.id]||0)*100)/100})).filter(x=>x.value>0);
+}
+function buildAIInsights(){
+  const insights = [];
+  if(PRODUCTS.length===0 && ORDERS.length===0){
+    insights.push("Ajoutez vos premiers produits et fournisseurs : les informations clés apparaîtront ici automatiquement.");
+    return insights;
+  }
+  if(ORDERS.length>0){
+    const totalAchats = ORDERS.reduce((a,o)=>a+o.amount,0);
+    const avg = totalAchats/ORDERS.length;
+    insights.push(`Vous avez dépensé <b>${fmtEUR(totalAchats)}</b> sur <b>${ORDERS.length}</b> commande${ORDERS.length>1?'s':''} — soit une moyenne de <b>${fmtEUR(avg)}</b> par commande.`);
+  } else {
+    insights.push("Aucune commande enregistrée pour le moment.");
+  }
+  const freq = {};
+  ORDERS.forEach(o=>(o.lineItems||[]).forEach(li=>{ if(li.productId) freq[li.productId] = (freq[li.productId]||0) + li.qty; }));
+  const topId = Object.keys(freq).sort((a,b)=>freq[b]-freq[a])[0];
+  if(topId){
+    const p = PRODUCTS.find(x=>x.id===topId);
+    if(p) insights.push(`<b>${p.name}</b> est le produit le plus commandé, avec ${freq[topId]} ${p.unit} au total sur votre historique.`);
+  }
+  if(SUPPLIERS.length){
+    const bySpend = SUPPLIERS.map(s=>({s, spend:supplierSpend(s.id)})).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend)[0];
+    if(bySpend){
+      insights.push(`<b>${bySpend.s.name}</b> est votre fournisseur le plus sollicité, avec ${fmtEUR(bySpend.spend)} d'achats au total.`);
+    } else {
+      insights.push(`${SUPPLIERS.length} fournisseur${SUPPLIERS.length>1?'s':''} référencé${SUPPLIERS.length>1?'s':''} — aucun achat enregistré pour le moment.`);
+    }
+  }
+  const pending = ORDERS.filter(o=>o.status==='en_attente_validation').length;
+  if(pending>0) insights.push(`${pending} commande${pending>1?'s':''} fournisseur${pending>1?'s':''} en attente de votre validation.`);
+  if(insights.length===0) insights.push('Aucune information disponible pour le moment.');
+  return insights.slice(0,4);
+}
+function viewPatronDashboard(){
+  const achatsTotal = ORDERS.reduce((a,o)=>a+o.amount,0);
+  const pendingOrders = ORDERS.filter(o=>o.status==='en_attente_validation').length;
+  const cuisineAttente = REQUESTS.filter(r=>r.status==='attente' && r.from==='Cuisine');
+  const urgentCuisine = cuisineAttente.filter(r=>r.urgent).length;
+
+  return `
+    <div class="grid grid-4">
+      <div class="card kpi">
+        <div class="kpi-icon">${I.invoice}</div>
+        <div class="card-title">Achats fournisseurs (historique)</div>
+        <div class="val">${achatsTotal.toLocaleString('fr-FR',{maximumFractionDigits:0})} €</div>
+        <div class="delta good">${ORDERS.length} commande${ORDERS.length>1?'s':''} au total</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-icon strong">${I.chef}</div>
+        <div class="card-title">Demandes de la cuisine</div>
+        <div class="val">${cuisineAttente.length}</div>
+        <div class="delta ${urgentCuisine>0?'bad':'good'}">${urgentCuisine>0?urgentCuisine+' urgente'+(urgentCuisine>1?'s':''):'à traiter vous-même'}</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-icon strong">${I.cart}</div>
+        <div class="card-title">Commandes en attente</div>
+        <div class="val">${pendingOrders}</div>
+        <div class="delta bad">à valider</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-icon">${I.doc}</div>
+        <div class="card-title">Produits au catalogue</div>
+        <div class="val">${PRODUCTS.length}</div>
+        <div class="delta good">disponibles à la commande</div>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:18px;align-items:start;">
+      <div class="card">
+        <div class="card-title">Achats par fournisseur</div>
+        ${achatsBySupplier().length ? `<div class="chart-box"><canvas id="chartStockValue"></canvas></div>` : emptyState("La répartition de vos achats apparaîtra ici une fois vos premières commandes passées.")}
+      </div>
+      <div class="ai-box">
+        <div class="ai-head">${I.spark}<span class="ai-title">Informations clés</span></div>
+        ${buildAIInsights().map(line=>`<div class="ai-line"><div class="ai-dot"></div><div>${line}</div></div>`).join('')}
+      </div>
+    </div>
+
+    <div class="section-head">
+      <div><h2>File de validation</h2><div class="sub">Commandes fournisseurs et demandes de la cuisine — c'est vous qui décidez</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="setView('commandes')">Voir tout</button>
+    </div>
+    <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">Commandes fournisseurs à valider</div>
+        <div class="rail">
+          ${ORDERS.filter(o=>o.status==='en_attente_validation').map(o=>ticketOrder(o)).join('') || emptyState('Aucune commande en attente')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">${iconSm(I.chef)} Demandes de la cuisine</div>
+        <div class="rail">
+          ${cuisineAttente.map(r=>ticketDemande(r,'patron')).join('') || emptyState('Aucune demande en attente')}
+        </div>
+      </div>
+    </div>
+
+    <div class="section-head"><div><h2>Propositions d'achat de l'équipe</h2><div class="sub">Achats personnalisés proposés par le manager, la cuisine ou la salle</div></div></div>
+    <div class="rail">
+      ${CUSTOM_REQUESTS.filter(cr=>cr.status==='attente').map(cr=>ticketCustomRequest(cr,'patron')).join('') || emptyState('Aucune proposition en attente')}
+    </div>
+
+    <div class="grid grid-2" style="margin-top:18px;">
+      <div class="card">
+        <div class="card-title">Historique des achats — commandes récentes</div>
+        ${ORDERS.length ? `<table>
+          <tr><th>Réf.</th><th>Fournisseur</th><th>Montant</th><th>Statut</th></tr>
+          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="mono">${fmtEUR(o.amount)}</td><td>${orderStatusTag(o.status)}</td></tr>`).join('')}
+        </table>` : emptyState('Aucun achat pour le moment')}
+      </div>
+      <div class="card">
+        <div class="card-title">Fournisseurs — fiabilité de livraison</div>
+        ${SUPPLIERS.length ? `<div class="chart-box sm"><canvas id="chartSuppliers"></canvas></div>` : emptyState('Ajoutez des fournisseurs pour voir apparaître ce graphique')}
+      </div>
+    </div>
+  `;
+}
+
+function ticketOrder(o){
+  const canAct = state.role==='patron' && o.status==='en_attente_validation';
+  return `
+    <div class="ticket normal">
+      <div class="ticket-top">
+        <div><span class="ticket-id">${o.id}</span><div class="ticket-item">${supplierName(o.supplier)}</div></div>
+        <div class="mono" style="font-weight:700;">${fmtEUR(o.amount)}</div>
+      </div>
+      <div class="ticket-meta">${o.items}</div>
+      ${canAct ? `<div class="ticket-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">${iconXs(I.doc)} Modifier</button>
+        <button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">${iconXs(I.check)} Valider</button>
+        <button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">${iconXs(I.x)} Refuser</button>
+      </div>` : `<div style="margin-top:8px;">${orderStatusTag(o.status)}</div>`}
+    </div>
+  `;
+}
+function ticketDemande(r, viewerRole){
+  const canAct = canActOnDemande(viewerRole, r) && r.status==='attente';
+  let stateTag = '';
+  if(r.status==='approuvee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-subtle">${iconXs(I.check)} Approuvée${r.qty?' · '+r.qty+' '+r.unit+' commandé'+(r.qty>1?'s':''):''}</span></div>`;
+  if(r.status==='refusee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-red">${iconXs(I.x)} Refusée</span></div>`;
+  if(r.status==='attente' && !canAct) stateTag = `<div style="margin-top:8px;"><span class="tag tag-neutral">${iconXs(I.clock)} En attente</span></div>`;
+  return `
+    <div class="ticket ${r.status==='attente' && r.urgent ? 'urgent' : (r.status==='attente' ? 'normal' : 'done')}">
+      <div class="ticket-top">
+        <div><span class="ticket-id">${r.id}</span> <span class="ticket-from">${r.from}</span>${r.status==='attente' && r.urgent ? '<span class="ticket-flag">URGENT</span>' : ''}</div>
+        <span class="mini-label">${r.time}</span>
+      </div>
+      <div class="ticket-item">${r.item}</div>
+      <div class="ticket-meta">${r.by}${r.note?' · '+r.note:''}</div>
+      ${canAct ? `<div class="ticket-actions">
+        <button class="btn btn-primary btn-sm" onclick="openApproveDemandeModal('${r.id}')">${iconXs(I.check)} Approuver</button>
+        <button class="btn btn-danger btn-sm" onclick="refuseDemande('${r.id}')">${iconXs(I.x)} Refuser</button>
+      </div>` : stateTag}
+    </div>
+  `;
+}
+function emptyState(msg){
+  return `<div class="empty">${I.check}<div>${msg}</div></div>`;
+}
+
+function setStockFilter(f){ state.stockFilter = f; render(); }
+function viewStocks(){
+  const filter = state.stockFilter || 'tous';
+  const filtered = PRODUCTS.filter(p=> filter==='tous' ? true : (filter==='cuisine' ? (p.department==='cuisine'||p.department==='both') : (p.department==='salle'||p.department==='both')));
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Produits</h2><div class="sub">${PRODUCTS.length} produit${PRODUCTS.length>1?'s':''} au catalogue · le site sert à commander, pas à suivre un stock en temps réel</div></div>
+      <button class="btn btn-primary" onclick="openNewProductModal()">${iconSm(I.plus)} Nouveau produit</button>
+    </div>
+    <div class="pill-nav">
+      <button class="${filter==='tous'?'active':''}" onclick="setStockFilter('tous')">Tous</button>
+      <button class="${filter==='cuisine'?'active':''}" onclick="setStockFilter('cuisine')">Cuisine</button>
+      <button class="${filter==='salle'?'active':''}" onclick="setStockFilter('salle')">Salle</button>
+    </div>
+    <div class="card">
+      ${filtered.length ? `<table>
+        <tr><th>Produit</th><th>Département</th><th>Fournisseur</th><th>Qté de commande standard</th><th>Prix unit.</th><th></th></tr>
+        ${filtered.map(p=>{
+          return `<tr class="tr-hover">
+            <td style="font-weight:600;">${p.name}</td>
+            <td><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
+            <td class="muted">${supplierName(p.supplier)}</td>
+            <td class="mono">${p.qtyCommande} ${p.unit}</td>
+            <td class="mono">${p.price.toFixed(2)} €</td>
+            <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button><button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
+          </tr>`;
+        }).join('')}
+      </table>` : emptyState(PRODUCTS.length ? 'Aucun produit dans cette catégorie' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
+    </div>
+  `;
+}
+
+function viewCommandes(role){
+  const basketSupplierIds = Object.keys(BASKETS).filter(sid=>BASKETS[sid] && BASKETS[sid].length>0);
+  const f = state.orderFilter;
+  const rows = filteredOrders();
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Commandes fournisseurs</h2><div class="sub">${role==='manager' ? 'Préparez les paniers par fournisseur — seul le patron peut les envoyer' : 'Paniers en attente, historique et validation des commandes'}</div></div>
+      <button class="btn btn-primary" onclick="openNewOrderModal()">${iconSm(I.plus)} Ajouter au panier</button>
+    </div>
+    ${basketSupplierIds.length ? `
+      <div class="section-head" style="margin-top:0;"><div><h2 style="font-size:15px;">Paniers en attente d'envoi</h2><div class="sub">Un panier = une commande = une facture, par fournisseur</div></div></div>
+      <div class="grid grid-2b" style="margin-bottom:8px;">
+        ${basketSupplierIds.map(sid=>renderBasketCard(sid, role)).join('')}
+      </div>
+    ` : ''}
+    <div class="section-head">
+      <div><h2 style="font-size:15px;">Historique des commandes</h2><div class="sub">Filtrez le tableau, ou téléchargez un récapitulatif complet</div></div>
+      <div class="flex gap8">
+        <button class="btn btn-ghost btn-sm" onclick="openHistoryDocumentModal('month')">${iconXs(I.download)} Ce mois</button>
+        <button class="btn btn-ghost btn-sm" onclick="openHistoryDocumentModal('year')">${iconXs(I.download)} Cette année</button>
+      </div>
+    </div>
+    <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:14px;">
+      <select onchange="setOrderFilter('dept', this.value)" style="padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+        <option value="tous" ${f.dept==='tous'?'selected':''}>Tous les départements</option>
+        <option value="cuisine" ${f.dept==='cuisine'?'selected':''}>Cuisine</option>
+        <option value="salle" ${f.dept==='salle'?'selected':''}>Salle</option>
+      </select>
+      <select onchange="setOrderFilter('supplier', this.value)" style="padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+        <option value="tous" ${f.supplier==='tous'?'selected':''}>Tous les fournisseurs</option>
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}
+      </select>
+      <select onchange="setOrderFilter('month', this.value)" style="padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+        <option value="tous" ${f.month==='tous'?'selected':''}>Tous les mois</option>
+        ${MONTHS_LONG.map((mo,i)=>`<option value="${i}" ${f.month==String(i)?'selected':''}>${mo}</option>`).join('')}
+      </select>
+      <select onchange="setOrderFilter('year', this.value)" style="padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+        <option value="tous" ${f.year==='tous'?'selected':''}>Toutes les années</option>
+        ${availableOrderYears().map(y=>`<option value="${y}" ${f.year===String(y)?'selected':''}>${y}</option>`).join('')}
+      </select>
+      ${(f.dept!=='tous'||f.supplier!=='tous'||f.month!=='tous'||f.year!=='tous') ? `<button class="btn btn-ghost btn-sm" onclick="resetOrderFilters()">${iconXs(I.x)} Réinitialiser</button>` : ''}
+    </div>
+    <div class="card">
+      ${rows.length ? `<table>
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Montant</th><th>Statut</th><th>Date</th><th></th></tr>
+        ${rows.map(o=>`<tr class="tr-hover">
+          <td class="mono">${o.id}</td>
+          <td style="font-weight:600;">${supplierName(o.supplier)}</td>
+          <td class="muted small">${o.items}</td>
+          <td class="mono">${fmtEUR(o.amount)}</td>
+          <td>${orderStatusTag(o.status)}</td>
+          <td class="muted small">${o.date}</td>
+          <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document">${iconXs(I.doc)}</button><button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
+        </tr>`).join('')}
+      </table>` : emptyState(ORDERS.length ? 'Aucune commande ne correspond à ces filtres' : 'Aucune commande pour le moment — créez votre première commande fournisseur')}
+    </div>
+  `;
+}
+function renderBasketCard(supplierId, role){
+  const items = BASKETS[supplierId] || [];
+  const total = basketTotal(supplierId);
+  const canSend = role === 'patron';
+  return `
+    <div class="card">
+      <div class="flex between center">
+        <div style="font-weight:700;">${supplierName(supplierId)}</div>
+        <span class="tag tag-neutral">Panier</span>
+      </div>
+      <table style="margin-top:10px;">
+        <tr><th>Produit</th><th>Qté</th><th></th></tr>
+        ${items.map(li=>{
+          const p = PRODUCTS.find(x=>x.id===li.productId);
+          return `<tr class="tr-hover">
+            <td>${p?p.name:'—'}</td>
+            <td><div class="flex center gap8"><input type="number" min="1" step="1" value="${Math.round(li.qty)}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;" onchange="updateBasketLineQty('${supplierId}','${li.productId}', this.value)"><span class="small muted">${p?p.unit:''}</span></div></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="removeBasketLine('${supplierId}','${li.productId}')" title="Retirer">${iconXs(I.x)}</button></td>
+          </tr>`;
+        }).join('')}
+      </table>
+      <div class="flex between center" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+        <div class="mono" style="font-weight:700;font-size:15px;">${fmtEUR(total)}</div>
+        <div class="flex gap8 center">
+          <button class="btn btn-ghost btn-sm" onclick="openNewOrderModal('${supplierId}')">Ajouter</button>
+          ${canSend
+            ? `<button class="btn btn-primary btn-sm" onclick="sendBasket('${supplierId}')">Envoyer la commande</button>`
+            : `<span class="tag tag-neutral" title="Seul le patron peut envoyer la commande">En attente d'envoi par le patron</span>`}
+        </div>
+      </div>
+    </div>
+  `;
+}
+function orderRowActions(o, role){
+  if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
+  if((role==='manager' || role==='cuisine' || role==='patron') && o.status==='validee') return `<button class="btn btn-ghost btn-sm" onclick="deliverOrder('${o.id}')">Marquer reçue</button>`;
+  return '';
+}
+function orderStatusTag(s){
+  if(s==='en_attente_validation') return `<span class="tag tag-neutral">En attente</span>`;
+  if(s==='validee') return `<span class="tag tag-neutral">Validée</span>`;
+  if(s==='livree') return `<span class="tag tag-strong">Livrée</span>`;
+  if(s==='refusee') return `<span class="tag tag-red">Refusée</span>`;
+  return `<span class="tag tag-subtle">${s}</span>`;
+}
+
+function orderDepartments(o){
+  const depts = new Set();
+  (o.lineItems||[]).forEach(li=>{
+    if(!li.productId) return;
+    const p = PRODUCTS.find(x=>x.id===li.productId);
+    if(!p) return;
+    if(p.department==='both'){ depts.add('cuisine'); depts.add('salle'); }
+    else depts.add(p.department);
+  });
+  return depts;
+}
+function availableOrderYears(){
+  const years = new Set([new Date().getFullYear()]);
+  ORDERS.forEach(o=>{ if(o.createdAt) years.add(new Date(o.createdAt).getFullYear()); });
+  return Array.from(years).sort((a,b)=>b-a);
+}
+function setOrderFilter(key, value){
+  state.orderFilter[key] = value;
+  render();
+}
+function resetOrderFilters(){
+  state.orderFilter = {dept:'tous', supplier:'tous', month:'tous', year:'tous'};
+  render();
+}
+function filteredOrders(){
+  const f = state.orderFilter;
+  return ORDERS.filter(o=>{
+    if(f.dept!=='tous' && !orderDepartments(o).has(f.dept)) return false;
+    if(f.supplier!=='tous' && o.supplier!==f.supplier) return false;
+    if(f.month!=='tous' || f.year!=='tous'){
+      if(!o.createdAt) return false;
+      const d = new Date(o.createdAt);
+      if(f.month!=='tous' && d.getMonth()!==parseInt(f.month,10)) return false;
+      if(f.year!=='tous' && d.getFullYear()!==parseInt(f.year,10)) return false;
+    }
+    return true;
+  });
+}
+
+function viewFournisseurs(){
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Fournisseurs</h2><div class="sub">Comparaison et gestion de vos partenaires</div></div>
+      <button class="btn btn-primary" onclick="openNewSupplierModal()">${iconSm(I.plus)} Ajouter un fournisseur</button>
+    </div>
+    <div class="grid grid-3">
+      ${SUPPLIERS.length ? SUPPLIERS.map(s=>`
+        <div class="card">
+          <div class="flex between center">
+            <div style="font-weight:700;font-size:15px;">${s.name}</div>
+            <span class="tag ${s.reliability>=95?'tag-subtle':s.reliability>=90?'tag-neutral':'tag-red'}">${s.reliability}% fiabilité</span>
+          </div>
+          <div class="muted small" style="margin:4px 0 12px 0;">${s.cat}</div>
+          <div class="flex between small muted" style="margin-bottom:5px;"><span>Délai moyen</span><span class="mono" style="color:var(--text);">${s.delay}</span></div>
+          <div class="flex between small muted" style="margin-bottom:5px;"><span>Dernière commande</span><span class="mono" style="color:var(--text);">${supplierLastOrderDate(s.id)}</span></div>
+          <div class="flex between small muted" style="margin-bottom:12px;"><span>Achats</span><span class="mono" style="color:var(--text);">${fmtEUR(supplierSpend(s.id))}</span></div>
+          <div class="flex gap8">
+            <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="openSupplierDetail('${s.id}')">Voir la fiche</button>
+            <button class="btn btn-primary btn-sm" style="flex:1;" onclick="openNewOrderModal('${s.id}')">Commander</button>
+          </div>
+        </div>
+      `).join('') : `<div style="grid-column:1/-1;">${emptyState('Aucun fournisseur ajouté pour le moment — créez votre premier fournisseur')}</div>`}
+    </div>
+  `;
+}
+
+function viewEquipe(){
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Équipe</h2><div class="sub">${TEAM.length} membre${TEAM.length>1?'s':''} · rôles et permissions</div></div>
+      <button class="btn btn-primary" onclick="openNewEmployeeModal()">${iconSm(I.plus)} Ajouter un employé</button>
+    </div>
+    <div class="card">
+      ${TEAM.length ? `<table>
+        <tr><th>Nom</th><th>Rôle</th><th>Horaires</th><th>Statut</th><th>Permissions</th><th></th></tr>
+        ${TEAM.map(t=>`<tr class="tr-hover">
+          <td style="font-weight:600;"><div class="flex center gap8"><div class="avatar" style="width:28px;height:28px;font-size:11px;">${avatarInner(t.photoDataUrl, t.name)}</div>${t.name}</div></td>
+          <td class="muted">${t.role}</td>
+          <td class="muted small">${t.shift}</td>
+          <td><span class="tag ${t.status==='actif'?'tag-subtle':'tag-neutral'}">${t.status==='actif'?'En service':'Repos'}</span></td>
+          <td class="muted small">${permsForRole(t.role)}</td>
+          <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button><button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
+        </tr>`).join('')}
+      </table>` : emptyState('Aucun employé pour le moment')}
+    </div>
+    <div class="section-head"><div><h2>Rôles &amp; permissions</h2><div class="sub">Modifiable librement par l'administrateur, sans aucun élément codé en dur</div></div></div>
+    <div class="grid grid-4">
+      ${[['Patron','Accès total : validation des commandes, demandes de la cuisine, finances, paramètres'],['Manager','Demandes de la salle, commandes, produits, livraisons'],['Cuisine','Signaler une commande, consulter le catalogue (validée par le patron)'],['Salle','Signaler une commande, demander un réassort (validée par le manager)']].map(([r,d])=>`
+        <div class="card"><div style="font-weight:700;margin-bottom:6px;">${r}</div><div class="small muted">${d}</div></div>
+      `).join('')}
+    </div>
+  `;
+}
+function permsForRole(role){
+  if(role==='Manager') return 'Demandes · Commandes · Produits';
+  if(role.includes('Chef') || role.includes('Commis')) return 'Signalement · Catalogue';
+  return 'Signalement · Commande';
+}
+function deleteEmployee(id){
+  const t = TEAM.find(x=>x.id===id); if(!t) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Retirer « ${t.name} » de l'équipe ?</h3>
+    <div class="modal-sub">Cette action est irréversible.</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteEmployee('${id}')">Retirer</button>
+    </div>
+  `);
+}
+function confirmDeleteEmployee(id){
+  const idx = TEAM.findIndex(t=>t.id===id);
+  if(idx===-1) return;
+  TEAM.splice(idx,1);
+  closeModal();
+  toast('Employé retiré de l\u2019équipe');
+  render();
+}
+
+
+function isEssentielPlan(){ return !!(ACCOUNT && ACCOUNT.plan==='essentiel'); }
+function viewMulti(){
+  const locked = isEssentielPlan();
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Gestion multi-établissements</h2><div class="sub">Pilotez tous vos restaurants depuis un même compte</div></div>
+      ${locked
+        ? `<button class="btn btn-ghost" onclick="openUpgradeModal()">${iconSm(I.lock)} Forfait Pro requis</button>`
+        : `<button class="btn btn-primary" onclick="openNewRestoModal()">${iconSm(I.plus)} Ajouter un établissement</button>`}
+    </div>
+    ${locked ? `
+      <div class="card" style="margin-bottom:18px;background:var(--paper);">
+        <div class="flex center gap12">
+          <div class="tile-icon">${I.building}</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;">Le forfait Essentiel est limité à un établissement</div>
+            <div class="small muted">Passez au forfait Pro pour gérer plusieurs restaurants depuis ce même compte.</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openUpgradeModal()">Voir le forfait Pro</button>
+        </div>
+      </div>
+    ` : ''}
+    <div class="grid grid-2b">
+      ${RESTOS.map(r=>{
+        return `
+        <div class="card">
+          <div class="flex between center">
+            <div style="font-weight:700;font-size:15.5px;">${r.name}</div>
+            <span class="tag ${state.resto===r.id?'tag-strong':'tag-neutral'}">${state.resto===r.id?'Actif':'Disponible'}</span>
+          </div>
+          <div class="muted small" style="margin:4px 0 14px 0;">${r.city} · devise ${r.currency||'EUR'}</div>
+          <div class="flex gap8">
+            <button class="btn ${state.resto===r.id?'btn-ghost':'btn-primary'} btn-block" onclick="switchResto('${r.id}')" ${state.resto===r.id?'disabled':''}>${state.resto===r.id?'Établissement actif':'Basculer sur cet établissement'}</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteResto('${r.id}')" title="Supprimer cet établissement">${iconSm(I.trash)}</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+function setUpgradeCycle(c){
+  state.billingCycle = c;
+  openUpgradeModal();
+}
+function openUpgradeModal(){
+  const proPlan = PLANS.find(p=>p.id==='pro');
+  const cycle = state.billingCycle;
+  const price = cycle==='monthly' ? proPlan.monthly : planAnnualPrice(proPlan.monthly);
+  const per = cycle==='monthly' ? '/ mois' : '/ an';
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Passer au forfait Pro</h3>
+    <div class="modal-sub">Établissements illimités, membres d'équipe illimités, achats personnalisés, export comptable, support prioritaire.</div>
+    <div class="pill-nav" style="margin-bottom:14px;">
+      <button class="${cycle==='monthly'?'active':''}" onclick="setUpgradeCycle('monthly')">Mensuel</button>
+      <button class="${cycle==='annual'?'active':''}" onclick="setUpgradeCycle('annual')">Annuel — 2 mois offerts</button>
+    </div>
+    <div class="payment-summary"><div class="flex between center"><span>Forfait Pro · ${cycle==='monthly'?'mensuel':'annuel'}</span><span class="mono" style="font-weight:700;">${price}&nbsp;€${per}</span></div></div>
+    <button class="btn btn-primary btn-block" onclick="confirmUpgrade()">Confirmer la mise à niveau</button>
+    <div class="login-hint">Démonstration — mise à niveau simulée, aucun paiement réel ici.</div>
+  `);
+}
+function confirmUpgrade(){
+  if(ACCOUNT){ ACCOUNT.plan = 'pro'; ACCOUNT.billing = state.billingCycle; }
+  closeModal();
+  toast('Mise à niveau réussie — forfait Pro activé (' + (state.billingCycle==='monthly'?'mensuel':'annuel') + ')');
+  render();
+}
+function switchResto(id){
+  state.resto = id;
+  loadRestoData(id);
+  state.stockFilter = 'tous';
+  state.orderFilter = {dept:'tous', supplier:'tous', month:'tous', year:'tous'};
+  render();
+  toast('Établissement changé : ' + RESTOS.find(r=>r.id===id).name);
+}
+function deleteResto(id){
+  if(RESTOS.length<=1){ toast('Impossible de supprimer le dernier établissement','alert'); return; }
+  const r = RESTOS.find(x=>x.id===id); if(!r) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Supprimer « ${r.name} » ?</h3>
+    <div class="modal-sub">Cette action est irréversible.</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteResto('${id}')">Supprimer</button>
+    </div>
+  `);
+}
+function confirmDeleteResto(id){
+  const idx = RESTOS.findIndex(r=>r.id===id);
+  if(idx===-1) return;
+  const wasActive = state.resto===id;
+  RESTOS.splice(idx,1);
+  delete RESTO_DATA[id];
+  if(wasActive){
+    state.resto = RESTOS[0].id;
+    loadRestoData(state.resto);
+  }
+  closeModal();
+  toast('Établissement supprimé');
+  render();
+}
+
+
+function viewParametres(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const patronDisplayName = ACCOUNT ? `${ACCOUNT.firstName} ${ACCOUNT.lastName}`.trim() : 'Patron';
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Paramètres</h2><div class="sub">Personnalisation et accès</div></div></div>
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-title">${iconSm(I.lock)} Accès &amp; identifiants</div>
+      <div class="small muted" style="margin-bottom:14px;">Chaque personne a son identifiant et son mot de passe personnels. Seul le patron peut les modifier.</div>
+      <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
+        <div><div style="font-weight:600;font-size:13.5px;">${patronDisplayName}</div><div class="small muted mono">${CREDENTIALS.patron.username}</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal(null)">Modifier les identifiants</button>
+      </div>
+      ${TEAM.map(t=>`
+        <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
+          <div><div style="font-weight:600;font-size:13.5px;">${t.name}</div><div class="small muted mono">${t.username}</div></div>
+          <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal('${t.id}')">Modifier les identifiants</button>
+        </div>
+      `).join('')}
+    </div>
+    <div class="grid grid-2b">
+      ${ACCOUNT ? `
+      <div class="card">
+        <div class="card-title">Informations du compte</div>
+        <div class="small muted" style="margin-bottom:14px;">Vos informations personnelles, associées à votre abonnement.</div>
+        <div class="field-row">
+          <div class="field"><label>Prénom</label><input id="acct-firstname" value="${ACCOUNT.firstName||''}"></div>
+          <div class="field"><label>Nom</label><input id="acct-lastname" value="${ACCOUNT.lastName||''}"></div>
+        </div>
+        <div class="field"><label>Téléphone</label><input id="acct-phone" type="tel" value="${ACCOUNT.phone||''}"></div>
+        <div class="field"><label>Email du compte</label><input id="acct-email" type="email" value="${ACCOUNT.email||''}"></div>
+        <button class="btn btn-primary" onclick="saveAccountInfo()">Enregistrer</button>
+      </div>
+      ` : ''}
+      <div class="card">
+        <div class="card-title">Informations établissement</div>
+        <div class="field"><label>Nom du restaurant</label><input id="set-name" value="${resto.name}"></div>
+        <div class="field"><label>Adresse</label><input id="set-address" value="${resto.address||''}" placeholder="12 rue de la République"></div>
+        <div class="field-row">
+          <div class="field"><label>Code postal</label><input id="set-postal" value="${resto.postalCode||''}" placeholder="69001"></div>
+          <div class="field"><label>Ville</label><input id="set-city" value="${resto.city}"></div>
+        </div>
+        <div class="field"><label>Devise</label><select id="set-currency"><option ${resto.currency==='EUR'?'selected':''}>EUR</option><option ${resto.currency==='CHF'?'selected':''}>CHF</option><option ${resto.currency==='USD'?'selected':''}>USD</option></select></div>
+        <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Apparence de cet établissement</div>
+        <div class="small muted" style="margin-bottom:14px;">Couleur et logo propres à ${resto.name} — chaque établissement peut avoir les siens.</div>
+        <div class="field"><label>Couleur d'accent</label><input id="set-accent" type="color" value="${resto.accentColor || (state.theme==='dark' ? '#EDEDE6' : '#111111')}" style="height:42px;padding:4px;cursor:pointer;"></div>
+        <div class="field">
+          <label>Logo (image)</label>
+          ${resto.logoDataUrl ? `
+            <div class="flex center gap8" style="margin-bottom:10px;">
+              <img src="${resto.logoDataUrl}" alt="Logo" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
+              <button class="btn btn-ghost btn-sm" onclick="removeLogo()">Retirer le logo</button>
+            </div>
+          ` : ''}
+          <input type="file" accept="image/*" onchange="handleLogoUpload(this)">
+        </div>
+        <button class="btn btn-primary" onclick="saveAppearance()">Enregistrer la couleur</button>
+      </div>
+      <div class="card">
+        <div class="card-title">${iconSm(I.mobile)} Application mobile</div>
+        <p class="small muted">L'équipe cuisine et salle peut signaler une commande directement depuis l'application mobile, même en plein service.</p>
+        <button class="btn btn-ghost btn-block" onclick="toast('Lien de téléchargement envoyé par email')">Envoyer le lien de l'application</button>
+      </div>
+    </div>
+  `;
+}
+async function saveAccountInfo(){
+  if(!ACCOUNT) return;
+  const firstName = (document.getElementById('acct-firstname').value||'').trim();
+  const lastName = (document.getElementById('acct-lastname').value||'').trim();
+  const phone = (document.getElementById('acct-phone').value||'').trim();
+  const email = (document.getElementById('acct-email').value||'').trim();
+  if(!firstName || !lastName){ toast('Le prénom et le nom sont requis','alert'); return; }
+  if(!email || !isValidEmail(email)){ toast('Adresse email invalide','alert'); return; }
+  try{
+    const data = await apiRequest('/api/account', { method:'PATCH', body:{ firstName, lastName, phone, email } });
+    ACCOUNT = data.account;
+    toast('Informations du compte mises à jour');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+function saveAppearance(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  resto.accentColor = document.getElementById('set-accent').value;
+  toast('Couleur mise à jour pour ' + resto.name);
+  render();
+}
+function handleLogoUpload(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const reader = new FileReader();
+  reader.onload = function(e){
+    resto.logoDataUrl = e.target.result;
+    toast('Logo mis à jour pour ' + resto.name);
+    render();
+  };
+  reader.readAsDataURL(file);
+}
+function removeLogo(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  resto.logoDataUrl = null;
+  toast('Logo retiré');
+  render();
+}
+function openChangePasswordModal(employeeId){
+  const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  const name = member ? member.name : 'Marc Petit';
+  const roleLabel = member ? member.role : 'Patron';
+  const currentUsername = member ? member.username : CREDENTIALS.patron.username;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Identifiants — ${name}</h3>
+    <div class="modal-sub">${roleLabel}</div>
+    <div class="field"><label>Nom d'utilisateur</label><input id="np-username" value="${currentUsername}"></div>
+    <div class="field"><label>Nouveau mot de passe</label><input id="np-pass1" type="password" placeholder="4 caractères minimum"></div>
+    <div class="field"><label>Confirmer le mot de passe</label><input id="np-pass2" type="password"></div>
+    <div class="small muted" style="margin-bottom:14px;">Laissez les mots de passe vides pour ne garder que le mot de passe actuel et changer uniquement le nom d'utilisateur.</div>
+    <button class="btn btn-primary btn-block" onclick="saveNewPassword(${employeeId?`'${employeeId}'`:'null'})">Enregistrer</button>
+  `);
+}
+function saveNewPassword(employeeId){
+  const username = document.getElementById('np-username').value.trim();
+  if(!username){ toast("Le nom d'utilisateur est requis",'alert'); return; }
+  const p1 = document.getElementById('np-pass1').value;
+  const p2 = document.getElementById('np-pass2').value;
+  if(p1 || p2){
+    if(p1.length<4){ toast('4 caractères minimum recommandés','alert'); return; }
+    if(p1!==p2){ toast('Les deux mots de passe ne correspondent pas','alert'); return; }
+  }
+  let name = 'Marc Petit';
+  if(employeeId){
+    const m = TEAM.find(t=>t.id===employeeId);
+    if(m){ m.username = username; if(p1) m.password = p1; name = m.name; }
+  } else {
+    CREDENTIALS.patron.username = username;
+    if(p1) CREDENTIALS.patron.password = p1;
+  }
+  closeModal();
+  toast('Identifiants mis à jour pour ' + name);
+  render();
+}
+function saveRestoInfo(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const name = document.getElementById('set-name').value.trim();
+  const address = document.getElementById('set-address').value.trim();
+  const postalCode = document.getElementById('set-postal').value.trim();
+  const city = document.getElementById('set-city').value.trim();
+  const currency = document.getElementById('set-currency').value;
+  if(name) resto.name = name;
+  resto.address = address;
+  resto.postalCode = postalCode;
+  if(city) resto.city = city;
+  resto.currency = currency;
+  toast('Paramètres enregistrés');
+  render();
+}
+
+/* ============================================================
+   NOTIFICATIONS PAR EMAIL (commun aux 4 rôles)
+============================================================ */
+function notifEventsForRole(role){
+  if(role==='cuisine' || role==='salle') return [{key:'decision', label:'Ma demande est approuvée ou refusée'}];
+  if(role==='manager') return [{key:'demandes', label:'Nouvelle demande urgente signalée'},{key:'commandes', label:'Commande validée ou refusée par le patron'}];
+  if(role==='patron') return [{key:'urgent', label:'Commande urgente signalée en cuisine ou en salle'},{key:'commandes', label:'Commande fournisseur en attente de validation'}];
+  return [];
+}
+function viewNotifications(role){
+  const cfg = NOTIF_STATE[role];
+  const events = notifEventsForRole(role);
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Notifications par email</h2><div class="sub">La seule information nécessaire est votre adresse — le reste se passe automatiquement</div></div></div>
+    <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">${iconSm(I.mail)} Adresse de notification</div>
+        <div class="field"><label>Adresse email</label><input id="notif-email" type="email" value="${cfg.email}" placeholder="vous@restaurant.fr"></div>
+        <div class="flex between center" style="padding:6px 0 16px 0;">
+          <span class="small" style="font-weight:600;">Activer les notifications par email</span>
+          <input type="checkbox" id="notif-enabled" ${cfg.enabled?'checked':''} style="width:18px;height:18px;">
+        </div>
+        <div class="card-title">Être notifié(e) quand…</div>
+        ${events.map(ev=>`
+          <div class="flex between center" style="padding:8px 0;border-bottom:1px solid var(--border);">
+            <span class="small">${ev.label}</span>
+            <input type="checkbox" id="notif-ev-${ev.key}" ${cfg.events[ev.key]?'checked':''} style="width:18px;height:18px;">
+          </div>
+        `).join('')}
+        <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="saveNotifSettings('${role}')">Enregistrer</button>
+      </div>
+      <div class="card">
+        <div class="card-title">${iconSm(I.lock)} Sécurité &amp; confidentialité</div>
+        <div class="small muted" style="line-height:1.7;">
+          Connexion chiffrée (TLS) de bout en bout.<br>
+          Votre adresse n'est jamais partagée avec des tiers.<br>
+          Vous pouvez la modifier ou désactiver les notifications à tout moment.<br>
+          Chaque email ne contient que le strict nécessaire — jamais de mot de passe, jamais de donnée sensible.
+        </div>
+        <div class="divider"></div>
+        <div class="small muted">Adresse actuelle</div>
+        <div class="mono" style="font-weight:600;margin-top:4px;">${maskEmail(cfg.email)}</div>
+      </div>
+    </div>
+  `;
+}
+function saveNotifSettings(role){
+  const cfg = NOTIF_STATE[role];
+  const email = document.getElementById('notif-email').value.trim();
+  if(!email || !email.includes('@')){ toast('Adresse email invalide','alert'); return; }
+  cfg.email = email;
+  cfg.enabled = document.getElementById('notif-enabled').checked;
+  notifEventsForRole(role).forEach(ev=>{
+    cfg.events[ev.key] = document.getElementById('notif-ev-'+ev.key).checked;
+  });
+  toast('Préférences enregistrées');
+  if(cfg.enabled) notifyByEmail(role, "confirmation : vos notifications arriveront ici désormais.");
+  render();
+}
+
+/* ============================================================
+   VUES — MANAGER
+============================================================ */
+function viewManagerDashboard(){
+  const salleAttente = REQUESTS.filter(r=>r.status==='attente' && r.from==='Salle');
+  const myCustom = CUSTOM_REQUESTS.filter(cr=>cr.from==='Manager');
+  return `
+    <div class="grid grid-4">
+      <div class="card kpi"><div class="kpi-icon strong">${I.bell}</div><div class="card-title">Demandes de la salle</div><div class="val">${salleAttente.length}</div><div class="delta bad">dont ${salleAttente.filter(r=>r.urgent).length} urgentes</div></div>
+      <div class="card kpi"><div class="kpi-icon">${I.cart}</div><div class="card-title">Commandes à préparer</div><div class="val">${ORDERS.filter(o=>o.status==='en_attente_validation').length}</div><div class="delta good">prêtes à envoyer au patron</div></div>
+      <div class="card kpi"><div class="kpi-icon">${I.truck}</div><div class="card-title">Livraisons en attente</div><div class="val">${ORDERS.filter(o=>o.status==='validee').length}</div><div class="delta good">à réceptionner</div></div>
+      <div class="card kpi"><div class="kpi-icon">${I.doc}</div><div class="card-title">Produits au catalogue</div><div class="val">${PRODUCTS.length}</div><div class="delta good">disponibles à la commande</div></div>
+    </div>
+    <div class="section-head"><div><h2>Demandes de la salle</h2><div class="sub">Les demandes de la cuisine sont directement traitées par le patron</div></div><button class="btn btn-ghost btn-sm" onclick="setView('demandes')">Tout voir</button></div>
+    <div class="rail">
+      ${salleAttente.map(r=>ticketDemande(r,'manager')).join('') || emptyState('Aucune demande en attente')}
+    </div>
+    <div class="section-head"><div><h2>Achat personnalisé</h2><div class="sub">Proposez un achat hors catalogue — le patron décide</div></div><button class="btn btn-primary btn-sm" onclick="openCustomRequestModal()">${iconSm(I.plus)} Proposer un achat</button></div>
+    <div class="rail">
+      ${myCustom.slice(0,5).map(cr=>ticketCustomRequest(cr,'manager')).join('') || emptyState('Aucune proposition envoyée')}
+    </div>
+  `;
+}
+
+function viewManagerDemandes(){
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Demandes internes</h2><div class="sub">Salle — approuvez pour lancer une commande fournisseur. Les demandes de la cuisine sont traitées par le patron.</div></div></div>
+    <div class="card">
+      <div class="card-title">${iconSm(I.tray)} Salle</div>
+      <div class="rail">${REQUESTS.filter(r=>r.from==='Salle' && r.status==='attente').map(r=>ticketDemande(r,'manager')).join('') || emptyState('Rien à signaler côté salle')}</div>
+    </div>
+    <div class="section-head"><div><h2>Historique</h2></div></div>
+    <div class="card">
+      <table>
+        <tr><th>Réf.</th><th>Employé</th><th>Article</th><th>Statut</th><th>Quand</th></tr>
+        ${REQUESTS.filter(r=>r.status!=='attente' && r.from==='Salle').map(r=>`<tr class="tr-hover"><td class="mono">${r.id}</td><td class="muted">${r.by}</td><td>${r.item}${r.qty?' <span class="mono muted">×'+r.qty+'</span>':''}</td><td>${r.status==='approuvee'?'<span class="tag tag-subtle">Approuvée</span>':'<span class="tag tag-red">Refusée</span>'}</td><td class="muted small">${r.time}</td></tr>`).join('')}
+      </table>
+    </div>
+  `;
+}
+function viewLivraisons(){
+  const awaiting = ORDERS.filter(o=>o.status==='validee');
+  const recent = ORDERS.filter(o=>o.status==='livree').slice(0,5);
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Livraisons</h2><div class="sub">Réceptionnez les commandes validées par le patron</div></div></div>
+    <div class="card">
+      <div class="card-title">En attente de réception</div>
+      <table>
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Montant</th><th></th></tr>
+        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td><td class="mono">${fmtEUR(o.amount)}</td><td><button class="btn btn-primary btn-sm" onclick="deliverOrder('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
+        ${awaiting.length===0?`<tr><td colspan="5"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
+      </table>
+    </div>
+    <div class="section-head"><div><h2>Réceptionnées récemment</h2></div></div>
+    <div class="card">
+      <table>
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Montant</th></tr>
+        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td><td class="mono">${fmtEUR(o.amount)}</td></tr>`).join('')}
+        ${recent.length===0?`<tr><td colspan="4"><div class="empty">Aucune réception récente</div></td></tr>`:''}
+      </table>
+    </div>
+  `;
+}
+
+/* ============================================================
+   VUES — CUISINE
+============================================================ */
+function viewCuisineAccueil(){
+  const mine = REQUESTS.filter(r=>r.from==='Cuisine');
+  return `
+    <div class="tile-grid" style="margin-bottom:22px;">
+      <button class="tile urgent-tile" onclick="openSignalModal('Cuisine', true)">
+        <div class="tile-icon">${I.warn}</div>
+        <div class="tile-label">Commande urgente</div>
+        <div class="tile-sub">Un tap, zéro saisie</div>
+      </button>
+      <button class="tile" onclick="openSignalModal('Cuisine', false)">
+        <div class="tile-icon">${I.box}</div>
+        <div class="tile-label">Demander une commande</div>
+        <div class="tile-sub">La quantité standard est ajoutée pour vous</div>
+      </button>
+      <button class="tile" onclick="setView('stocks')">
+        <div class="tile-icon">${I.doc}</div>
+        <div class="tile-label">Voir le catalogue</div>
+        <div class="tile-sub">Produits disponibles à la commande</div>
+      </button>
+      <button class="tile" onclick="openCustomRequestModal()">
+        <div class="tile-icon">${I.spark}</div>
+        <div class="tile-label">Achat personnalisé</div>
+        <div class="tile-sub">Proposer au patron</div>
+      </button>
+    </div>
+    <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
+    <div class="rail">
+      ${mine.slice(0,5).map(r=>ticketDemande(r,'cuisine')).join('') || emptyState('Aucune demande envoyée')}
+    </div>
+  `;
+}
+function catalogCard(p){
+  return `<div class="card">
+    <div style="font-weight:700;">${p.name}</div>
+    <div class="small muted" style="margin-top:4px;">Unité : ${p.unit} · commande standard ${p.qtyCommande} ${p.unit}</div>
+  </div>`;
+}
+function viewCuisineStocks(){
+  const list = PRODUCTS.filter(p=>p.department==='cuisine'||p.department==='both');
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Catalogue</h2><div class="sub">Produits que vous pouvez commander — pas de stock en temps réel</div></div></div>
+    <div class="grid grid-3">
+      ${list.length ? list.map(p=>catalogCard(p)).join('') : emptyState('Aucun produit de cuisine configuré pour le moment')}
+    </div>
+  `;
+}
+function viewSalleStocks(){
+  const list = PRODUCTS.filter(p=>p.department==='salle'||p.department==='both');
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Catalogue</h2><div class="sub">Produits que vous pouvez commander — pas de stock en temps réel</div></div></div>
+    <div class="grid grid-3">
+      ${list.length ? list.map(p=>catalogCard(p)).join('') : emptyState('Aucun produit de salle configuré pour le moment')}
+    </div>
+  `;
+}
+function viewDemandesList(role){
+  const deptLabel = role==='cuisine' ? 'Cuisine' : 'Salle';
+  const mine = REQUESTS.filter(r=>r.from===deptLabel);
+  const myCustom = CUSTOM_REQUESTS.filter(cr=>cr.from===deptLabel);
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Mes demandes</h2><div class="sub">Suivi de vos signalements auprès du manager</div></div>
+    <button class="btn btn-primary" onclick="openSignalModal('${deptLabel}', false)">${iconSm(I.plus)} Nouvelle demande</button></div>
+    <div class="rail">${mine.map(r=>ticketDemande(r, role)).join('') || emptyState('Aucune demande pour le moment')}</div>
+    <div class="section-head"><div><h2>Mes achats personnalisés</h2><div class="sub">Propositions envoyées directement au patron</div></div>
+    <button class="btn btn-ghost btn-sm" onclick="openCustomRequestModal()">${iconSm(I.plus)} Proposer un achat</button></div>
+    <div class="rail">${myCustom.map(cr=>ticketCustomRequest(cr, role)).join('') || emptyState('Aucune proposition envoyée')}</div>
+  `;
+}
+
+/* ============================================================
+   VUES — SALLE
+============================================================ */
+function viewSalleAccueil(){
+  const mine = REQUESTS.filter(r=>r.from==='Salle');
+  return `
+    <div class="tile-grid" style="margin-bottom:22px;">
+      <button class="tile urgent-tile" onclick="openSignalModal('Salle', true)">
+        <div class="tile-icon">${I.warn}</div>
+        <div class="tile-label">Commande urgente</div>
+        <div class="tile-sub">Un tap, zéro saisie</div>
+      </button>
+      <button class="tile" onclick="openSignalModal('Salle', false)">
+        <div class="tile-icon">${I.tray}</div>
+        <div class="tile-label">Demander une commande</div>
+        <div class="tile-sub">La quantité standard est ajoutée pour vous</div>
+      </button>
+      <button class="tile" onclick="setView('stocks')">
+        <div class="tile-icon">${I.doc}</div>
+        <div class="tile-label">Voir le catalogue</div>
+        <div class="tile-sub">Produits disponibles à la commande</div>
+      </button>
+      <button class="tile" onclick="openCustomRequestModal()">
+        <div class="tile-icon">${I.spark}</div>
+        <div class="tile-label">Achat personnalisé</div>
+        <div class="tile-sub">Proposer au patron</div>
+      </button>
+    </div>
+    <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
+    <div class="rail">${mine.slice(0,5).map(r=>ticketDemande(r,'salle')).join('') || emptyState('Aucune demande envoyée')}</div>
+  `;
+}
+
+/* ============================================================
+   ACTIONS — commandes / demandes / livraisons
+============================================================ */
+function validateOrder(id){
+  if(!requirePerm(['patron'], 'Seul le patron peut valider une commande')) return;
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  o.status = 'validee';
+  toast('Commande '+id+' validée');
+  notifyByEmail('manager', `commande ${id} validée par le patron — prête à réceptionner.`);
+  render();
+}
+function refuseOrder(id){
+  if(!requirePerm(['patron'], 'Seul le patron peut refuser une commande')) return;
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  o.status = 'refusee';
+  toast('Commande '+id+' refusée', 'alert');
+  notifyByEmail('manager', `commande ${id} refusée par le patron.`);
+  render();
+}
+function deliverOrder(id){
+  if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  if(o.status!=='validee'){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
+  o.status = 'livree';
+  toast('Livraison réceptionnée — ajoutée à votre historique d\u2019achats');
+  render();
+}
+function deleteOrder(id){
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Supprimer la commande ${o.id} ?</h3>
+    <div class="modal-sub">Cette action est irréversible.</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteOrder('${id}')">Supprimer</button>
+    </div>
+  `);
+}
+function confirmDeleteOrder(id){
+  const idx = ORDERS.findIndex(o=>o.id===id);
+  if(idx===-1) return;
+  ORDERS.splice(idx,1);
+  closeModal();
+  toast('Commande supprimée');
+  render();
+}
+function recomputeOrderTotals(o){
+  let amount = 0;
+  const parts = [];
+  (o.lineItems||[]).forEach(li=>{
+    const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
+    const price = p ? p.price : (li.price||0);
+    const name = p ? p.name : (li.name||'Article');
+    const unit = p ? p.unit : '';
+    amount += li.qty*price;
+    parts.push(unit ? `${name} × ${li.qty} ${unit}` : `${name} × ${li.qty}`);
+  });
+  o.amount = Math.round(amount*100)/100;
+  o.items = parts.join(', ');
+}
+function openEditOrderModal(orderId){
+  if(state.role!=='patron'){ toast('Seul le patron peut modifier une commande avant validation','alert'); return; }
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  if(o.status!=='en_attente_validation'){ toast('Cette commande ne peut plus être modifiée','alert'); return; }
+  const supplierProducts = o.supplier ? PRODUCTS.filter(p=>p.supplier===o.supplier) : [];
+  const existingIds = new Set((o.lineItems||[]).filter(li=>li.productId).map(li=>li.productId));
+  const addable = supplierProducts.filter(p=>!existingIds.has(p.id));
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Modifier la commande ${o.id}</h3>
+    <div class="modal-sub">${supplierName(o.supplier)} — envoyée, en attente de votre validation</div>
+    <table style="margin-bottom:14px;">
+      <tr><th>Produit</th><th>Qté</th><th></th></tr>
+      ${(o.lineItems&&o.lineItems.length ? o.lineItems : [{name:o.items, qty:1}]).map((li,idx)=>{
+        const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
+        const name = p ? p.name : (li.name || o.items);
+        const unit = p ? p.unit : '';
+        return `<tr>
+          <td>${name}</td>
+          <td><input type="number" min="1" step="1" value="${Math.round(li.qty)}" id="eo-qty-${idx}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;"> <span class="small muted">${unit}</span></td>
+          <td><button class="btn btn-ghost btn-sm" onclick="removeOrderLine('${o.id}', ${idx})" title="Retirer">${iconXs(I.x)}</button></td>
+        </tr>`;
+      }).join('')}
+    </table>
+    ${addable.length ? `
+      <div class="field"><label>Ajouter un produit de ce fournisseur</label>
+        <select id="eo-add-product">
+          <option value="">Sélectionner…</option>
+          ${addable.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-ghost btn-block" style="margin-bottom:14px;" onclick="addLineToOrder('${o.id}')">${iconSm(I.plus)} Ajouter à la commande</button>
+    ` : ''}
+    <button class="btn btn-primary btn-block" onclick="saveOrderEdits('${o.id}')">Enregistrer les modifications</button>
+  `);
+}
+function addLineToOrder(orderId){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  if(o.status!=='en_attente_validation') return;
+  const productId = document.getElementById('eo-add-product').value;
+  if(!productId) return;
+  const p = PRODUCTS.find(x=>x.id===productId); if(!p) return;
+  if(!o.lineItems) o.lineItems = [];
+  o.lineItems.push({productId, qty: Math.round(p.qtyCommande) || 1});
+  recomputeOrderTotals(o);
+  render();
+  openEditOrderModal(orderId);
+}
+function removeOrderLine(orderId, idx){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  if(o.status!=='en_attente_validation') return;
+  if(!o.lineItems || o.lineItems.length<=1){ toast('Une commande doit contenir au moins un article — supprimez-la plutôt si besoin','alert'); return; }
+  o.lineItems.splice(idx,1);
+  recomputeOrderTotals(o);
+  render();
+  openEditOrderModal(orderId);
+}
+function saveOrderEdits(orderId){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  if(o.status!=='en_attente_validation'){ toast('Cette commande ne peut plus être modifiée','alert'); return; }
+  (o.lineItems||[]).forEach((li,idx)=>{
+    const input = document.getElementById('eo-qty-'+idx);
+    if(input){
+      const qty = Math.round(parseFloat(input.value));
+      li.qty = (qty && qty>0) ? qty : li.qty;
+    }
+  });
+  recomputeOrderTotals(o);
+  closeModal();
+  toast('Commande mise à jour');
+  render();
+}
+function openApproveDemandeModal(id){
+  const r = REQUESTS.find(x=>x.id===id); if(!r) return;
+  if(!canActOnDemande(state.role, r)){ toast(state.role==='manager' ? "Les demandes de la cuisine sont validées par le patron" : "Cette action n'est pas autorisée pour ce rôle", 'alert'); return; }
+  const prod = PRODUCTS.find(p=>p.name===r.item);
+  const defaultQty = prod ? prod.qtyCommande : 1;
+  const unit = prod ? prod.unit : (r.unit || 'unité');
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Approuver la demande</h3>
+    <div class="modal-sub">${r.item} — demandé par ${r.by}${r.note?' · '+r.note:''}</div>
+    <div class="field"><label>Quantité à commander (${unit})</label><input id="app-qty" type="number" min="1" step="1" value="${Math.round(defaultQty)}"></div>
+    <button class="btn btn-primary btn-block" onclick="confirmValidateDemande('${id}')">${iconXs(I.check)} Approuver et commander</button>
+  `);
+}
+function confirmValidateDemande(id){
+  const r = REQUESTS.find(x=>x.id===id); if(!r) return;
+  if(!canActOnDemande(state.role, r)){ toast(state.role==='manager' ? "Les demandes de la cuisine sont validées par le patron" : "Cette action n'est pas autorisée pour ce rôle", 'alert'); return; }
+  const qty = Math.round(parseFloat(document.getElementById('app-qty').value)) || 1;
+  const prod = PRODUCTS.find(p=>p.name===r.item);
+  r.status = 'approuvee';
+  r.qty = qty;
+  r.unit = prod ? prod.unit : r.unit;
+  closeModal();
+  if(prod){
+    addToBasket(prod.supplier, prod.id, qty);
+    toast('Demande approuvée — ajoutée au panier ' + supplierName(prod.supplier));
+  } else {
+    const now = new Date();
+    ORDERS.unshift({id:'CMD-'+nextId(), supplier: SUPPLIERS[0] ? SUPPLIERS[0].id : null, items: r.item+' × '+qty+' '+r.unit, lineItems:[], amount: Math.round(qty*5*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
+    toast('Demande approuvée — commande fournisseur créée');
+  }
+  notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`);
+  render();
+}
+function refuseDemande(id){
+  const r = REQUESTS.find(x=>x.id===id); if(!r) return;
+  if(!canActOnDemande(state.role, r)){ toast(state.role==='manager' ? "Les demandes de la cuisine sont validées par le patron" : "Cette action n'est pas autorisée pour ce rôle", 'alert'); return; }
+  r.status = 'refusee';
+  toast('Demande refusée', 'alert');
+  notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`);
+  render();
+}
+function quickOrder(productId){
+  const p = PRODUCTS.find(x=>x.id===productId); if(!p) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Commander « ${p.name} »</h3>
+    <div class="modal-sub">${supplierName(p.supplier)} · ${p.price.toFixed(2)} € / ${p.unit}</div>
+    <div class="field"><label>Quantité (${p.unit})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
+    <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
+  `);
+}
+function confirmQuickOrder(productId){
+  const p = PRODUCTS.find(x=>x.id===productId); if(!p) return;
+  const qty = Math.round(parseFloat(document.getElementById('qo-qty').value)) || 1;
+  addToBasket(p.supplier, p.id, qty);
+  closeModal();
+  toast('Ajouté au panier ' + supplierName(p.supplier));
+  setView('commandes');
+}
+
+/* ============================================================
+   SIGNALEMENT (cuisine / salle) — un tap, aucune quantité à saisir :
+   c'est le manager qui décide de la quantité à commander au moment
+   d'approuver la demande.
+============================================================ */
+function submitSignal(from, urgent){
+  const item = document.getElementById('sig-item').value;
+  const note = document.getElementById('sig-note').value;
+  if(!item){ toast('Merci de sélectionner un produit','alert'); return; }
+  const prod = PRODUCTS.find(p=>p.name===item);
+  const author = ROLE_META[state.role].name.split(' — ')[0];
+  const now = new Date();
+  REQUESTS.unshift({
+    id:'D-'+nextId(), from, by: author + ' ('+(from==='Cuisine'?'cuisine':'salle')+')',
+    item, unit: prod?prod.unit:'unité', urgent, note, status:'attente', time: fmtTime(now), createdAt: now
+  });
+  closeModal();
+  const recipient = from==='Cuisine' ? 'patron' : 'manager';
+  toast(urgent ? `Commande urgente signalée au ${recipient}` : `Demande envoyée au ${recipient}`);
+  if(urgent){
+    if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`);
+    notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`);
+  }
+  render();
+}
+function openSignalModal(from, urgent){
+  const dept = from==='Cuisine' ? 'cuisine' : 'salle';
+  const list = PRODUCTS.filter(p=>p.department===dept || p.department==='both');
+  if(list.length===0){
+    openModal(`
+      <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+      <h3>Aucun produit configuré</h3>
+      <div class="modal-sub">Votre manager n'a pas encore ajouté de produit pour ${from==='Cuisine'?'la cuisine':'la salle'}. Signalez-le lui directement.</div>
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Fermer</button>
+    `);
+    return;
+  }
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>${urgent?'Signaler une commande urgente':'Demander une commande'}</h3>
+    <div class="modal-sub">${urgent?"Le manager et le patron sont notifiés à l'instant — aucune quantité à indiquer, la quantité standard du produit est utilisée.":'Votre demande sera envoyée au manager pour validation. Aucune quantité à indiquer.'}</div>
+    <div class="field"><label>Produit</label>
+      <select id="sig-item">
+        <option value="">Sélectionner un produit…</option>
+        ${list.map(p=>`<option value="${p.name}">${p.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Note (optionnel)</label><textarea id="sig-note" rows="2" placeholder="Ex : besoin avant le coup de feu de ce soir"></textarea></div>
+    <button class="btn ${urgent?'btn-danger':'btn-primary'} btn-block" onclick="submitSignal('${from}', ${urgent})">${urgent?'Signaler la commande urgente':'Envoyer la demande'}</button>
+  `);
+}
+
+/* ============================================================
+   ACHATS PERSONNALISÉS — propositions hors catalogue, décidées par le patron
+============================================================ */
+function openCustomRequestModal(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Achat personnalisé</h3>
+    <div class="modal-sub">Proposez un achat qui n'est pas dans le catalogue — le patron décide.</div>
+    <div class="field"><label>Que souhaitez-vous acheter ?</label><input id="cr-item" placeholder="Ex : Nouvelle friteuse"></div>
+    <div class="field"><label>Détails / justification (optionnel)</label><textarea id="cr-note" rows="2" placeholder="Ex : l'ancienne fuit depuis la semaine dernière"></textarea></div>
+    <button class="btn btn-primary btn-block" onclick="submitCustomRequest()">Envoyer au patron</button>
+  `);
+}
+function submitCustomRequest(){
+  const itemName = document.getElementById('cr-item').value.trim();
+  if(!itemName){ toast('Merci de préciser ce que vous souhaitez acheter','alert'); return; }
+  const note = document.getElementById('cr-note').value.trim();
+  const author = currentPersonDisplayName();
+  const now = new Date();
+  CUSTOM_REQUESTS.unshift({id:'P-'+nextId(), from: ROLE_META[state.role].label, by: author, itemName, note, status:'attente', time: fmtTime(now), createdAt: now});
+  closeModal();
+  toast('Proposition envoyée au patron');
+  notifyByEmail('patron', `nouvelle proposition d'achat : ${itemName} (par ${author}).`);
+  render();
+}
+function ticketCustomRequest(cr, viewerRole){
+  const canAct = viewerRole==='patron' && cr.status==='attente';
+  let stateTag = '';
+  if(cr.status==='approuvee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-subtle">${iconXs(I.check)} Approuvée</span></div>`;
+  if(cr.status==='refusee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-red">${iconXs(I.x)} Refusée</span></div>`;
+  if(cr.status==='attente' && !canAct) stateTag = `<div style="margin-top:8px;"><span class="tag tag-neutral">${iconXs(I.clock)} En attente</span></div>`;
+  return `
+    <div class="ticket ${cr.status==='attente' ? 'normal' : 'done'}">
+      <div class="ticket-top">
+        <div><span class="ticket-id">${cr.id}</span> <span class="ticket-from">${cr.from}</span></div>
+        <span class="mini-label">${cr.time}</span>
+      </div>
+      <div class="ticket-item">${cr.itemName}</div>
+      <div class="ticket-meta">${cr.by}${cr.note?' · '+cr.note:''}</div>
+      ${canAct ? `<div class="ticket-actions">
+        <button class="btn btn-primary btn-sm" onclick="openApproveCustomRequestModal('${cr.id}')">${iconXs(I.check)} Approuver</button>
+        <button class="btn btn-danger btn-sm" onclick="refuseCustomRequest('${cr.id}')">${iconXs(I.x)} Refuser</button>
+      </div>` : stateTag}
+    </div>
+  `;
+}
+function openApproveCustomRequestModal(id){
+  if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
+  const cr = CUSTOM_REQUESTS.find(x=>x.id===id); if(!cr) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Approuver l'achat</h3>
+    <div class="modal-sub">${cr.itemName} — proposé par ${cr.by}${cr.note?' · '+cr.note:''}</div>
+    <div class="field"><label>Fournisseur (optionnel)</label>
+      <select id="cr-supplier">
+        <option value="">— À définir plus tard —</option>
+        ${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Quantité</label><input id="cr-qty" type="number" min="1" step="1" value="1"></div>
+      <div class="field"><label>Prix total estimé (€)</label><input id="cr-price" type="number" step="0.01" value="0"></div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="confirmApproveCustomRequest('${id}')">${iconXs(I.check)} Approuver et commander</button>
+  `);
+}
+function confirmApproveCustomRequest(id){
+  if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
+  const cr = CUSTOM_REQUESTS.find(x=>x.id===id); if(!cr) return;
+  const supplierId = document.getElementById('cr-supplier').value || null;
+  const qty = Math.round(parseFloat(document.getElementById('cr-qty').value)) || 1;
+  const price = parseFloat(document.getElementById('cr-price').value) || 0;
+  cr.status = 'approuvee';
+  const now = new Date();
+  ORDERS.unshift({
+    id:'CMD-'+nextId(), supplier: supplierId,
+    items: `${cr.itemName} × ${qty} (achat personnalisé)`,
+    lineItems: [{name: cr.itemName, qty, price}],
+    amount: Math.round(qty*price*100)/100, status:'validee', date: fmtDateShort(now), createdAt: now, custom:true
+  });
+  closeModal();
+  toast('Achat approuvé — commande créée');
+  render();
+}
+function refuseCustomRequest(id){
+  if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
+  const cr = CUSTOM_REQUESTS.find(x=>x.id===id); if(!cr) return;
+  cr.status = 'refusee';
+  toast('Proposition refusée', 'alert');
+  render();
+}
+
+/* ============================================================
+   PRODUITS — création / édition
+============================================================ */
+function openNewProductModal(){
+  if(SUPPLIERS.length===0){
+    openModal(`
+      <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+      <h3>Aucun fournisseur pour le moment</h3>
+      <div class="modal-sub">Ajoutez un premier fournisseur avant de créer un produit.</div>
+      <button class="btn btn-primary btn-block" onclick="closeModal();openNewSupplierModal();">${iconSm(I.plus)} Ajouter un fournisseur</button>
+    `);
+    return;
+  }
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Nouveau produit</h3><div class="modal-sub">Aucun champ n'est codé en dur — tout est personnalisable</div>
+    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive"></div>
+    <div class="field-row"><div class="field"><label>Catégorie</label><input id="np-cat" placeholder="Épicerie"></div><div class="field"><label>Unité</label><input id="np-unit" placeholder="L"></div></div>
+    <div class="field-row"><div class="field"><label>Prix unitaire (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div><div class="field"><label>Quantité de commande standard</label><input id="np-qty" type="number" min="1" step="1" value="10"></div></div>
+    <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
+    <div class="field"><label>Utilisé en</label><select id="np-department"><option value="cuisine">Cuisine</option><option value="salle">Salle</option><option value="both">Cuisine &amp; salle</option></select></div>
+    <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
+  `);
+}
+function addProduct(){
+  const name = document.getElementById('np-name').value.trim();
+  if(!name){ toast('Le nom du produit est requis','alert'); return; }
+  const cat = document.getElementById('np-cat').value.trim() || 'Divers';
+  const unit = document.getElementById('np-unit').value.trim() || 'unité';
+  const price = parseFloat(document.getElementById('np-price').value)||0;
+  const qtyCommande = Math.round(parseFloat(document.getElementById('np-qty').value))||1;
+  const supplier = document.getElementById('np-supplier').value;
+  const department = document.getElementById('np-department').value;
+  PRODUCTS.push({id:'p'+nextId(), name, unit, qtyCommande, supplier, cat, price, department});
+  closeModal();
+  toast('Produit « '+name+' » créé');
+  render();
+}
+function editProduct(id){
+  const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Modifier le produit</h3>
+    <div class="field"><label>Nom du produit</label><input id="ep-name" value="${p.name}"></div>
+    <div class="field-row"><div class="field"><label>Catégorie</label><input id="ep-cat" value="${p.cat}"></div><div class="field"><label>Unité</label><input id="ep-unit" value="${p.unit}"></div></div>
+    <div class="field-row"><div class="field"><label>Prix unitaire (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div><div class="field"><label>Quantité de commande standard</label><input id="ep-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div></div>
+    <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${s.name}</option>`).join('')}</select></div>
+    <div class="field"><label>Utilisé en</label><select id="ep-department">
+      <option value="cuisine" ${p.department==='cuisine'?'selected':''}>Cuisine</option>
+      <option value="salle" ${p.department==='salle'?'selected':''}>Salle</option>
+      <option value="both" ${p.department==='both'?'selected':''}>Cuisine &amp; salle</option>
+    </select></div>
+    <button class="btn btn-primary btn-block" onclick="saveProduct('${id}')">Enregistrer</button>
+  `);
+}
+function saveProduct(id){
+  const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
+  p.name = document.getElementById('ep-name').value.trim() || p.name;
+  p.cat = document.getElementById('ep-cat').value.trim() || p.cat;
+  p.unit = document.getElementById('ep-unit').value.trim() || p.unit;
+  p.price = parseFloat(document.getElementById('ep-price').value) || p.price;
+  p.qtyCommande = Math.round(parseFloat(document.getElementById('ep-qty').value)) || p.qtyCommande;
+  p.supplier = document.getElementById('ep-supplier').value;
+  p.department = document.getElementById('ep-department').value;
+  closeModal();
+  toast('Produit mis à jour');
+  render();
+}
+function deleteProduct(id){
+  const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Supprimer « ${p.name} » ?</h3>
+    <div class="modal-sub">Cette action est irréversible.</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteProduct('${id}')">Supprimer</button>
+    </div>
+  `);
+}
+function confirmDeleteProduct(id){
+  const idx = PRODUCTS.findIndex(p=>p.id===id);
+  if(idx===-1) return;
+  PRODUCTS.splice(idx,1);
+  Object.keys(BASKETS).forEach(sid=>{
+    BASKETS[sid] = BASKETS[sid].filter(li=>li.productId!==id);
+    if(BASKETS[sid].length===0) delete BASKETS[sid];
+  });
+  closeModal();
+  toast('Produit supprimé');
+  render();
+}
+
+/* ============================================================
+   COMMANDES — création (modal fournisseur + lignes produits)
+============================================================ */
+function orderProductRows(supplierId){
+  const list = supplierId ? PRODUCTS.filter(p=>p.supplier===supplierId) : PRODUCTS;
+  if(list.length===0) return `<div class="empty small">Aucun produit pour ce fournisseur</div>`;
+  return list.map(p=>`
+    <div class="ord-row" data-pid="${p.id}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
+      <input type="checkbox" id="ord-chk-${p.id}">
+      <div style="flex:1;">
+        <div style="font-weight:600;font-size:13.5px;">${p.name}</div>
+        <div class="small muted">Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}</div>
+      </div>
+      <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+    </div>
+  `).join('');
+}
+function filterOrderProducts(){
+  const supplierId = document.getElementById('ord-supplier').value;
+  document.getElementById('ord-products').innerHTML = orderProductRows(supplierId);
+}
+function openNewOrderModal(prefillSupplierId){
+  if(SUPPLIERS.length===0){
+    openModal(`
+      <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+      <h3>Aucun fournisseur pour le moment</h3>
+      <div class="modal-sub">Ajoutez un premier fournisseur avant de créer une commande.</div>
+      <button class="btn btn-primary btn-block" onclick="closeModal();openNewSupplierModal();">${iconSm(I.plus)} Ajouter un fournisseur</button>
+    `);
+    return;
+  }
+  const supplierId = prefillSupplierId || SUPPLIERS[0].id;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Ajouter au panier fournisseur</h3>
+    <div class="modal-sub">Sélectionnez un fournisseur puis les produits et quantités à ajouter au panier</div>
+    <div class="field"><label>Fournisseur</label>
+      <select id="ord-supplier" onchange="filterOrderProducts()">
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===supplierId?'selected':''}>${s.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Produits</label>
+      <div id="ord-products" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:0 10px;">${orderProductRows(supplierId)}</div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="createOrder()">Ajouter au panier</button>
+  `);
+}
+function createOrder(){
+  const supplierId = document.getElementById('ord-supplier').value;
+  const rows = document.querySelectorAll('.ord-row');
+  let addedCount = 0;
+  rows.forEach(row=>{
+    const pid = row.dataset.pid;
+    const chk = document.getElementById('ord-chk-'+pid);
+    const qtyInput = document.getElementById('ord-qty-'+pid);
+    if(chk && chk.checked){
+      const qty = Math.round(parseFloat(qtyInput.value)) || 0;
+      if(qty>0){
+        addToBasket(supplierId, pid, qty);
+        addedCount++;
+      }
+    }
+  });
+  if(addedCount===0){ toast('Sélectionnez au moins un produit avec une quantité','alert'); return; }
+  closeModal();
+  toast('Ajouté au panier ' + supplierName(supplierId));
+  setView('commandes');
+}
+
+/* ============================================================
+   DOCUMENT DE COMMANDE / FACTURE — mise en page professionnelle,
+   actualisée à partir des données réelles de la commande.
+============================================================ */
+function orderStatusLabel(s){
+  if(s==='en_attente_validation') return 'En attente de validation';
+  if(s==='validee') return 'Validée — en attente de réception';
+  if(s==='livree') return 'Livrée';
+  if(s==='refusee') return 'Refusée';
+  return s;
+}
+function orderDocLines(o){
+  if(o.lineItems && o.lineItems.length){
+    return o.lineItems.map(li=>{
+      if(!li.productId){
+        // ligne d'achat personnalisé (hors catalogue) : nom/prix saisis directement
+        const price = li.price || 0;
+        return {name: li.name || o.items, qty: li.qty, unit:'', price, total: Math.round(li.qty*price*100)/100};
+      }
+      const p = PRODUCTS.find(x=>x.id===li.productId);
+      const name = p ? p.name : o.items;
+      const unit = p ? p.unit : '';
+      const price = p ? p.price : (li.qty ? o.amount/li.qty : o.amount);
+      return {name, qty:li.qty, unit, price, total:Math.round(li.qty*price*100)/100};
+    });
+  }
+  return [{name:o.items||'Article', qty:1, unit:'', price:o.amount, total:o.amount}];
+}
+function buildOrderDocumentHTML(o){
+  const resto = RESTOS.find(r=>r.id===state.resto) || {name:'—', city:''};
+  const supplier = SUPPLIERS.find(s=>s.id===o.supplier) || {name:'—', cat:''};
+  const isDelivered = o.status==='livree';
+  const docType = isDelivered ? 'Facture' : 'Bon de commande';
+  const lines = orderDocLines(o);
+  const total = lines.reduce((a,l)=>a+l.total,0);
+  const when = o.createdAt ? fmtDateLong(new Date(o.createdAt)) + ' à ' + fmtTime(new Date(o.createdAt)) : o.date;
+  return `
+    <div class="invoice-doc">
+      <div class="invoice-head">
+        <div>
+          <div class="invoice-resto-name">${resto.name}</div>
+          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+        </div>
+        <div class="invoice-doctype">
+          <div class="invoice-doctype-label">${docType}</div>
+          <div class="invoice-ref">${o.id}</div>
+        </div>
+      </div>
+      <div class="invoice-meta-row">
+        <div>
+          <div class="invoice-meta-label">Fournisseur</div>
+          <div class="invoice-meta-value">${supplier.name}</div>
+          ${supplier.address ? `<div class="invoice-meta-sub">${supplier.address}</div>` : ''}
+          ${supplier.email ? `<div class="invoice-meta-sub">${supplier.email}</div>` : ''}
+        </div>
+        <div>
+          <div class="invoice-meta-label">Date</div>
+          <div class="invoice-meta-value">${when}</div>
+        </div>
+        <div>
+          <div class="invoice-meta-label">Statut</div>
+          <div class="invoice-meta-value">${orderStatusLabel(o.status)}</div>
+        </div>
+      </div>
+      <table class="invoice-table">
+        <thead><tr><th>Article</th><th>Qté</th><th>Prix unit.</th><th>Total</th></tr></thead>
+        <tbody>
+          ${lines.map(l=>`<tr><td>${l.name}</td><td>${l.qty} ${l.unit}</td><td>${l.price.toFixed(2)} €</td><td>${l.total.toFixed(2)} €</td></tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="invoice-total-row">
+        <div class="invoice-total-label">Total ${isDelivered?'facturé':'commandé'}</div>
+        <div class="invoice-total-value">${fmtEUR(total)}</div>
+      </div>
+      <div class="invoice-foot">
+        <div>${resto.name} — ${resto.city}</div>
+        <div>Document généré automatiquement par Mise &amp; Sûre</div>
+      </div>
+    </div>
+  `;
+}
+const INVOICE_STANDALONE_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
+  *{box-sizing:border-box;}
+  body{font-family:'Inter',sans-serif;color:#141414;margin:0;padding:36px;background:#fff;}
+  .invoice-doc{max-width:640px;margin:0 auto;}
+  .invoice-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #141414;padding-bottom:16px;margin-bottom:20px;}
+  .invoice-resto-name{font-family:'Fraunces',serif;font-size:21px;font-weight:700;}
+  .invoice-resto-meta{font-size:12.5px;color:#6B6B65;margin-top:2px;}
+  .invoice-doctype{text-align:right;}
+  .invoice-doctype-label{font-family:'Fraunces',serif;font-size:15px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;}
+  .invoice-ref{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#6B6B65;margin-top:2px;}
+  .invoice-meta-row{display:flex;justify-content:space-between;gap:20px;margin-bottom:22px;}
+  .invoice-meta-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:#9A9A94;font-weight:600;margin-bottom:3px;}
+  .invoice-meta-value{font-size:13.5px;font-weight:600;}
+  .invoice-meta-sub{font-size:12px;color:#6B6B65;}
+  .invoice-table{width:100%;border-collapse:collapse;margin-bottom:18px;}
+  .invoice-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;color:#6B6B65;border-bottom:1.5px solid #141414;padding:8px 6px;font-weight:600;}
+  .invoice-table td{padding:10px 6px;border-bottom:1px solid #E1E1DA;font-size:13.5px;}
+  .invoice-table th:nth-child(2),.invoice-table td:nth-child(2),.invoice-table th:nth-child(3),.invoice-table td:nth-child(3),.invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
+  .invoice-table.history th:nth-child(2),.invoice-table.history td:nth-child(2),.invoice-table.history th:nth-child(3),.invoice-table.history td:nth-child(3){text-align:left;}
+  .invoice-total-row{display:flex;justify-content:flex-end;align-items:baseline;gap:14px;border-top:2px solid #141414;padding-top:12px;margin-bottom:20px;}
+  .invoice-total-label{font-size:13px;font-weight:600;}
+  .invoice-total-value{font-family:'Fraunces',serif;font-size:22px;font-weight:700;}
+  .invoice-foot{border-top:1px solid #E1E1DA;padding-top:14px;font-size:11px;color:#9A9A94;text-align:center;}
+`;
+function downloadHtmlFile(filename, innerHtml){
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${filename}</title><style>${INVOICE_STANDALONE_CSS}</style></head><body>${innerHtml}</body></html>`;
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Document téléchargé');
+}
+function openOrderDocumentModal(orderId){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    ${buildOrderDocumentHTML(o)}
+    <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="downloadOrderDocument('${orderId}')">${iconSm(I.download)} Télécharger le document</button>
+  `);
+}
+function downloadOrderDocument(orderId){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  const filename = (o.status==='livree'?'facture-':'commande-') + o.id + '.html';
+  downloadHtmlFile(filename, buildOrderDocumentHTML(o));
+}
+
+/* ============================================================
+   HISTORIQUE DES ACHATS — récapitulatif téléchargeable (mois / année)
+============================================================ */
+function ordersForPeriod(period){
+  const now = new Date();
+  return ORDERS.filter(o=>{
+    if(!o.createdAt) return true;
+    const d = new Date(o.createdAt);
+    if(period==='year') return d.getFullYear()===now.getFullYear();
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  });
+}
+function buildHistoryDocumentHTML(period){
+  const resto = RESTOS.find(r=>r.id===state.resto) || {name:'—', city:''};
+  const now = new Date();
+  const orders = ordersForPeriod(period).filter(o=>o.status!=='refusee');
+  const total = orders.reduce((a,o)=>a+o.amount,0);
+  const periodLabel = period==='year' ? 'Année '+now.getFullYear() : fmtMonthYear(now);
+  return `
+    <div class="invoice-doc">
+      <div class="invoice-head">
+        <div>
+          <div class="invoice-resto-name">${resto.name}</div>
+          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+        </div>
+        <div class="invoice-doctype">
+          <div class="invoice-doctype-label">Historique des achats</div>
+          <div class="invoice-ref">${periodLabel}</div>
+        </div>
+      </div>
+      <table class="invoice-table history">
+        <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th><th>Montant</th></tr></thead>
+        <tbody>
+          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td><td>${o.amount.toFixed(2)} €</td></tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
+        </tbody>
+      </table>
+      <div class="invoice-total-row">
+        <div class="invoice-total-label">Total des achats — ${periodLabel}</div>
+        <div class="invoice-total-value">${fmtEUR(total)}</div>
+      </div>
+      <div class="invoice-foot">
+        <div>${resto.name} — ${resto.city}</div>
+        <div>Document généré automatiquement par Mise &amp; Sûre</div>
+      </div>
+    </div>
+  `;
+}
+function openHistoryDocumentModal(period){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    ${buildHistoryDocumentHTML(period)}
+    <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="downloadHistoryDocument('${period}')">${iconSm(I.download)} Télécharger le document</button>
+  `);
+}
+function downloadHistoryDocument(period){
+  downloadHtmlFile('historique-achats-'+period+'.html', buildHistoryDocumentHTML(period));
+}
+
+/* ============================================================
+   FOURNISSEURS — création / fiche + édition
+============================================================ */
+function openNewSupplierModal(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Ajouter un fournisseur</h3>
+    <div class="field"><label>Nom</label><input id="ns-name" placeholder="Ex : Fromagerie Lambert"></div>
+    <div class="field-row"><div class="field"><label>Catégorie</label><input id="ns-cat" placeholder="Crémerie"></div><div class="field"><label>Délai moyen</label><input id="ns-delay" placeholder="24h"></div></div>
+    <div class="field"><label>Adresse</label><input id="ns-address" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
+    <div class="field"><label>Email</label><input id="ns-email" type="email" placeholder="contact@fournisseur.fr"></div>
+    <button class="btn btn-primary btn-block" onclick="addSupplier()">Ajouter</button>
+  `);
+}
+function addSupplier(){
+  const name = document.getElementById('ns-name').value.trim();
+  if(!name){ toast('Le nom du fournisseur est requis','alert'); return; }
+  const cat = document.getElementById('ns-cat').value.trim() || 'Divers';
+  const delay = document.getElementById('ns-delay').value.trim() || '48h';
+  const address = document.getElementById('ns-address').value.trim();
+  const email = document.getElementById('ns-email').value.trim();
+  SUPPLIERS.push({id:'f'+nextId(), name, cat, delay, address, email, reliability:90, spend:0});
+  closeModal();
+  toast('Fournisseur « '+name+' » ajouté');
+  render();
+}
+function openSupplierDetail(id){
+  const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
+  const linkedProducts = PRODUCTS.filter(p=>p.supplier===id);
+  const linkedOrders = ORDERS.filter(o=>o.supplier===id).slice(0,4);
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>${s.name}</h3>
+    <div class="modal-sub">${s.cat}</div>
+    <div class="field-row"><div class="field"><label>Nom</label><input id="sf-name" value="${s.name}"></div><div class="field"><label>Catégorie</label><input id="sf-cat" value="${s.cat}"></div></div>
+    <div class="field"><label>Adresse</label><input id="sf-address" value="${s.address||''}" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
+    <div class="field-row"><div class="field"><label>Email</label><input id="sf-email" type="email" value="${s.email||''}" placeholder="contact@fournisseur.fr"></div><div class="field"><label>Délai moyen</label><input id="sf-delay" value="${s.delay}"></div></div>
+    <div class="field"><label>Fiabilité (%)</label><input id="sf-reliability" type="number" value="${s.reliability}"></div>
+    <div class="flex gap8">
+      <button class="btn btn-primary" style="flex:1;" onclick="saveSupplier('${id}')">Enregistrer</button>
+      <button class="btn btn-danger" onclick="deleteSupplier('${id}')" title="Supprimer ce fournisseur">${iconSm(I.trash)}</button>
+    </div>
+    <div class="divider"></div>
+    <div class="card-title">Produits fournis (${linkedProducts.length})</div>
+    <div class="small muted" style="margin-bottom:14px;">${linkedProducts.map(p=>p.name).join(', ') || 'Aucun produit lié'}</div>
+    <div class="card-title">Dernières commandes</div>
+    ${linkedOrders.map(o=>`<div class="flex between small" style="padding:5px 0;"><span class="mono">${o.id}</span>${orderStatusTag(o.status)}</div>`).join('') || '<div class="small muted">Aucune commande</div>'}
+  `);
+}
+function saveSupplier(id){
+  const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
+  s.name = document.getElementById('sf-name').value.trim() || s.name;
+  s.cat = document.getElementById('sf-cat').value.trim() || s.cat;
+  s.address = document.getElementById('sf-address').value.trim();
+  s.email = document.getElementById('sf-email').value.trim();
+  s.delay = document.getElementById('sf-delay').value.trim() || s.delay;
+  s.reliability = parseFloat(document.getElementById('sf-reliability').value) || s.reliability;
+  closeModal();
+  toast('Fournisseur mis à jour');
+  render();
+}
+function deleteSupplier(id){
+  const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
+  const linkedCount = PRODUCTS.filter(p=>p.supplier===id).length;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Supprimer « ${s.name} » ?</h3>
+    <div class="modal-sub">${linkedCount>0 ? linkedCount+' produit'+(linkedCount>1?'s':'')+' de votre catalogue lui sont associés et resteront à réassigner.' : 'Cette action est irréversible.'}</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteSupplier('${id}')">Supprimer</button>
+    </div>
+  `);
+}
+function confirmDeleteSupplier(id){
+  const idx = SUPPLIERS.findIndex(s=>s.id===id);
+  if(idx===-1) return;
+  SUPPLIERS.splice(idx,1);
+  delete BASKETS[id];
+  closeModal();
+  toast('Fournisseur supprimé');
+  render();
+}
+
+
+/* ============================================================
+   ÉQUIPE — création / édition
+============================================================ */
+function openNewEmployeeModal(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Ajouter un employé</h3>
+    <div class="field"><label>Nom complet</label><input id="na-name" placeholder="Ex : Jules Perrin"></div>
+    <div class="field-row"><div class="field"><label>Rôle</label><select id="na-role"><option>Manager</option><option>Chef de partie</option><option>Commis de cuisine</option><option>Serveur / Serveuse</option></select></div><div class="field"><label>Horaires</label><input id="na-shift" placeholder="11h-15h"></div></div>
+    <button class="btn btn-primary btn-block" onclick="addEmployee()">Ajouter</button>
+  `);
+}
+function addEmployee(){
+  const name = document.getElementById('na-name').value.trim();
+  if(!name){ toast('Le nom est requis','alert'); return; }
+  const role = document.getElementById('na-role').value;
+  const shift = document.getElementById('na-shift').value.trim() || 'À définir';
+  const password = generateDefaultPassword(name);
+  let username = generateUsername(name);
+  if(TEAM.some(t=>t.username===username)) username = username + TEAM.filter(t=>t.username && t.username.startsWith(username)).length;
+  TEAM.push({id:'u'+nextId(), name, role, shift, status:'actif', username, password});
+  closeModal();
+  toast('« '+name+' » ajouté(e) à l\u2019équipe — identifiant : '+username+' / mot de passe : '+password);
+  render();
+}
+function editEmployee(id){
+  const t = TEAM.find(x=>x.id===id); if(!t) return;
+  const roles = ['Manager','Chef de partie','Commis de cuisine','Serveur / Serveuse'];
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Modifier l'employé</h3>
+    <div class="field"><label>Nom complet</label><input id="ee-name" value="${t.name}"></div>
+    <div class="field-row">
+      <div class="field"><label>Rôle</label><select id="ee-role">${roles.map(r=>`<option ${t.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
+      <div class="field"><label>Horaires</label><input id="ee-shift" value="${t.shift}"></div>
+    </div>
+    <div class="field"><label>Statut</label><select id="ee-status"><option value="actif" ${t.status==='actif'?'selected':''}>En service</option><option value="repos" ${t.status==='repos'?'selected':''}>Repos</option></select></div>
+    <button class="btn btn-primary btn-block" onclick="saveEmployee('${id}')">Enregistrer</button>
+  `);
+}
+function saveEmployee(id){
+  const t = TEAM.find(x=>x.id===id); if(!t) return;
+  t.name = document.getElementById('ee-name').value.trim() || t.name;
+  t.role = document.getElementById('ee-role').value;
+  t.shift = document.getElementById('ee-shift').value.trim() || t.shift;
+  t.status = document.getElementById('ee-status').value;
+  closeModal();
+  toast('Employé mis à jour');
+  render();
+}
+
+/* ============================================================
+   ÉTABLISSEMENTS — création
+============================================================ */
+function openNewRestoModal(){
+  if(isEssentielPlan()){ openUpgradeModal(); return; }
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Ajouter un établissement</h3>
+    <div class="modal-sub">Chaque établissement a son propre catalogue et ses propres fournisseurs.</div>
+    <div class="field"><label>Nom de l'établissement</label><input id="nr-name" placeholder="Ex : Table de Léon"></div>
+    <div class="field"><label>Adresse</label><input id="nr-address" placeholder="Ex : 5 place du Commerce"></div>
+    <div class="field-row">
+      <div class="field"><label>Code postal</label><input id="nr-postal" placeholder="Ex : 44000"></div>
+      <div class="field"><label>Ville</label><input id="nr-city" placeholder="Ex : Nantes"></div>
+    </div>
+    <div class="field"><label>Devise</label><select id="nr-currency"><option>EUR</option><option>CHF</option><option>USD</option></select></div>
+    <button class="btn btn-primary btn-block" onclick="addResto()">Ajouter</button>
+  `);
+}
+function addResto(){
+  if(isEssentielPlan()){ closeModal(); openUpgradeModal(); return; }
+  const name = document.getElementById('nr-name').value.trim();
+  if(!name){ toast("Le nom de l'établissement est requis",'alert'); return; }
+  const address = document.getElementById('nr-address').value.trim();
+  const postalCode = document.getElementById('nr-postal').value.trim();
+  const city = document.getElementById('nr-city').value.trim() || '—';
+  const currency = document.getElementById('nr-currency').value;
+  const newId = 'r'+nextId();
+  RESTOS.push({id:newId, name, address, postalCode, city, currency});
+  ensureRestoData(newId);
+  closeModal();
+  toast('Établissement ajouté');
+  render();
+}
+
+/* ============================================================
+   ROUTAGE DES VUES
+============================================================ */
+function renderContent(){
+  const {role, view} = state;
+  if(view==='notifications') return viewNotifications(role);
+  if(role==='patron'){
+    if(view==='dashboard') return viewPatronDashboard();
+    if(view==='stocks') return viewStocks();
+    if(view==='commandes') return viewCommandes('patron');
+    if(view==='fournisseurs') return viewFournisseurs();
+    if(view==='equipe') return viewEquipe();
+    if(view==='multi') return viewMulti();
+    if(view==='parametres') return viewParametres();
+  }
+  if(role==='manager'){
+    if(view==='dashboard') return viewManagerDashboard();
+    if(view==='demandes') return viewManagerDemandes();
+    if(view==='commandes') return viewCommandes('manager');
+    if(view==='stocks') return viewStocks();
+    if(view==='livraisons') return viewLivraisons();
+  }
+  if(role==='cuisine'){
+    if(view==='accueil') return viewCuisineAccueil();
+    if(view==='signaler'){ openSignalModal('Cuisine', false); return viewCuisineAccueil(); }
+    if(view==='stocks') return viewCuisineStocks();
+    if(view==='livraisons') return viewLivraisons();
+    if(view==='demandes') return viewDemandesList('cuisine');
+  }
+  if(role==='salle'){
+    if(view==='accueil') return viewSalleAccueil();
+    if(view==='signaler'){ openSignalModal('Salle', false); return viewSalleAccueil(); }
+    if(view==='stocks') return viewSalleStocks();
+    if(view==='demandes') return viewDemandesList('salle');
+  }
+  return '';
+}
+
+/* ============================================================
+   GRAPHIQUES (Chart.js) — palette monochrome
+============================================================ */
+let charts = {};
+function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
+function drawCharts(){
+  Chart.defaults.font.family = "'Inter',sans-serif";
+  Chart.defaults.color = '#6B6B65';
+
+  const stockValCanvas = document.getElementById('chartStockValue');
+  if(stockValCanvas){
+    const data = achatsBySupplier();
+    charts.stockVal = new Chart(stockValCanvas, {
+      type:'bar',
+      data:{
+        labels: data.map(d=>d.label),
+        datasets:[{data:data.map(d=>d.value), backgroundColor:'#141414', borderRadius:5, maxBarThickness:26}]
+      },
+      options:{
+        indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{x:{grid:{color:'#EEEEE7'}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
+      }
+    });
+  }
+  const suppCanvas = document.getElementById('chartSuppliers');
+  if(suppCanvas){
+    charts.supp = new Chart(suppCanvas, {
+      type:'bar',
+      data:{
+        labels: SUPPLIERS.map(s=>s.name.split(' ')[0]),
+        datasets:[{label:'Fiabilité %', data:SUPPLIERS.map(s=>s.reliability), backgroundColor: SUPPLIERS.map(s=>s.reliability>=95?'#141414':s.reliability>=90?'#8A8A84':'#A93A2E'), borderRadius:5, maxBarThickness:26}]
+      },
+      options:{
+        indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{x:{min:70,max:100, grid:{color:'#EEEEE7'}}, y:{grid:{display:false}}}
+      }
+    });
+  }
+}
+
+/* ============================================================
+   SITE PUBLIC — vitrine, tarifs, compte
+============================================================ */
+function siteNav(active){
+  return `
+    <header class="site-nav">
+      <button class="site-nav-brand" onclick="goToSite('marketing')">
+        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--black);color:#fff;">M</div>
+        <span>Mise &amp; Sûre</span>
+      </button>
+      <nav class="site-nav-links">
+        <button class="site-nav-link ${active==='pricing'?'active':''}" onclick="goToSite('pricing')">Tarifs</button>
+        <button class="btn btn-primary btn-sm" onclick="goToLogin()">Se connecter</button>
+      </nav>
+    </header>
+  `;
+}
+function renderMarketingPage(){
+  return `
+    <div class="site-page">
+      ${siteNav('marketing')}
+      <section class="site-hero">
+        <div class="site-hero-tag">Plateforme de gestion pour restaurants</div>
+        <h1>La gestion de votre restaurant,<br>sans friction.</h1>
+        <p>Commandes fournisseurs, équipe, factures — un espace pour le patron, un espace pour chacun des vôtres.</p>
+        <div class="flex gap8" style="justify-content:center;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="goToSite('pricing')">Voir les tarifs</button>
+          <button class="btn btn-ghost" onclick="goToLogin()">J'ai déjà un compte</button>
+        </div>
+      </section>
+      <section class="site-features">
+        <div class="site-feature-grid">
+          ${SITE_FEATURES.map(f=>`
+            <div class="site-feature-card">
+              <div class="tile-icon">${I[f.icon]}</div>
+              <div style="font-weight:700;margin-top:10px;">${f.title}</div>
+              <div class="small muted" style="margin-top:4px;">${f.desc}</div>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+      <section class="site-cta">
+        <h2>Prêt à essayer ?</h2>
+        <p class="muted small" style="margin-bottom:18px;">Deux forfaits simples, sans engagement, mensuel ou annuel.</p>
+        <button class="btn btn-primary" onclick="goToSite('pricing')">Choisir un forfait</button>
+      </section>
+      <footer class="site-footer">Mise &amp; Sûre — plateforme de gestion pour restaurants</footer>
+    </div>
+  `;
+}
+function renderPricingPage(){
+  const cycle = state.billingCycle;
+  return `
+    <div class="site-page">
+      ${siteNav('pricing')}
+      <section class="site-pricing-head">
+        <h1>Des tarifs simples, sans surprise.</h1>
+        <p class="muted" style="margin-bottom:18px;">Changez de forfait ou de formule de facturation à tout moment.</p>
+        <div class="pill-nav" style="justify-content:center;display:inline-flex;">
+          <button class="${cycle==='monthly'?'active':''}" onclick="setBillingCycle('monthly')">Mensuel</button>
+          <button class="${cycle==='annual'?'active':''}" onclick="setBillingCycle('annual')">Annuel — 2 mois offerts</button>
+        </div>
+      </section>
+      <section class="site-plans-grid">
+        ${PLANS.map(p=>{
+          const price = cycle==='monthly' ? p.monthly : planAnnualPrice(p.monthly);
+          const per = cycle==='monthly' ? '/ mois' : '/ an';
+          return `
+          <div class="card site-plan-card">
+            <div class="site-plan-name">${p.name}</div>
+            <div class="small muted" style="margin:4px 0 20px 0;">${p.tagline}</div>
+            <div class="site-plan-price">${price}&nbsp;€<span class="small muted"> ${per}</span></div>
+            <ul class="site-plan-features">
+              ${p.features.map(f=>`<li>${iconXs(I.check)}<span>${f}</span></li>`).join('')}
+            </ul>
+            <button class="btn btn-primary btn-block" onclick="choosePlan('${p.id}')">Choisir ${p.name}</button>
+          </div>`;
+        }).join('')}
+      </section>
+      <footer class="site-footer">Mise &amp; Sûre — plateforme de gestion pour restaurants</footer>
+    </div>
+  `;
+}
+function renderPaymentPage(){
+  const plan = PLANS.find(p=>p.id===state.selectedPlan) || PLANS[0];
+  const price = state.billingCycle==='monthly' ? plan.monthly : planAnnualPrice(plan.monthly);
+  const per = state.billingCycle==='monthly' ? '/ mois' : '/ an';
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <h1>Mise &amp; Sûre</h1>
+        <p>Vous vous abonnez au forfait <b>${plan.name}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.</p>
+        <div class="login-feature">${I.check} Sans engagement</div>
+        <div class="login-feature">${I.check} Résiliable à tout moment</div>
+        <div class="login-feature">${I.check} Paiement sécurisé</div>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner">
+          <button class="back-link" onclick="goToSite('pricing')">← Retour aux tarifs</button>
+          <div class="login-step-label">Étape 1 sur 2 — Paiement</div>
+          <div class="payment-summary">
+            <div class="flex between center"><span>Forfait ${plan.name} · ${state.billingCycle==='monthly'?'mensuel':'annuel'}</span><span class="mono" style="font-weight:700;">${price}&nbsp;€${per}</span></div>
+          </div>
+          <div class="field"><label>Nom sur la carte</label><input id="pay-name" value="Marc Petit"></div>
+          <div class="field"><label>Numéro de carte</label><input id="pay-number" value="4111 1111 1111 1111" inputmode="numeric" maxlength="19"></div>
+          <div class="field-row">
+            <div class="field"><label>Expiration (MM/AA)</label><input id="pay-expiry" value="12/28" inputmode="numeric" maxlength="5" placeholder="MM/AA"></div>
+            <div class="field"><label>CVC</label><input id="pay-cvc" value="123" inputmode="numeric" maxlength="4"></div>
+          </div>
+          ${state.accountError ? `<div class="login-error">${state.accountError}</div>` : ''}
+          <button class="btn btn-primary btn-block" onclick="attemptPayment()">${iconSm(I.lock)} Payer ${price}&nbsp;€ et continuer</button>
+          <div class="login-hint">Démonstration — aucun paiement réel n'est effectué. Champs pré-remplis pour tester.</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function renderAccountAuthPage(){
+  const mode = state.authMode;
+  const plan = PLANS.find(p=>p.id===state.selectedPlan);
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <h1>Mise &amp; Sûre</h1>
+        <p>${plan ? `Vous vous abonnez au forfait <b>${plan.name}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.` : "Connectez-vous pour accéder à votre espace."}</p>
+        <div class="login-feature">${I.check} Sans engagement</div>
+        <div class="login-feature">${I.check} Résiliable à tout moment</div>
+        <div class="login-feature">${I.check} Support par email inclus</div>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner">
+          <button class="back-link" onclick="goToSite('marketing')">← Retour à l'accueil</button>
+          ${plan && mode==='signup' ? `<div class="login-step-label">Étape 2 sur 2 — Créer votre compte</div>` : ''}
+          <div class="pill-nav">
+            <button class="${mode==='login'?'active':''}" onclick="setAuthMode('login')">Se connecter</button>
+            <button class="${mode==='signup'?'active':''}" onclick="setAuthMode('signup')">Créer un compte</button>
+          </div>
+          ${mode==='signup' ? `
+            <div class="field-row">
+              <div class="field"><label>Prénom</label><input id="acc-firstname" placeholder="Marc"></div>
+              <div class="field"><label>Nom</label><input id="acc-lastname" placeholder="Petit"></div>
+            </div>
+            <div class="field"><label>Téléphone</label><input id="acc-phone" type="tel" placeholder="06 12 34 56 78"></div>
+          ` : ''}
+          <div class="field"><label>Email</label><input id="acc-email" type="email" placeholder="vous@restaurant.fr"></div>
+          <div class="field">
+            <label>Mot de passe</label>
+            <input id="acc-password" type="password">
+          </div>
+          ${mode==='login' ? `<div class="small muted" style="margin:-8px 0 14px 0;">Pas encore de compte ? <a href="#" onclick="setAuthMode('signup');return false;" style="text-decoration:underline;color:inherit;">Créez-en un</a>.</div>` : ''}
+          ${mode==='login' ? `<div style="text-align:right;margin:-8px 0 14px 0;"><a href="#" onclick="goToForgotPassword();return false;" class="small muted" style="text-decoration:underline;">Mot de passe oublié ?</a></div>` : ''}
+          ${mode==='signup' ? `<div class="field"><label>Confirmer le mot de passe</label><input id="acc-password2" type="password"></div>` : ''}
+          ${state.accountError ? `<div class="login-error">${state.accountError}</div>` : ''}
+          <button class="btn btn-primary btn-block" onclick="${mode==='login'?'attemptAccountLogin()':'attemptAccountSignup()'}">${mode==='login'?'Se connecter':'Créer mon compte'}</button>
+          <div class="divider"></div>
+          <a href="${API_URL}/api/auth/google" class="btn btn-ghost btn-block">${iconSm(I.globe)} Continuer avec Google</a>
+          <a href="${API_URL}/api/auth/apple" class="btn btn-ghost btn-block" style="margin-top:8px;">${iconSm(I.device)} Continuer avec Apple</a>
+          <div class="login-hint">Connexion et compte réels — vos informations sont enregistrées sur le serveur.</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function renderVerifyEmailPage(){
+  const email = state.pendingSignup ? state.pendingSignup.email : '';
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <h1>Mise &amp; Sûre</h1>
+        <p>Vérifiez votre adresse email pour activer votre compte.</p>
+        <div class="login-feature">${I.check} Ça ne prend que quelques secondes</div>
+        <div class="login-feature">${I.check} Protège l'accès à votre compte</div>
+        <div class="login-feature">${I.check} Un email, un compte</div>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner">
+          <button class="back-link" onclick="cancelVerification()">← Retour</button>
+          <div class="login-step-label">Vérification de l'email</div>
+          <p class="small muted" style="margin-bottom:18px;">Nous avons envoyé un code à 6 chiffres à <b>${email}</b>. Saisissez-le ci-dessous pour confirmer que cette adresse vous appartient.</p>
+          <div class="field">
+            <label>Code de vérification</label>
+            <input id="verify-code" placeholder="------" inputmode="numeric" maxlength="6" style="letter-spacing:6px;font-size:19px;text-align:center;font-family:'IBM Plex Mono',monospace;" onkeydown="if(event.key==='Enter')attemptVerifyEmail()">
+          </div>
+          ${state.verifyError ? `<div class="login-error">${state.verifyError}</div>` : ''}
+          <button class="btn btn-primary btn-block" onclick="attemptVerifyEmail()">${iconSm(I.check)} Vérifier et continuer</button>
+          <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="resendVerificationCode()">Renvoyer le code</button>
+          <div class="login-hint">Un vrai code a été envoyé par email — vérifiez votre boîte de réception (et les spams).</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function renderResetPasswordPage(){
+  const step = state.resetStep;
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <h1>Mise &amp; Sûre</h1>
+        <p>Réinitialisez votre mot de passe en toute sécurité.</p>
+        <div class="login-feature">${I.check} Code à usage unique</div>
+        <div class="login-feature">${I.check} Envoyé à l'email de votre compte</div>
+        <div class="login-feature">${I.check} Votre compte reste protégé</div>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner">
+          <button class="back-link" onclick="goToSite('account-auth')">← Retour à la connexion</button>
+          ${step==='request' ? `
+            <div class="login-step-label">Mot de passe oublié</div>
+            <p class="small muted" style="margin-bottom:18px;">Indiquez l'email de votre compte : nous vous enverrons un code de réinitialisation.</p>
+            <div class="field"><label>Email</label><input id="reset-email" type="email" placeholder="vous@restaurant.fr" onkeydown="if(event.key==='Enter')requestResetCode()"></div>
+            ${state.resetError ? `<div class="login-error">${state.resetError}</div>` : ''}
+            <button class="btn btn-primary btn-block" onclick="requestResetCode()">Envoyer le code</button>
+          ` : `
+            <div class="login-step-label">Nouveau mot de passe</div>
+            <p class="small muted" style="margin-bottom:18px;">Code envoyé à <b>${state.resetEmail}</b>.</p>
+            <div class="field">
+              <label>Code de réinitialisation</label>
+              <input id="reset-code" placeholder="------" inputmode="numeric" maxlength="6" style="letter-spacing:6px;font-size:19px;text-align:center;font-family:'IBM Plex Mono',monospace;">
+            </div>
+            <div class="field"><label>Nouveau mot de passe</label><input id="reset-pass1" type="password"></div>
+            <div class="field"><label>Confirmer le mot de passe</label><input id="reset-pass2" type="password"></div>
+            ${state.resetError ? `<div class="login-error">${state.resetError}</div>` : ''}
+            <button class="btn btn-primary btn-block" onclick="confirmPasswordReset()">Réinitialiser le mot de passe</button>
+            <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="resendResetCode()">Renvoyer le code</button>
+          `}
+          <div class="login-hint">Un vrai code a été envoyé par email — vérifiez votre boîte de réception (et les spams).</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function renderSetupRestaurantPage(){
+  const proText = ACCOUNT && ACCOUNT.plan==='pro' ? "Ajoutez d'autres établissements quand vous voulez" : "Le forfait Essentiel inclut un établissement";
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <h1>Mise &amp; Sûre</h1>
+        <p>Bienvenue ! Configurons votre premier établissement.</p>
+        <div class="login-feature">${I.check} Ça prend moins d'une minute</div>
+        <div class="login-feature">${I.check} Modifiable à tout moment dans les paramètres</div>
+        <div class="login-feature">${I.check} ${proText}</div>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner">
+          <div class="login-step-label">Dernière étape — Votre établissement</div>
+          <div class="field"><label>Nom du restaurant</label><input id="setup-name" placeholder="Ex : Le Petit Bistrot"></div>
+          <div class="field"><label>Adresse</label><input id="setup-address" placeholder="Ex : 12 rue de la République"></div>
+          <div class="field-row">
+            <div class="field"><label>Code postal</label><input id="setup-postal" placeholder="69001"></div>
+            <div class="field"><label>Ville</label><input id="setup-city" placeholder="Lyon"></div>
+          </div>
+          <div class="field"><label>Devise</label><select id="setup-currency"><option>EUR</option><option>CHF</option><option>USD</option></select></div>
+          ${state.accountError ? `<div class="login-error">${state.accountError}</div>` : ''}
+          <button class="btn btn-primary btn-block" onclick="completeSetupRestaurant()">Créer mon établissement</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+async function completeSetupRestaurant(){
+  const name = ((document.getElementById('setup-name')||{}).value || '').trim();
+  if(!name){ state.accountError = "Le nom de l'établissement est requis."; render(); return; }
+  const address = ((document.getElementById('setup-address')||{}).value || '').trim();
+  const postalCode = ((document.getElementById('setup-postal')||{}).value || '').trim();
+  const city = ((document.getElementById('setup-city')||{}).value || '').trim() || '—';
+  const currency = (document.getElementById('setup-currency')||{}).value || 'EUR';
+
+  try{
+    const data = await apiRequest('/api/restaurants', { method:'POST', body:{ name, address, postalCode, city, currency } });
+
+    // Le catalogue, l'équipe, les commandes... continuent de fonctionner en mémoire pour
+    // l'instant (seule la couche compte/établissement est déjà connectée au vrai serveur) —
+    // on garde donc aussi une copie locale, reliée à l'établissement réel par remoteId.
+    const newId = 'r'+nextId();
+    RESTOS.push({id:newId, name, address, postalCode, city, currency, remoteId: data.restaurant.id});
+    ensureRestoData(newId);
+    state.resto = newId;
+    loadRestoData(newId);
+
+    if(ACCOUNT && !CREDENTIALS.patron.username){
+      const derived = ACCOUNT.email.split('@')[0].toLowerCase().replace(/[^a-z0-9.]/g,'') || 'patron';
+      CREDENTIALS.patron.username = derived;
+      CREDENTIALS.patron.password = generateDefaultPassword(derived);
+      if(!NOTIF_STATE.patron.email) NOTIF_STATE.patron.email = ACCOUNT.email;
+      toast('Établissement créé — identifiant équipe : ' + CREDENTIALS.patron.username);
+    } else {
+      toast('Établissement créé — bienvenue !');
+    }
+    goToSite('team-login');
+  } catch(err){
+    state.accountError = err.message;
+    render();
+  }
+}
+
+/* ============================================================
+   ÉCRAN DE CONNEXION
+============================================================ */
+function roleIcon(r){ return {patron:I.building, manager:I.dash, cuisine:I.chef, salle:I.tray}[r]; }
+function renderLoginScreen(){
+  const step = state.loginStep;
+  const employeeId = state.loginSelectedEmployeeId;
+  const selectedMember = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  const stepName = selectedMember ? selectedMember.name : 'Marc Petit';
+  const stepRoleLabel = selectedMember ? selectedMember.role : 'Patron';
+  const stepPhoto = photoFor(state.loginSelectedRole || 'patron', employeeId);
+  const stepUsername = selectedMember ? selectedMember.username : CREDENTIALS.patron.username;
+  const stepPassword = selectedMember ? selectedMember.password : CREDENTIALS.patron.password;
+  const activeResto = RESTOS.find(r=>r.id===state.resto) || RESTOS[0] || {name:'Mon restaurant'};
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <h1>Mise &amp; Sûre</h1>
+        <p>La gestion de restaurant, sans friction. Un espace dédié pour chaque rôle, du service jusqu'au bureau.</p>
+        <div class="login-feature">${I.check} Commandez vos produits en quelques taps</div>
+        <div class="login-feature">${I.check} Notifications par email sécurisées</div>
+        <div class="login-feature">${I.check} Un identifiant et un mot de passe pour chaque personne</div>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner">
+          <div class="login-restaurant-tag">${iconXs(I.building)} ${activeResto.name}</div>
+          ${step==='choose' ? `
+            <div class="login-step-label">Étape 1 sur 2 — Qui êtes-vous ?</div>
+            <div class="login-person-list">
+              <button class="login-person-row" onclick="chooseLoginPerson('patron', null)">
+                <div class="avatar">${avatarInner(CREDENTIALS.patron.photoDataUrl, 'Marc Petit')}</div>
+                <div><div class="login-person-name">Marc Petit</div><div class="login-person-role">Patron</div></div>
+              </button>
+              ${TEAM.map(t=>`
+                <button class="login-person-row" onclick="chooseLoginPerson('${identityForTeamRole(t.role)}','${t.id}')">
+                  <div class="avatar">${avatarInner(t.photoDataUrl, t.name)}</div>
+                  <div><div class="login-person-name">${t.name}</div><div class="login-person-role">${t.role}</div></div>
+                </button>
+              `).join('')}
+            </div>
+            <div class="login-hint">Chaque personne a son identifiant et son mot de passe.</div>
+            ${ACCOUNT ? `<div class="login-hint" style="margin-top:10px;">Connecté avec le compte ${ACCOUNT.email} · <a href="#" onclick="signOutAccount();return false;" style="text-decoration:underline;color:inherit;">se déconnecter du compte</a></div>` : ''}
+          ` : `
+            <button class="back-link" onclick="backToChooseRole()">← Choisir un autre profil</button>
+            <div class="login-identity">
+              <div class="avatar">${avatarInner(stepPhoto, stepName)}</div>
+              <div>
+                <div style="font-weight:700;font-size:14.5px;">${stepName}</div>
+                <div class="small muted">${stepRoleLabel}</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Nom d'utilisateur</label>
+              <input id="login-username" type="text" value="${stepUsername}" onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
+            </div>
+            <div class="field">
+              <label>Mot de passe</label>
+              <div class="login-password-wrap">
+                <input id="login-password" type="password" value="${stepPassword}" onkeydown="if(event.key==='Enter')attemptLogin()">
+                <button type="button" class="pw-toggle" onclick="togglePasswordVisibility()"><span id="pw-toggle-icon">${iconSm(I.eye)}</span></button>
+              </div>
+            </div>
+            ${state.loginError ? `<div class="login-error">${state.loginError}</div>` : ''}
+            <button class="btn btn-primary btn-block" onclick="attemptLogin()">${iconSm(I.lock)} Se connecter</button>
+            <div class="login-hint">Champs pré-remplis pour cette démonstration.</div>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+}
+function renderBanner(){
+  if(state.identity==='patron' && state.role!==state.identity){
+    const smallWarnIcon = I.warn.replace('width="24"','width="10"').replace('height="24"','height="10"');
+    return `<div class="demo-banner">${smallWarnIcon} <span><b>Aperçu de l'interface ${ROLE_META[state.role].label}</b> — les actions sont limitées aux permissions de ce rôle. <a href="#" onclick="backToOwnSpace();return false;" style="color:#fff;text-decoration:underline;">Revenir à mon espace Patron</a></span></div>`;
+  }
+  return '';
+}
+
+/* ============================================================
+   RENDER PRINCIPAL
+============================================================ */
+function render(){
+  document.documentElement.classList.toggle('theme-dark', state.theme==='dark');
+  if(state.site==='marketing'){
+    document.title = 'Mise & Sûre — la gestion de restaurant, sans friction';
+    document.getElementById('app').innerHTML = renderMarketingPage();
+    return;
+  }
+  if(state.site==='pricing'){
+    document.title = 'Tarifs — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderPricingPage();
+    return;
+  }
+  if(state.site==='payment'){
+    document.title = 'Paiement — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderPaymentPage();
+    return;
+  }
+  if(state.site==='account-auth'){
+    document.title = 'Connexion — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderAccountAuthPage();
+    return;
+  }
+  if(state.site==='verify-email'){
+    document.title = 'Vérification — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderVerifyEmailPage();
+    return;
+  }
+  if(state.site==='reset-password'){
+    document.title = 'Réinitialisation — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderResetPasswordPage();
+    return;
+  }
+  if(state.site==='setup-restaurant'){
+    document.title = 'Créer votre établissement — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderSetupRestaurantPage();
+    return;
+  }
+  if(!state.loggedIn){
+    document.title = 'Mise & Sûre — plateforme de gestion pour restaurants';
+    document.getElementById('app').innerHTML = renderLoginScreen();
+    return;
+  }
+  destroyCharts();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(resto) document.title = resto.name + ' — Mise & Sûre';
+  const {sidebarHtml, topbarHtml} = renderShell();
+  document.getElementById('app').innerHTML = `
+    ${sidebarHtml}
+    <div class="main">
+      ${topbarHtml}
+      ${renderBanner()}
+      <div class="content">${renderContent()}</div>
+    </div>
+  `;
+  requestAnimationFrame(drawCharts);
+}
+
+async function checkExistingSession(){
+  // Si on revient d'une connexion Google/Apple, le jeton arrive dans l'URL — on le récupère
+  // et on nettoie l'adresse tout de suite après, pour ne pas le laisser traîner visible.
+  const urlParams = new URLSearchParams(window.location.search);
+  const tokenFromUrl = urlParams.get('token');
+  const oauthError = urlParams.get('oauth') === 'error';
+  if(tokenFromUrl){
+    AUTH_TOKEN = tokenFromUrl;
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  if(oauthError){
+    toast("La connexion via Google/Apple a échoué. Merci de réessayer.", 'alert');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  try{
+    const meData = await apiRequest('/api/auth/me');
+    ACCOUNT = meData.user;
+    const restosData = await apiRequest('/api/restaurants');
+    state.site = (restosData.restaurants && restosData.restaurants.length) ? 'team-login' : 'setup-restaurant';
+  } catch(err){
+    // Pas de session active : reste sur 'marketing' (valeur par défaut de state.site), c'est normal.
+  }
+  render();
+}
+checkExistingSession();
+</script>
+</body>
+</html>
