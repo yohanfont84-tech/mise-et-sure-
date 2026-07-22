@@ -1036,6 +1036,35 @@ async function signOutAccount(){
   goToSite('marketing');
 }
 
+/* ============================================================
+   PANNEAU ADMINISTRATEUR — réservé au créateur de la plateforme (compte marqué is_admin en
+   base de données). Permet d'accorder ou retirer un accès gratuit à n'importe quel compte,
+   indépendamment de tout paiement réel via Stripe.
+============================================================ */
+async function goToAdminPage(){
+  state.adminUsers = null;
+  state.adminError = null;
+  goToSite('admin');
+  try{
+    const data = await apiRequest('/api/admin/users');
+    state.adminUsers = data.users;
+  } catch(err){
+    state.adminError = err.message;
+  }
+  render();
+}
+async function toggleFreeAccess(userId, currentlyGranted){
+  try{
+    await apiRequest(`/api/admin/users/${userId}/access`, { method:'PATCH', body:{ granted: !currentlyGranted } });
+    toast(!currentlyGranted ? 'Accès gratuit accordé' : 'Accès gratuit retiré');
+    const data = await apiRequest('/api/admin/users');
+    state.adminUsers = data.users;
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+
 function chooseLoginPerson(identity, employeeId){
   state.loginSelectedRole = identity;
   state.loginSelectedEmployeeId = employeeId || null;
@@ -3248,6 +3277,43 @@ function renderPricingPage(){
     </div>
   `;
 }
+function renderAdminPage(){
+  const rows = state.adminUsers;
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <h1>Mise &amp; Sûre</h1>
+        <p>Panneau administrateur — accordez un accès gratuit à n'importe quel compte, sans passer par un paiement Stripe.</p>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner" style="max-width:640px;">
+          <button class="back-link" onclick="goToSite('team-login')">← Retour</button>
+          <div class="login-step-label">Comptes de la plateforme</div>
+          ${state.adminError ? `<div class="login-error">${state.adminError}</div>` : ''}
+          ${!rows ? `<div class="small muted">Chargement…</div>` : rows.length===0 ? `<div class="small muted">Aucun compte pour l'instant.</div>` : `
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              ${rows.map(u => `
+                <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                  <div style="min-width:0;">
+                    <div style="font-weight:700;font-size:14px;">${u.first_name||''} ${u.last_name||''} ${u.is_admin?'· <span class="small muted">(admin)</span>':''}</div>
+                    <div class="small muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${u.email}</div>
+                    <div class="small muted">Forfait ${u.plan||'—'} · ${u.stripe_subscription_status==='active' ? 'Abonnement Stripe actif' : (u.free_access_granted ? 'Accès gratuit accordé' : 'Aucun accès payant actif')}</div>
+                  </div>
+                  ${u.is_admin ? '' : `
+                    <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="toggleFreeAccess(${u.id}, ${u.free_access_granted})">
+                      ${u.free_access_granted ? 'Retirer cet accès gratuit' : 'Accorder un accès gratuit'}
+                    </button>
+                  `}
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+}
 function renderAccountAuthPage(){
   const mode = state.authMode;
   const plan = PLANS.find(p=>p.id===state.selectedPlan);
@@ -3474,6 +3540,7 @@ function renderLoginScreen(){
             </div>
             <div class="login-hint">Chaque personne a son identifiant et son mot de passe.</div>
             ${ACCOUNT ? `<div class="login-hint" style="margin-top:10px;">Connecté avec le compte ${ACCOUNT.email} · <a href="#" onclick="signOutAccount();return false;" style="text-decoration:underline;color:inherit;">se déconnecter du compte</a></div>` : ''}
+            ${ACCOUNT && ACCOUNT.is_admin ? `<div class="login-hint" style="margin-top:6px;"><a href="#" onclick="goToAdminPage();return false;" style="text-decoration:underline;color:inherit;">Panneau administrateur</a></div>` : ''}
           ` : `
             <button class="back-link" onclick="backToChooseRole()">← Choisir un autre profil</button>
             <div class="login-identity">
@@ -3558,6 +3625,11 @@ function render(){
   if(state.site==='account-auth'){
     document.title = 'Connexion — Mise & Sûre';
     document.getElementById('app').innerHTML = renderAccountAuthPage();
+    return;
+  }
+  if(state.site==='admin'){
+    document.title = 'Administration — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderAdminPage();
     return;
   }
   if(state.site==='verify-email'){
