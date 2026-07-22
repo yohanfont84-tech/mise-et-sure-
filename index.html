@@ -263,7 +263,9 @@ tr.tr-hover:hover{background:var(--paper);}
 .login-password-wrap{position:relative;}
 .login-password-wrap input{padding-right:42px;}
 .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--muted);padding:6px;display:flex;}
+.pw-toggle svg{width:16px;height:16px;flex-shrink:0;}
 .login-error{color:var(--urgent);font-size:12.5px;margin:-6px 0 14px 0;}
+.field input.field-error, .field select.field-error{border-color:var(--urgent)!important;}
 .login-hint{font-size:11.5px;color:var(--muted-2);margin-top:10px;text-align:center;}
 .back-link{background:none;border:none;color:var(--muted);font-size:12.5px;font-weight:600;padding:0;margin-bottom:18px;display:inline-flex;align-items:center;gap:5px;}
 @media(max-width:860px){
@@ -845,20 +847,45 @@ function goToLogin(){
   goToSite('account-auth');
 }
 async function attemptAccountLogin(){
+  clearFormErrors('account-error-slot', ['acc-email','acc-password']);
   const email = (document.getElementById('acc-email')||{}).value || '';
   const pass = (document.getElementById('acc-password')||{}).value || '';
-  if(!email || !pass){ state.accountError = 'Email et mot de passe requis.'; render(); return; }
+  if(!email || !pass){
+    showFormError('account-error-slot', 'Email et mot de passe requis.', [!email && 'acc-email', !pass && 'acc-password'].filter(Boolean));
+    return;
+  }
   try{
     const data = await apiRequest('/api/auth/login', { method:'POST', body:{ email, password: pass } });
     ACCOUNT = data.user;
     goToSite('team-login');
   } catch(err){
-    state.accountError = err.message;
-    render();
+    showFormError('account-error-slot', err.message, ['acc-email','acc-password']);
   }
 }
 function isValidEmail(email){
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/* ============================================================
+   VALIDATION SANS TOUT EFFACER — quand un champ est invalide, on l'entoure en rouge et on
+   affiche le message d'erreur SANS redessiner toute la page (ce qui effacerait ce que la
+   personne a déjà tapé dans les autres champs, valides ou non).
+============================================================ */
+function showFormError(errorSlotId, message, invalidFieldIds){
+  const slot = document.getElementById(errorSlotId);
+  if(slot){ slot.textContent = message; slot.style.display = 'block'; }
+  (invalidFieldIds||[]).forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.classList.add('field-error');
+  });
+}
+function clearFormErrors(errorSlotId, fieldIds){
+  const slot = document.getElementById(errorSlotId);
+  if(slot){ slot.textContent = ''; slot.style.display = 'none'; }
+  (fieldIds||[]).forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.classList.remove('field-error');
+  });
 }
 
 /* ============================================================
@@ -900,26 +927,27 @@ async function wireAddressAutocomplete(addressId, datalistId){
   }, 300);
 }
 async function attemptAccountSignup(){
+  const allFields = ['acc-firstname','acc-lastname','acc-phone','acc-email','acc-password','acc-password2'];
+  clearFormErrors('account-error-slot', allFields);
   const firstName = ((document.getElementById('acc-firstname')||{}).value || '').trim();
   const lastName = ((document.getElementById('acc-lastname')||{}).value || '').trim();
   const phone = ((document.getElementById('acc-phone')||{}).value || '').trim();
   const email = ((document.getElementById('acc-email')||{}).value || '').trim();
   const pass = (document.getElementById('acc-password')||{}).value || '';
   const pass2 = (document.getElementById('acc-password2')||{}).value || '';
-  if(!firstName){ state.accountError = 'Merci de renseigner votre prénom.'; render(); return; }
-  if(!lastName){ state.accountError = 'Merci de renseigner votre nom.'; render(); return; }
-  if(!phone || !/^[\d+\s.()-]{6,}$/.test(phone)){ state.accountError = 'Merci de renseigner un numéro de téléphone valide.'; render(); return; }
-  if(!email || !isValidEmail(email)){ state.accountError = 'Merci de saisir une adresse email valide (ex : vous@domaine.fr).'; render(); return; }
-  if(pass.length<8){ state.accountError = 'Mot de passe trop court (8 caractères minimum).'; render(); return; }
-  if(pass!==pass2){ state.accountError = 'Les mots de passe ne correspondent pas.'; render(); return; }
+  if(!firstName){ showFormError('account-error-slot', 'Merci de renseigner votre prénom.', ['acc-firstname']); return; }
+  if(!lastName){ showFormError('account-error-slot', 'Merci de renseigner votre nom.', ['acc-lastname']); return; }
+  if(!phone || !/^[\d+\s.()-]{6,}$/.test(phone)){ showFormError('account-error-slot', 'Merci de renseigner un numéro de téléphone valide.', ['acc-phone']); return; }
+  if(!email || !isValidEmail(email)){ showFormError('account-error-slot', 'Merci de saisir une adresse email valide (ex : vous@domaine.fr).', ['acc-email']); return; }
+  if(pass.length<8){ showFormError('account-error-slot', 'Mot de passe trop court (8 caractères minimum).', ['acc-password']); return; }
+  if(pass!==pass2){ showFormError('account-error-slot', 'Les mots de passe ne correspondent pas.', ['acc-password','acc-password2']); return; }
   try{
     await apiRequest('/api/auth/signup', { method:'POST', body:{ firstName, lastName, phone, email, password: pass, plan: state.selectedPlan || 'essentiel', billingCycle: state.billingCycle } });
     state.pendingSignup = { firstName, lastName, phone, email, plan: state.selectedPlan || 'essentiel', billing: state.billingCycle };
     toast('Code de vérification envoyé à ' + email);
     goToSite('verify-email');
   } catch(err){
-    state.accountError = err.message;
-    render();
+    showFormError('account-error-slot', err.message, allFields);
   }
 }
 async function resendVerificationCode(){
@@ -932,8 +960,9 @@ async function resendVerificationCode(){
   }
 }
 async function attemptVerifyEmail(){
+  clearFormErrors('verify-error-slot', ['verify-code']);
   const entered = ((document.getElementById('verify-code')||{}).value || '').trim();
-  if(!entered){ state.verifyError = 'Merci de saisir le code reçu par email.'; render(); return; }
+  if(!entered){ showFormError('verify-error-slot', 'Merci de saisir le code reçu par email.', ['verify-code']); return; }
   try{
     const data = await apiRequest('/api/auth/verify-email', { method:'POST', body:{ email: state.pendingSignup.email, code: entered } });
     ACCOUNT = data.user;
@@ -942,8 +971,7 @@ async function attemptVerifyEmail(){
     toast('Email vérifié — bienvenue sur Mise & Sûre');
     await proceedToPaymentOrApp();
   } catch(err){
-    state.verifyError = err.message;
-    render();
+    showFormError('verify-error-slot', err.message, ['verify-code']);
   }
 }
 function cancelVerification(){
@@ -958,18 +986,18 @@ function goToForgotPassword(){
   goToSite('reset-password');
 }
 async function requestResetCode(){
+  clearFormErrors('reset-error-slot', ['reset-email']);
   const email = ((document.getElementById('reset-email')||{}).value || '').trim();
-  if(!email || !isValidEmail(email)){ state.resetError = 'Merci de saisir une adresse email valide.'; render(); return; }
+  if(!email || !isValidEmail(email)){ showFormError('reset-error-slot', 'Merci de saisir une adresse email valide.', ['reset-email']); return; }
   try{
     await apiRequest('/api/auth/forgot-password', { method:'POST', body:{ email } });
     state.resetEmail = email;
     state.resetStep = 'reset';
     state.resetError = null;
     toast('Si ce compte existe, un code a été envoyé à ' + email);
-    render();
+    render(); // navigation légitime vers l'étape suivante (formulaire différent)
   } catch(err){
-    state.resetError = err.message;
-    render();
+    showFormError('reset-error-slot', err.message, ['reset-email']);
   }
 }
 async function resendResetCode(){
@@ -981,12 +1009,14 @@ async function resendResetCode(){
   }
 }
 async function confirmPasswordReset(){
+  const fieldIds = ['reset-code','reset-pass1','reset-pass2'];
+  clearFormErrors('reset-error-slot', fieldIds);
   const code = ((document.getElementById('reset-code')||{}).value || '').trim();
   const pass = (document.getElementById('reset-pass1')||{}).value || '';
   const pass2 = (document.getElementById('reset-pass2')||{}).value || '';
-  if(!code){ state.resetError = 'Merci de saisir le code reçu par email.'; render(); return; }
-  if(pass.length<8){ state.resetError = 'Mot de passe trop court (8 caractères minimum).'; render(); return; }
-  if(pass!==pass2){ state.resetError = 'Les mots de passe ne correspondent pas.'; render(); return; }
+  if(!code){ showFormError('reset-error-slot', 'Merci de saisir le code reçu par email.', ['reset-code']); return; }
+  if(pass.length<8){ showFormError('reset-error-slot', 'Mot de passe trop court (8 caractères minimum).', ['reset-pass1']); return; }
+  if(pass!==pass2){ showFormError('reset-error-slot', 'Les mots de passe ne correspondent pas.', ['reset-pass1','reset-pass2']); return; }
   try{
     await apiRequest('/api/auth/reset-password', { method:'POST', body:{ email: state.resetEmail, code, newPassword: pass } });
     toast('Mot de passe réinitialisé — connectez-vous avec votre nouveau mot de passe');
@@ -996,8 +1026,7 @@ async function confirmPasswordReset(){
     state.authMode = 'login';
     goToSite('account-auth');
   } catch(err){
-    state.resetError = err.message;
-    render();
+    showFormError('reset-error-slot', err.message, fieldIds);
   }
 }
 async function signOutAccount(){
@@ -1040,8 +1069,7 @@ function attemptLogin(){
   if(expectedUser && expectedPass && userVal===expectedUser && passVal===expectedPass){
     login(role, employeeId);
   } else {
-    state.loginError = "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.";
-    render();
+    showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
   }
 }
 function togglePasswordVisibility(inputId, iconId){
@@ -3256,7 +3284,7 @@ function renderAccountAuthPage(){
           ${mode==='login' ? `<div class="small muted" style="margin:-8px 0 14px 0;">Pas encore de compte ? <a href="#" onclick="setAuthMode('signup');return false;" style="text-decoration:underline;color:inherit;">Créez-en un</a>.</div>` : ''}
           ${mode==='login' ? `<div style="text-align:right;margin:-8px 0 14px 0;"><a href="#" onclick="goToForgotPassword();return false;" class="small muted" style="text-decoration:underline;">Mot de passe oublié ?</a></div>` : ''}
           ${mode==='signup' ? `<div class="field"><label>Confirmer le mot de passe</label>${passwordFieldWithToggle('acc-password2')}</div>` : ''}
-          ${state.accountError ? `<div class="login-error">${state.accountError}</div>` : ''}
+          <div id="account-error-slot" class="login-error" style="${state.accountError?'':'display:none;'}">${state.accountError||''}</div>
           <button class="btn btn-primary btn-block" onclick="${mode==='login'?'attemptAccountLogin()':'attemptAccountSignup()'}">${mode==='login'?'Se connecter':'Créer mon compte'}</button>
           <div class="divider"></div>
           <a href="${API_URL}/api/auth/google" class="btn btn-ghost btn-block">${iconSm(I.globe)} Continuer avec Google</a>
@@ -3288,7 +3316,7 @@ function renderVerifyEmailPage(){
             <label>Code de vérification</label>
             <input id="verify-code" placeholder="------" inputmode="numeric" maxlength="6" style="letter-spacing:6px;font-size:19px;text-align:center;font-family:'IBM Plex Mono',monospace;" onkeydown="if(event.key==='Enter')attemptVerifyEmail()">
           </div>
-          ${state.verifyError ? `<div class="login-error">${state.verifyError}</div>` : ''}
+          <div id="verify-error-slot" class="login-error" style="${state.verifyError?'':'display:none;'}">${state.verifyError||''}</div>
           <button class="btn btn-primary btn-block" onclick="attemptVerifyEmail()">${iconSm(I.check)} Vérifier et continuer</button>
           <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="resendVerificationCode()">Renvoyer le code</button>
           <div class="login-hint">Un vrai code a été envoyé par email — vérifiez votre boîte de réception (et les spams).</div>
@@ -3316,7 +3344,7 @@ function renderResetPasswordPage(){
             <div class="login-step-label">Mot de passe oublié</div>
             <p class="small muted" style="margin-bottom:18px;">Indiquez l'email de votre compte : nous vous enverrons un code de réinitialisation.</p>
             <div class="field"><label>Email</label><input id="reset-email" type="email" placeholder="vous@restaurant.fr" onkeydown="if(event.key==='Enter')requestResetCode()"></div>
-            ${state.resetError ? `<div class="login-error">${state.resetError}</div>` : ''}
+            <div id="reset-error-slot" class="login-error" style="${state.resetError?'':'display:none;'}">${state.resetError||''}</div>
             <button class="btn btn-primary btn-block" onclick="requestResetCode()">Envoyer le code</button>
           ` : `
             <div class="login-step-label">Nouveau mot de passe</div>
@@ -3327,7 +3355,7 @@ function renderResetPasswordPage(){
             </div>
             <div class="field"><label>Nouveau mot de passe</label>${passwordFieldWithToggle('reset-pass1')}</div>
             <div class="field"><label>Confirmer le mot de passe</label>${passwordFieldWithToggle('reset-pass2')}</div>
-            ${state.resetError ? `<div class="login-error">${state.resetError}</div>` : ''}
+            <div id="reset-error-slot" class="login-error" style="${state.resetError?'':'display:none;'}">${state.resetError||''}</div>
             <button class="btn btn-primary btn-block" onclick="confirmPasswordReset()">Réinitialiser le mot de passe</button>
             <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="resendResetCode()">Renvoyer le code</button>
           `}
@@ -3359,7 +3387,7 @@ function renderSetupRestaurantPage(){
             <div class="field"><label>Ville</label><input id="setup-city" placeholder="Lyon"></div>
           </div>
           <div class="field"><label>Devise</label><select id="setup-currency"><option>EUR</option><option>CHF</option><option>USD</option></select></div>
-          ${state.accountError ? `<div class="login-error">${state.accountError}</div>` : ''}
+          <div id="setup-error-slot" class="login-error" style="${state.accountError?'':'display:none;'}">${state.accountError||''}</div>
           <button class="btn btn-primary btn-block" onclick="completeSetupRestaurant()">Créer mon établissement</button>
         </div>
       </div>
@@ -3367,8 +3395,10 @@ function renderSetupRestaurantPage(){
   `;
 }
 async function completeSetupRestaurant(){
+  const fieldIds = ['setup-name','setup-address','setup-postal','setup-city','setup-currency'];
+  clearFormErrors('setup-error-slot', fieldIds);
   const name = ((document.getElementById('setup-name')||{}).value || '').trim();
-  if(!name){ state.accountError = "Le nom de l'établissement est requis."; render(); return; }
+  if(!name){ showFormError('setup-error-slot', "Le nom de l'établissement est requis.", ['setup-name']); return; }
   const address = ((document.getElementById('setup-address')||{}).value || '').trim();
   const postalCode = ((document.getElementById('setup-postal')||{}).value || '').trim();
   const city = ((document.getElementById('setup-city')||{}).value || '').trim() || '—';
@@ -3397,8 +3427,7 @@ async function completeSetupRestaurant(){
     }
     goToSite('team-login');
   } catch(err){
-    state.accountError = err.message;
-    render();
+    showFormError('setup-error-slot', err.message, fieldIds);
   }
 }
 
@@ -3465,7 +3494,7 @@ function renderLoginScreen(){
                 <button type="button" class="pw-toggle" onclick="togglePasswordVisibility('login-password','login-password-toggle-icon')"><span id="login-password-toggle-icon">${iconSm(I.eye)}</span></button>
               </div>
             </div>
-            ${state.loginError ? `<div class="login-error">${state.loginError}</div>` : ''}
+            <div id="login-error-slot" class="login-error" style="${state.loginError?'':'display:none;'}">${state.loginError||''}</div>
             <button class="btn btn-primary btn-block" onclick="attemptLogin()">${iconSm(I.lock)} Se connecter</button>
             ${(!selectedMember && ACCOUNT) ? `<div style="text-align:center;margin-top:10px;"><a href="#" onclick="openRecoverPatronCredentialsModal();return false;" class="small muted" style="text-decoration:underline;">Identifiant ou mot de passe oublié ?</a></div>` : ''}
             <div class="login-hint">Champs pré-remplis pour cette démonstration.</div>
