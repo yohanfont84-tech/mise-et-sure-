@@ -3801,6 +3801,25 @@ async function checkExistingSession(){
         }
       }
       state.site = (restosData.restaurants && restosData.restaurants.length) ? 'team-login' : 'setup-restaurant';
+      if(restosData.restaurants && restosData.restaurants.length){
+        // Le compte a déjà un ou plusieurs établissements réels côté serveur (créés avant ce
+        // rechargement de page — après un paiement, par exemple) : on les recharge vraiment
+        // dans l'application, plutôt que de repartir d'une liste vide comme si tout avait
+        // disparu. Le catalogue/équipe/commandes restent pour l'instant en mémoire locale (voir
+        // note plus haut), reliés à l'établissement réel par remoteId.
+        RESTOS = restosData.restaurants.map(r => ({
+          id: 'r'+nextId(),
+          name: r.name,
+          address: r.address,
+          postalCode: r.postal_code,
+          city: r.city,
+          currency: r.currency,
+          remoteId: r.id,
+        }));
+        RESTOS.forEach(r => ensureRestoData(r.id));
+        state.resto = RESTOS[0].id;
+        loadRestoData(RESTOS[0].id);
+      }
     } catch(restoErr){
       if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
         // Compte connecté mais pas encore payé : on le laisse sur la page d'accueil, il ira
