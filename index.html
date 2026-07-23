@@ -624,7 +624,7 @@ function basketTotal(supplierId){
     return a + (p ? li.qty*p.price : 0);
   }, 0);
 }
-function sendBasket(supplierId){
+async function sendBasket(supplierId){
   if(state.role!=='patron'){ toast('Seul le patron peut envoyer une commande au fournisseur','alert'); return; }
   const items = BASKETS[supplierId];
   if(!items || items.length===0) return;
@@ -635,14 +635,28 @@ function sendBasket(supplierId){
     if(p){ parts.push(`${p.name} × ${li.qty} ${p.unit}`); amount += li.qty*p.price; }
   });
   const now = new Date();
-  ORDERS.unshift({
-    id:'CMD-'+nextId(), supplier:supplierId, items: parts.join(', '),
-    lineItems: items.map(li=>({productId:li.productId, qty:li.qty})),
-    amount: Math.round(amount*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now
-  });
-  delete BASKETS[supplierId];
-  toast('Commande envoyée pour validation — '+supplierName(supplierId));
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const supplierObj = SUPPLIERS.find(s=>s.id===supplierId);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
+      method:'POST',
+      body:{
+        supplierId: supplierObj?supplierObj.remoteId:null, items: parts.join(', '),
+        lineItems: items.map(li=>({productId:li.productId, qty:li.qty})),
+        amount: Math.round(amount*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now),
+      },
+    });
+    ORDERS.unshift({
+      id:'CMD-'+nextId(), remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
+      lineItems: items.map(li=>({productId:li.productId, qty:li.qty})),
+      amount: Math.round(amount*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now
+    });
+    delete BASKETS[supplierId];
+    toast('Commande envoyée pour validation — '+supplierName(supplierId));
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 function fmtDateShort(d){ return d.getDate()+' '+MONTHS_SHORT[d.getMonth()]; }
@@ -1937,6 +1951,100 @@ async function syncTeamFromServer(localId){
     // telle quelle — sans bloquer le reste de l'application.
   }
 }
+async function syncSuppliersFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers`);
+    const d = ensureRestoData(localId);
+    d.suppliers = data.suppliers.map(s => ({
+      id: 'f'+s.id, remoteId: s.id, name: s.name, cat: s.category, delay: s.delay,
+      address: s.address, email: s.email, reliability: 90, spend: 0,
+    }));
+    if(state.resto === localId) SUPPLIERS = d.suppliers;
+    render();
+  } catch(err){
+    // Idem : on laisse la liste locale telle quelle en cas d'erreur (ex : pas encore payé).
+  }
+}
+async function syncProductsFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`);
+    const d = ensureRestoData(localId);
+    d.products = data.products.map(p => {
+      const localSupplier = d.suppliers.find(s => s.remoteId === p.supplier_id);
+      return {
+        id: 'p'+p.id, remoteId: p.id, name: p.name, unit: p.unit, price: parseFloat(p.price),
+        qtyCommande: parseFloat(p.qty_commande), supplier: localSupplier ? localSupplier.id : null,
+        cat: p.category, department: p.department,
+      };
+    });
+    if(state.resto === localId) PRODUCTS = d.products;
+    render();
+  } catch(err){
+    // Idem.
+  }
+}
+async function syncOrdersFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`);
+    const d = ensureRestoData(localId);
+    d.orders = data.orders.map(o => {
+      const localSupplier = o.supplier_id ? d.suppliers.find(s => s.remoteId === o.supplier_id) : null;
+      return {
+        id: 'CMD-'+o.id, remoteId: o.id, supplier: localSupplier ? localSupplier.id : null,
+        items: o.items, lineItems: o.line_items || [], amount: parseFloat(o.amount), status: o.status,
+        date: o.order_date, createdAt: new Date(o.created_at), custom: o.is_custom,
+      };
+    });
+    if(state.resto === localId) ORDERS = d.orders;
+    render();
+  } catch(err){}
+}
+async function syncRequestsFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/requests`);
+    const d = ensureRestoData(localId);
+    d.requests = data.requests.map(r => ({
+      id: 'D-'+r.id, remoteId: r.id, from: r.from_dept, by: r.by_name, item: r.item_name,
+      unit: r.unit, qty: r.qty ? parseFloat(r.qty) : null, urgent: r.urgent, note: r.note,
+      status: r.status, time: fmtTime(new Date(r.created_at)), createdAt: new Date(r.created_at),
+    }));
+    if(state.resto === localId) REQUESTS = d.requests;
+    render();
+  } catch(err){}
+}
+async function syncCustomRequestsFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/custom-requests`);
+    const d = ensureRestoData(localId);
+    d.customRequests = data.customRequests.map(cr => ({
+      id: 'P-'+cr.id, remoteId: cr.id, from: cr.from_role, by: cr.by_name, itemName: cr.item_name,
+      note: cr.note, status: cr.status, time: fmtTime(new Date(cr.created_at)), createdAt: new Date(cr.created_at),
+    }));
+    if(state.resto === localId) CUSTOM_REQUESTS = d.customRequests;
+    render();
+  } catch(err){}
+}
+async function syncRestoOperationalData(localId){
+  // Les fournisseurs doivent être rechargés AVANT les produits, puisque chaque produit se relie
+  // à un fournisseur déjà chargé localement. Idem pour les commandes, qui se relient aussi à un
+  // fournisseur déjà chargé.
+  await syncSuppliersFromServer(localId);
+  await syncProductsFromServer(localId);
+  await syncOrdersFromServer(localId);
+  await syncRequestsFromServer(localId);
+  await syncCustomRequestsFromServer(localId);
+  await syncTeamFromServer(localId);
+}
 function switchResto(id){
   state.resto = id;
   loadRestoData(id);
@@ -1944,7 +2052,7 @@ function switchResto(id){
   state.orderFilter = {dept:'tous', supplier:'tous', month:'tous', year:'tous'};
   render();
   toast('Établissement changé : ' + RESTOS.find(r=>r.id===id).name);
-  syncTeamFromServer(id);
+  syncRestoOperationalData(id);
 }
 function deleteResto(id){
   if(RESTOS.length<=1){ toast('Impossible de supprimer le dernier établissement','alert'); return; }
@@ -2370,29 +2478,47 @@ function viewSalleAccueil(){
 /* ============================================================
    ACTIONS — commandes / demandes / livraisons
 ============================================================ */
-function validateOrder(id){
+async function validateOrder(id){
   if(!requirePerm(['patron'], 'Seul le patron peut valider une commande')) return;
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
-  o.status = 'validee';
-  toast('Commande '+id+' validée');
-  notifyByEmail('manager', `commande ${id} validée par le patron — prête à réceptionner.`);
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, { method:'PATCH', body:{ status:'validee' } });
+    o.status = 'validee';
+    toast('Commande '+id+' validée');
+    notifyByEmail('manager', `commande ${id} validée par le patron — prête à réceptionner.`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
-function refuseOrder(id){
+async function refuseOrder(id){
   if(!requirePerm(['patron'], 'Seul le patron peut refuser une commande')) return;
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
-  o.status = 'refusee';
-  toast('Commande '+id+' refusée', 'alert');
-  notifyByEmail('manager', `commande ${id} refusée par le patron.`);
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
+    o.status = 'refusee';
+    toast('Commande '+id+' refusée', 'alert');
+    notifyByEmail('manager', `commande ${id} refusée par le patron.`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
-function deliverOrder(id){
+async function deliverOrder(id){
   if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
   if(o.status!=='validee'){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
-  o.status = 'livree';
-  toast('Livraison réceptionnée — ajoutée à votre historique d\u2019achats');
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, { method:'PATCH', body:{ status:'livree' } });
+    o.status = 'livree';
+    toast('Livraison réceptionnée — ajoutée à votre historique d\u2019achats');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function deleteOrder(id){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
@@ -2406,13 +2532,20 @@ function deleteOrder(id){
     </div>
   `);
 }
-function confirmDeleteOrder(id){
+async function confirmDeleteOrder(id){
   const idx = ORDERS.findIndex(o=>o.id===id);
   if(idx===-1) return;
-  ORDERS.splice(idx,1);
-  closeModal();
-  toast('Commande supprimée');
-  render();
+  const o = ORDERS[idx];
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, { method:'DELETE' });
+    ORDERS.splice(idx,1);
+    closeModal();
+    toast('Commande supprimée');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function recomputeOrderTotals(o){
   let amount = 0;
@@ -2485,7 +2618,7 @@ function removeOrderLine(orderId, idx){
   render();
   openEditOrderModal(orderId);
 }
-function saveOrderEdits(orderId){
+async function saveOrderEdits(orderId){
   const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
   if(o.status!=='en_attente_validation'){ toast('Cette commande ne peut plus être modifiée','alert'); return; }
   (o.lineItems||[]).forEach((li,idx)=>{
@@ -2496,9 +2629,17 @@ function saveOrderEdits(orderId){
     }
   });
   recomputeOrderTotals(o);
-  closeModal();
-  toast('Commande mise à jour');
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, {
+      method:'PATCH', body:{ items:o.items, lineItems:o.lineItems, amount:o.amount },
+    });
+    closeModal();
+    toast('Commande mise à jour');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function openApproveDemandeModal(id){
   const r = REQUESTS.find(x=>x.id===id); if(!r) return;
@@ -2514,33 +2655,52 @@ function openApproveDemandeModal(id){
     <button class="btn btn-primary btn-block" onclick="confirmValidateDemande('${id}')">${iconXs(I.check)} Approuver et commander</button>
   `);
 }
-function confirmValidateDemande(id){
+async function confirmValidateDemande(id){
   const r = REQUESTS.find(x=>x.id===id); if(!r) return;
   if(!canActOnDemande(state.role, r)){ toast(state.role==='manager' ? "Les demandes de la cuisine sont validées par le patron" : "Cette action n'est pas autorisée pour ce rôle", 'alert'); return; }
   const qty = Math.round(parseFloat(document.getElementById('app-qty').value)) || 1;
   const prod = PRODUCTS.find(p=>p.name===r.item);
-  r.status = 'approuvee';
-  r.qty = qty;
-  r.unit = prod ? prod.unit : r.unit;
-  closeModal();
-  if(prod){
-    addToBasket(prod.supplier, prod.id, qty);
-    toast('Demande approuvée — ajoutée au panier ' + supplierName(prod.supplier));
-  } else {
-    const now = new Date();
-    ORDERS.unshift({id:'CMD-'+nextId(), supplier: SUPPLIERS[0] ? SUPPLIERS[0].id : null, items: r.item+' × '+qty+' '+r.unit, lineItems:[], amount: Math.round(qty*5*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
-    toast('Demande approuvée — commande fournisseur créée');
+  const resto = RESTOS.find(rr=>rr.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, {
+      method:'PATCH', body:{ status:'approuvee', qty, unit: prod ? prod.unit : r.unit },
+    });
+    r.status = 'approuvee';
+    r.qty = qty;
+    r.unit = prod ? prod.unit : r.unit;
+    closeModal();
+    if(prod){
+      addToBasket(prod.supplier, prod.id, qty);
+      toast('Demande approuvée — ajoutée au panier ' + supplierName(prod.supplier));
+    } else {
+      const now = new Date();
+      const supplierObj = SUPPLIERS[0];
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
+        method:'POST',
+        body:{ supplierId: supplierObj?supplierObj.remoteId:null, items: r.item+' × '+qty+' '+r.unit, lineItems:[], amount: Math.round(qty*5*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now) },
+      });
+      ORDERS.unshift({id:'CMD-'+nextId(), remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:[], amount: Math.round(qty*5*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
+      toast('Demande approuvée — commande fournisseur créée');
+    }
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
   }
-  notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`);
-  render();
 }
-function refuseDemande(id){
+async function refuseDemande(id){
   const r = REQUESTS.find(x=>x.id===id); if(!r) return;
   if(!canActOnDemande(state.role, r)){ toast(state.role==='manager' ? "Les demandes de la cuisine sont validées par le patron" : "Cette action n'est pas autorisée pour ce rôle", 'alert'); return; }
-  r.status = 'refusee';
-  toast('Demande refusée', 'alert');
-  notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`);
-  render();
+  const resto = RESTOS.find(rr=>rr.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
+    r.status = 'refusee';
+    toast('Demande refusée', 'alert');
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function quickOrder(productId){
   const p = PRODUCTS.find(x=>x.id===productId); if(!p) return;
@@ -2566,25 +2726,35 @@ function confirmQuickOrder(productId){
    c'est le manager qui décide de la quantité à commander au moment
    d'approuver la demande.
 ============================================================ */
-function submitSignal(from, urgent){
+async function submitSignal(from, urgent){
   const item = document.getElementById('sig-item').value;
   const note = document.getElementById('sig-note').value;
   if(!item){ toast('Merci de sélectionner un produit','alert'); return; }
   const prod = PRODUCTS.find(p=>p.name===item);
   const author = ROLE_META[state.role].name.split(' — ')[0];
   const now = new Date();
-  REQUESTS.unshift({
-    id:'D-'+nextId(), from, by: author + ' ('+(from==='Cuisine'?'cuisine':'salle')+')',
-    item, unit: prod?prod.unit:'unité', urgent, note, status:'attente', time: fmtTime(now), createdAt: now
-  });
-  closeModal();
-  const recipient = from==='Cuisine' ? 'patron' : 'manager';
-  toast(urgent ? `Commande urgente signalée au ${recipient}` : `Demande envoyée au ${recipient}`);
-  if(urgent){
-    if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`);
-    notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`);
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const byName = author + ' ('+(from==='Cuisine'?'cuisine':'salle')+')';
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/requests`, {
+      method:'POST',
+      body:{ fromDept: from, itemName: item, unit: prod?prod.unit:'unité', urgent, note, byName },
+    });
+    REQUESTS.unshift({
+      id:'D-'+nextId(), remoteId: data.request.id, from, by: byName,
+      item, unit: prod?prod.unit:'unité', urgent, note, status:'attente', time: fmtTime(now), createdAt: now
+    });
+    closeModal();
+    const recipient = from==='Cuisine' ? 'patron' : 'manager';
+    toast(urgent ? `Commande urgente signalée au ${recipient}` : `Demande envoyée au ${recipient}`);
+    if(urgent){
+      if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`);
+      notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`);
+    }
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
   }
-  render();
 }
 function openSignalModal(from, urgent){
   const dept = from==='Cuisine' ? 'cuisine' : 'salle';
@@ -2626,17 +2796,25 @@ function openCustomRequestModal(){
     <button class="btn btn-primary btn-block" onclick="submitCustomRequest()">Envoyer au patron</button>
   `);
 }
-function submitCustomRequest(){
+async function submitCustomRequest(){
   const itemName = document.getElementById('cr-item').value.trim();
   if(!itemName){ toast('Merci de préciser ce que vous souhaitez acheter','alert'); return; }
   const note = document.getElementById('cr-note').value.trim();
   const author = currentPersonDisplayName();
   const now = new Date();
-  CUSTOM_REQUESTS.unshift({id:'P-'+nextId(), from: ROLE_META[state.role].label, by: author, itemName, note, status:'attente', time: fmtTime(now), createdAt: now});
-  closeModal();
-  toast('Proposition envoyée au patron');
-  notifyByEmail('patron', `nouvelle proposition d'achat : ${itemName} (par ${author}).`);
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/custom-requests`, {
+      method:'POST', body:{ fromRole: ROLE_META[state.role].label, byName: author, itemName, note },
+    });
+    CUSTOM_REQUESTS.unshift({id:'P-'+nextId(), remoteId:data.customRequest.id, from: ROLE_META[state.role].label, by: author, itemName, note, status:'attente', time: fmtTime(now), createdAt: now});
+    closeModal();
+    toast('Proposition envoyée au patron');
+    notifyByEmail('patron', `nouvelle proposition d'achat : ${itemName} (par ${author}).`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function ticketCustomRequest(cr, viewerRole){
   const canAct = viewerRole==='patron' && cr.status==='attente';
@@ -2679,30 +2857,51 @@ function openApproveCustomRequestModal(id){
     <button class="btn btn-primary btn-block" onclick="confirmApproveCustomRequest('${id}')">${iconXs(I.check)} Approuver et commander</button>
   `);
 }
-function confirmApproveCustomRequest(id){
+async function confirmApproveCustomRequest(id){
   if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
   const cr = CUSTOM_REQUESTS.find(x=>x.id===id); if(!cr) return;
   const supplierId = document.getElementById('cr-supplier').value || null;
   const qty = Math.round(parseFloat(document.getElementById('cr-qty').value)) || 1;
   const price = parseFloat(document.getElementById('cr-price').value) || 0;
-  cr.status = 'approuvee';
   const now = new Date();
-  ORDERS.unshift({
-    id:'CMD-'+nextId(), supplier: supplierId,
-    items: `${cr.itemName} × ${qty} (achat personnalisé)`,
-    lineItems: [{name: cr.itemName, qty, price}],
-    amount: Math.round(qty*price*100)/100, status:'validee', date: fmtDateShort(now), createdAt: now, custom:true
-  });
-  closeModal();
-  toast('Achat approuvé — commande créée');
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const supplierObj = supplierId ? SUPPLIERS.find(s=>s.id===supplierId) : null;
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/custom-requests/${cr.remoteId}`, { method:'PATCH', body:{ status:'approuvee' } });
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
+      method:'POST',
+      body:{
+        supplierId: supplierObj?supplierObj.remoteId:null, items: `${cr.itemName} × ${qty} (achat personnalisé)`,
+        lineItems: [{name: cr.itemName, qty, price}], amount: Math.round(qty*price*100)/100, status:'validee',
+        orderDate: fmtDateShort(now), isCustom: true,
+      },
+    });
+    cr.status = 'approuvee';
+    ORDERS.unshift({
+      id:'CMD-'+nextId(), remoteId: data.order.id, supplier: supplierId,
+      items: `${cr.itemName} × ${qty} (achat personnalisé)`,
+      lineItems: [{name: cr.itemName, qty, price}],
+      amount: Math.round(qty*price*100)/100, status:'validee', date: fmtDateShort(now), createdAt: now, custom:true
+    });
+    closeModal();
+    toast('Achat approuvé — commande créée');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
-function refuseCustomRequest(id){
+async function refuseCustomRequest(id){
   if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
   const cr = CUSTOM_REQUESTS.find(x=>x.id===id); if(!cr) return;
-  cr.status = 'refusee';
-  toast('Proposition refusée', 'alert');
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/custom-requests/${cr.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
+    cr.status = 'refusee';
+    toast('Proposition refusée', 'alert');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 /* ============================================================
@@ -2729,7 +2928,7 @@ function openNewProductModal(){
     <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
   `);
 }
-function addProduct(){
+async function addProduct(){
   const name = document.getElementById('np-name').value.trim();
   if(!name){ toast('Le nom du produit est requis','alert'); return; }
   const cat = document.getElementById('np-cat').value.trim() || 'Divers';
@@ -2738,10 +2937,20 @@ function addProduct(){
   const qtyCommande = Math.round(parseFloat(document.getElementById('np-qty').value))||1;
   const supplier = document.getElementById('np-supplier').value;
   const department = document.getElementById('np-department').value;
-  PRODUCTS.push({id:'p'+nextId(), name, unit, qtyCommande, supplier, cat, price, department});
-  closeModal();
-  toast('Produit « '+name+' » créé');
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
+      method:'POST',
+      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null },
+    });
+    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department});
+    closeModal();
+    toast('Produit « '+name+' » créé');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function editProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
@@ -2760,18 +2969,31 @@ function editProduct(id){
     <button class="btn btn-primary btn-block" onclick="saveProduct('${id}')">Enregistrer</button>
   `);
 }
-function saveProduct(id){
+async function saveProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
-  p.name = document.getElementById('ep-name').value.trim() || p.name;
-  p.cat = document.getElementById('ep-cat').value.trim() || p.cat;
-  p.unit = document.getElementById('ep-unit').value.trim() || p.unit;
-  p.price = parseFloat(document.getElementById('ep-price').value) || p.price;
-  p.qtyCommande = Math.round(parseFloat(document.getElementById('ep-qty').value)) || p.qtyCommande;
-  p.supplier = document.getElementById('ep-supplier').value;
-  p.department = document.getElementById('ep-department').value;
-  closeModal();
-  toast('Produit mis à jour');
-  render();
+  const name = document.getElementById('ep-name').value.trim() || p.name;
+  const cat = document.getElementById('ep-cat').value.trim() || p.cat;
+  const unit = document.getElementById('ep-unit').value.trim() || p.unit;
+  const price = parseFloat(document.getElementById('ep-price').value) || p.price;
+  const qtyCommande = Math.round(parseFloat(document.getElementById('ep-qty').value)) || p.qtyCommande;
+  const supplier = document.getElementById('ep-supplier').value;
+  const department = document.getElementById('ep-department').value;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
+      method:'PATCH',
+      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null },
+    });
+    p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
+    p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
+    p.supplier = supplier; p.department = data.product.department;
+    closeModal();
+    toast('Produit mis à jour');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function deleteProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
@@ -2785,17 +3007,24 @@ function deleteProduct(id){
     </div>
   `);
 }
-function confirmDeleteProduct(id){
+async function confirmDeleteProduct(id){
   const idx = PRODUCTS.findIndex(p=>p.id===id);
   if(idx===-1) return;
-  PRODUCTS.splice(idx,1);
-  Object.keys(BASKETS).forEach(sid=>{
-    BASKETS[sid] = BASKETS[sid].filter(li=>li.productId!==id);
-    if(BASKETS[sid].length===0) delete BASKETS[sid];
-  });
-  closeModal();
-  toast('Produit supprimé');
-  render();
+  const p = PRODUCTS[idx];
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, { method:'DELETE' });
+    PRODUCTS.splice(idx,1);
+    Object.keys(BASKETS).forEach(sid=>{
+      BASKETS[sid] = BASKETS[sid].filter(li=>li.productId!==id);
+      if(BASKETS[sid].length===0) delete BASKETS[sid];
+    });
+    closeModal();
+    toast('Produit supprimé');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 /* ============================================================
@@ -3069,17 +3298,25 @@ function openNewSupplierModal(){
     <button class="btn btn-primary btn-block" onclick="addSupplier()">Ajouter</button>
   `);
 }
-function addSupplier(){
+async function addSupplier(){
   const name = document.getElementById('ns-name').value.trim();
   if(!name){ toast('Le nom du fournisseur est requis','alert'); return; }
   const cat = document.getElementById('ns-cat').value.trim() || 'Divers';
   const delay = document.getElementById('ns-delay').value.trim() || '48h';
   const address = document.getElementById('ns-address').value.trim();
   const email = document.getElementById('ns-email').value.trim();
-  SUPPLIERS.push({id:'f'+nextId(), name, cat, delay, address, email, reliability:90, spend:0});
-  closeModal();
-  toast('Fournisseur « '+name+' » ajouté');
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers`, {
+      method:'POST', body:{ name, category:cat, delay, email, address },
+    });
+    SUPPLIERS.push({id:'f'+nextId(), remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0});
+    closeModal();
+    toast('Fournisseur « '+name+' » ajouté');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function openSupplierDetail(id){
   const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
@@ -3104,17 +3341,27 @@ function openSupplierDetail(id){
     ${linkedOrders.map(o=>`<div class="flex between small" style="padding:5px 0;"><span class="mono">${o.id}</span>${orderStatusTag(o.status)}</div>`).join('') || '<div class="small muted">Aucune commande</div>'}
   `);
 }
-function saveSupplier(id){
+async function saveSupplier(id){
   const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
-  s.name = document.getElementById('sf-name').value.trim() || s.name;
-  s.cat = document.getElementById('sf-cat').value.trim() || s.cat;
-  s.address = document.getElementById('sf-address').value.trim();
-  s.email = document.getElementById('sf-email').value.trim();
-  s.delay = document.getElementById('sf-delay').value.trim() || s.delay;
-  s.reliability = parseFloat(document.getElementById('sf-reliability').value) || s.reliability;
-  closeModal();
-  toast('Fournisseur mis à jour');
-  render();
+  const name = document.getElementById('sf-name').value.trim() || s.name;
+  const cat = document.getElementById('sf-cat').value.trim() || s.cat;
+  const address = document.getElementById('sf-address').value.trim();
+  const email = document.getElementById('sf-email').value.trim();
+  const delay = document.getElementById('sf-delay').value.trim() || s.delay;
+  const reliability = parseFloat(document.getElementById('sf-reliability').value) || s.reliability;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers/${s.remoteId}`, {
+      method:'PATCH', body:{ name, category:cat, delay, email, address },
+    });
+    s.name = data.supplier.name; s.cat = data.supplier.category; s.address = data.supplier.address;
+    s.email = data.supplier.email; s.delay = data.supplier.delay; s.reliability = reliability;
+    closeModal();
+    toast('Fournisseur mis à jour');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function deleteSupplier(id){
   const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
@@ -3129,14 +3376,21 @@ function deleteSupplier(id){
     </div>
   `);
 }
-function confirmDeleteSupplier(id){
+async function confirmDeleteSupplier(id){
   const idx = SUPPLIERS.findIndex(s=>s.id===id);
   if(idx===-1) return;
-  SUPPLIERS.splice(idx,1);
-  delete BASKETS[id];
-  closeModal();
-  toast('Fournisseur supprimé');
-  render();
+  const s = SUPPLIERS[idx];
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers/${s.remoteId}`, { method:'DELETE' });
+    SUPPLIERS.splice(idx,1);
+    delete BASKETS[id];
+    closeModal();
+    toast('Fournisseur supprimé');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 
@@ -3942,7 +4196,7 @@ async function checkExistingSession(){
         RESTOS.forEach(r => ensureRestoData(r.id));
         state.resto = RESTOS[0].id;
         loadRestoData(RESTOS[0].id);
-        syncTeamFromServer(RESTOS[0].id);
+        syncRestoOperationalData(RESTOS[0].id);
       }
     } catch(restoErr){
       if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
