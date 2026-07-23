@@ -675,10 +675,13 @@ const API_URL = 'https://mise-et-sure-backend-production.up.railway.app';
 // de la page (ex : l'aller-retour vers la page de paiement Stripe), donnant l'impression fausse
 // d'être déconnecté alors que le compte est bien toujours actif.
 const AUTH_TOKEN_KEY = 'mise_et_sure_auth_token';
+const TEAM_TOKEN_KEY = 'mise_et_sure_team_token';
 let AUTH_TOKEN = localStorage.getItem(AUTH_TOKEN_KEY) || null;
+let TEAM_TOKEN = localStorage.getItem(TEAM_TOKEN_KEY) || null;
 async function apiRequest(path, options={}){
   const headers = { 'Content-Type': 'application/json' };
   if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+  if(TEAM_TOKEN) headers['X-Team-Token'] = TEAM_TOKEN;
   const res = await fetch(API_URL + path, {
     method: options.method || 'GET',
     headers,
@@ -693,6 +696,7 @@ async function apiRequest(path, options={}){
     throw err;
   }
   if(data.token){ AUTH_TOKEN = data.token; localStorage.setItem(AUTH_TOKEN_KEY, data.token); }
+  if(data.teamToken){ TEAM_TOKEN = data.teamToken; localStorage.setItem(TEAM_TOKEN_KEY, data.teamToken); }
   return data;
 }
 
@@ -1179,6 +1183,10 @@ async function attemptLogin(){
     try{
       await apiRequest(`/api/restaurants/${resto.remoteId}/team-login`, { method:'POST', body:{ username: userVal, password: passVal } });
       login(role, employeeId);
+      // Première connexion réelle de cette personne (surtout si elle arrive via son lien
+      // personnel, sans être jamais passée par le compte du patron) : on recharge tout
+      // maintenant que la session est bien établie côté serveur.
+      syncRestoOperationalData(state.resto);
     } catch(err){
       showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
     }
@@ -1295,6 +1303,8 @@ function logout(){
   state.loginSelectedRole = null;
   state.loginSelectedEmployeeId = null;
   state.loginError = null;
+  TEAM_TOKEN = null;
+  localStorage.removeItem(TEAM_TOKEN_KEY);
   render();
 }
 function previewRole(r){
