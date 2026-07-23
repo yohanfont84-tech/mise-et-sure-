@@ -1075,6 +1075,7 @@ async function confirmPasswordReset(){
   }
 }
 async function signOutAccount(){
+  if(!window.confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) return;
   try{ await apiRequest('/api/auth/logout', { method:'POST' }); } catch(e){}
   ACCOUNT = null;
   AUTH_TOKEN = null;
