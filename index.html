@@ -863,6 +863,7 @@ function goToSite(site){
 window.addEventListener('popstate', (e) => {
   if(e.state && e.state.site){
     state._restoringFromHistory = true;
+    if(e.state.view) state.view = e.state.view;
     goToSite(e.state.site);
     state._restoringFromHistory = false;
   }
@@ -880,6 +881,10 @@ function choosePlan(planId){
 }
 async function startCheckout(planId){
   try{
+    // Mémorise la page précise où on se trouve (ex : "Multi-établissements") avant de partir
+    // vers Stripe, pour que le bouton "précédent" du navigateur y ramène exactement, plutôt que
+    // de retomber sur l'écran de choix du profil.
+    window.history.replaceState({ site: state.site, view: state.view }, '', window.location.pathname);
     const data = await apiRequest('/api/billing/create-checkout-session', {
       method:'POST',
       body:{ plan: planId, billingCycle: state.billingCycle },
