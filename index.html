@@ -3272,7 +3272,7 @@ function siteNav(active){
       <nav class="site-nav-links">
         <button class="site-nav-link ${active==='pricing'?'active':''}" onclick="goToSite('pricing')">Tarifs</button>
         ${ACCOUNT
-          ? `<button class="btn btn-ghost btn-sm" onclick="signOutAccount()" title="Se déconnecter">${iconXs(I.check)} Connecté</button>`
+          ? `<span class="tag tag-neutral" style="padding:7px 14px;">${iconXs(I.check)} Connecté</span><button class="btn btn-ghost btn-sm" onclick="signOutAccount()">Se déconnecter</button>`
           : `<button class="btn btn-primary btn-sm" onclick="goToLogin()">Se connecter</button>`}
       </nav>
     </header>
