@@ -1148,22 +1148,32 @@ function backToChooseRole(){
   state.loginError = null;
   render();
 }
-function attemptLogin(){
+async function attemptLogin(){
   const role = state.loginSelectedRole;
   const employeeId = state.loginSelectedEmployeeId;
   const userVal = (document.getElementById('login-username')||{}).value || '';
   const passVal = (document.getElementById('login-password')||{}).value || '';
-  let expectedUser = null, expectedPass = null;
   if(employeeId){
+    // Membre de l'équipe : la vérification se fait réellement côté serveur, jamais en local —
+    // ni l'identifiant ni le mot de passe ne sont jamais stockés en clair dans le navigateur.
     const m = TEAM.find(t=>t.id===employeeId);
-    expectedUser = m ? m.username : null;
-    expectedPass = m ? m.password : null;
-  } else {
-    expectedUser = CREDENTIALS.patron.username;
-    expectedPass = CREDENTIALS.patron.password;
+    const resto = RESTOS.find(r=>r.id===state.resto);
+    if(!m || !resto || !resto.remoteId){
+      showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
+      return;
+    }
+    try{
+      await apiRequest(`/api/restaurants/${resto.remoteId}/team-login`, { method:'POST', body:{ username: userVal, password: passVal } });
+      login(role, employeeId);
+    } catch(err){
+      showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
+    }
+    return;
   }
-  if(expectedUser && expectedPass && userVal===expectedUser && passVal===expectedPass){
-    login(role, employeeId);
+  // Patron : vérification locale, en plus de la vraie session de compte déjà établie plus tôt
+  // (email + mot de passe, ou Google/Apple) — cette étape sert de verrou rapide supplémentaire.
+  if(userVal===CREDENTIALS.patron.username && passVal===CREDENTIALS.patron.password){
+    login(role, null);
   } else {
     showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
   }
@@ -1795,7 +1805,7 @@ function viewEquipe(){
           <td class="muted small">${t.shift}</td>
           <td><span class="tag ${t.status==='actif'?'tag-subtle':'tag-neutral'}">${t.status==='actif'?'En service':'Repos'}</span></td>
           <td class="muted small">${permsForRole(t.role)}</td>
-          <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button><button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
+          <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button>${t.inviteToken?`<button class="btn btn-ghost btn-sm" onclick="showEmployeeCredentialsModal('${t.name}','${t.username||''}','—',  '${t.inviteToken}')" title="Retrouver le lien de connexion">${iconSm(I.mail)}</button>`:''}<button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
@@ -1824,13 +1834,20 @@ function deleteEmployee(id){
     </div>
   `);
 }
-function confirmDeleteEmployee(id){
+async function confirmDeleteEmployee(id){
   const idx = TEAM.findIndex(t=>t.id===id);
   if(idx===-1) return;
-  TEAM.splice(idx,1);
-  closeModal();
-  toast('Employé retiré de l\u2019équipe');
-  render();
+  const t = TEAM[idx];
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/team/${t.remoteId}`, { method:'DELETE' });
+    TEAM.splice(idx,1);
+    closeModal();
+    toast('Employé retiré de l\u2019équipe');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 
@@ -1902,6 +1919,24 @@ function confirmUpgrade(){
   state.selectedPlan = 'pro';
   startCheckout('pro');
 }
+async function syncTeamFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team`);
+    const d = ensureRestoData(localId);
+    d.team = data.team.map(m => ({
+      id: 't'+m.id, remoteId: m.id, name: m.name, role: m.role, shift: m.shift,
+      status: m.status, username: m.username, photoDataUrl: m.photo_url, theme: m.theme,
+      inviteToken: m.invite_token,
+    }));
+    if(state.resto === localId) TEAM = d.team;
+    render();
+  } catch(err){
+    // Une erreur ici (ex : établissement pas encore payé) laisse simplement l'équipe locale
+    // telle quelle — sans bloquer le reste de l'application.
+  }
+}
 function switchResto(id){
   state.resto = id;
   loadRestoData(id);
@@ -1909,6 +1944,7 @@ function switchResto(id){
   state.orderFilter = {dept:'tous', supplier:'tous', month:'tous', year:'tous'};
   render();
   toast('Établissement changé : ' + RESTOS.find(r=>r.id===id).name);
+  syncTeamFromServer(id);
 }
 function deleteResto(id){
   if(RESTOS.length<=1){ toast('Impossible de supprimer le dernier établissement','alert'); return; }
@@ -3116,18 +3152,53 @@ function openNewEmployeeModal(){
     <button class="btn btn-primary btn-block" onclick="addEmployee()">Ajouter</button>
   `);
 }
-function addEmployee(){
+async function addEmployee(){
   const name = document.getElementById('na-name').value.trim();
   if(!name){ toast('Le nom est requis','alert'); return; }
   const role = document.getElementById('na-role').value;
   const shift = document.getElementById('na-shift').value.trim() || 'À définir';
-  const password = generateDefaultPassword(name);
-  let username = generateUsername(name);
-  if(TEAM.some(t=>t.username===username)) username = username + TEAM.filter(t=>t.username && t.username.startsWith(username)).length;
-  TEAM.push({id:'u'+nextId(), name, role, shift, status:'actif', username, password});
-  closeModal();
-  toast('« '+name+' » ajouté(e) à l\u2019équipe — identifiant : '+username+' / mot de passe : '+password);
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team`, {
+      method:'POST',
+      body:{ name, role, shift },
+    });
+    TEAM.push({
+      id: 't'+nextId(), remoteId: data.member.id, name: data.member.name, role: data.member.role,
+      shift: data.member.shift, status: data.member.status, username: data.member.username,
+      inviteToken: data.member.invite_token,
+    });
+    closeModal();
+    showEmployeeCredentialsModal(data.member.name, data.member.username, data.generatedPassword, data.member.invite_token);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+function inviteLinkFor(token){
+  return window.location.origin + window.location.pathname + '?equipe=' + token;
+}
+function showEmployeeCredentialsModal(name, username, password, inviteToken){
+  const link = inviteLinkFor(inviteToken);
+  const hasPassword = password && password !== '—';
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>${hasPassword ? '« '+name+' » a été ajouté(e)' : 'Lien de connexion de « '+name+' »'}</h3>
+    <div class="modal-sub">${hasPassword ? "Communiquez ces informations à cette personne — le mot de passe ne sera plus jamais réaffiché ensuite." : "Le mot de passe n'est visible qu'une seule fois, à la création — utilisez « Modifier » pour en générer un nouveau si besoin."}</div>
+    <div class="field"><label>Identifiant</label><input readonly value="${username}"></div>
+    ${hasPassword ? `<div class="field"><label>Mot de passe</label><input readonly value="${password}"></div>` : ''}
+    <div class="field">
+      <label>Lien de connexion personnel</label>
+      <input readonly id="invite-link-input" value="${link}">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="copyInviteLink()">Copier le lien</button>
+  `);
+}
+function copyInviteLink(){
+  const input = document.getElementById('invite-link-input');
+  input.select();
+  navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(input.value) : document.execCommand('copy');
+  toast('Lien copié');
 }
 function editEmployee(id){
   const t = TEAM.find(x=>x.id===id); if(!t) return;
@@ -3141,18 +3212,37 @@ function editEmployee(id){
       <div class="field"><label>Horaires</label><input id="ee-shift" value="${t.shift}"></div>
     </div>
     <div class="field"><label>Statut</label><select id="ee-status"><option value="actif" ${t.status==='actif'?'selected':''}>En service</option><option value="repos" ${t.status==='repos'?'selected':''}>Repos</option></select></div>
+    <div class="field"><label>Identifiant</label><input id="ee-username" value="${t.username||''}"></div>
+    <div class="login-hint" style="margin:-4px 0 14px 0;">Seul vous pouvez modifier l'identifiant ou le mot de passe — la personne ne peut pas le faire elle-même.</div>
+    <div class="field"><label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>${passwordFieldWithToggle('ee-newpassword')}</div>
     <button class="btn btn-primary btn-block" onclick="saveEmployee('${id}')">Enregistrer</button>
   `);
 }
-function saveEmployee(id){
+async function saveEmployee(id){
   const t = TEAM.find(x=>x.id===id); if(!t) return;
-  t.name = document.getElementById('ee-name').value.trim() || t.name;
-  t.role = document.getElementById('ee-role').value;
-  t.shift = document.getElementById('ee-shift').value.trim() || t.shift;
-  t.status = document.getElementById('ee-status').value;
-  closeModal();
-  toast('Employé mis à jour');
-  render();
+  const name = document.getElementById('ee-name').value.trim() || t.name;
+  const role = document.getElementById('ee-role').value;
+  const shift = document.getElementById('ee-shift').value.trim() || t.shift;
+  const status = document.getElementById('ee-status').value;
+  const username = document.getElementById('ee-username').value.trim() || t.username;
+  const newPassword = document.getElementById('ee-newpassword').value;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team/${t.remoteId}`, {
+      method:'PATCH',
+      body:{ name, role, shift, status, username, ...(newPassword?{newPassword}:{}) },
+    });
+    t.name = data.member.name;
+    t.role = data.member.role;
+    t.shift = data.member.shift;
+    t.status = data.member.status;
+    t.username = data.member.username;
+    closeModal();
+    toast(newPassword ? 'Employé mis à jour — nouveau mot de passe : '+newPassword : 'Employé mis à jour');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 /* ============================================================
@@ -3612,10 +3702,11 @@ function renderLoginScreen(){
           ${step==='choose' ? `
             <div class="login-step-label">Étape 1 sur 2 — Qui êtes-vous ?</div>
             <div class="login-person-list">
+              ${ACCOUNT ? `
               <button class="login-person-row" onclick="chooseLoginPerson('patron', null)">
                 <div class="avatar">${avatarInner(CREDENTIALS.patron.photoDataUrl, patronDisplayName())}</div>
                 <div><div class="login-person-name">${patronDisplayName()}</div><div class="login-person-role">Patron</div></div>
-              </button>
+              </button>` : ''}
               ${TEAM.map(t=>`
                 <button class="login-person-row" onclick="chooseLoginPerson('${identityForTeamRole(t.role)}','${t.id}')">
                   <div class="avatar">${avatarInner(t.photoDataUrl, t.name)}</div>
@@ -3752,6 +3843,29 @@ function render(){
   requestAnimationFrame(drawCharts);
 }
 
+async function loadTeamInvite(token){
+  try{
+    const data = await apiRequest(`/api/restaurants/public/invite/${token}`);
+    const localId = 'r'+nextId();
+    RESTOS.push({
+      id: localId, name: data.restaurant.name, address:'', postalCode:'',
+      city: data.restaurant.city, currency:'EUR', remoteId: data.restaurant.id,
+    });
+    const d = ensureRestoData(localId);
+    d.team = data.team.map(m => ({
+      id: 't'+nextId(), remoteId: m.id, name: m.name, role: m.role,
+      shift:'', status:'actif', username:null, photoDataUrl: m.photo_url,
+    }));
+    state.resto = localId;
+    loadRestoData(localId);
+    state.site = 'team-login';
+    window.history.replaceState({ site: 'team-login' }, '', window.location.pathname);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+    goToSite('marketing');
+  }
+}
 async function checkExistingSession(){
   // Si on revient d'une connexion Google/Apple (ou d'un paiement Stripe), les indications
   // arrivent dans l'URL — on les récupère et on nettoie l'adresse tout de suite après.
@@ -3760,6 +3874,15 @@ async function checkExistingSession(){
   const oauthError = urlParams.get('oauth') === 'error';
   const checkoutCancelled = urlParams.get('checkout') === 'cancelled';
   const checkoutSuccess = urlParams.get('checkout') === 'success';
+  const equipeToken = urlParams.get('equipe');
+  if(equipeToken){
+    // Lien personnel d'un membre de l'équipe : ce chemin est totalement indépendant du compte
+    // du patron (aucun email, aucun abonnement) — on saute directement à l'écran de connexion
+    // de son établissement précis.
+    window.history.replaceState({}, document.title, window.location.pathname);
+    await loadTeamInvite(equipeToken);
+    return;
+  }
   if(tokenFromUrl){
     AUTH_TOKEN = tokenFromUrl;
     localStorage.setItem(AUTH_TOKEN_KEY, tokenFromUrl);
@@ -3819,6 +3942,7 @@ async function checkExistingSession(){
         RESTOS.forEach(r => ensureRestoData(r.id));
         state.resto = RESTOS[0].id;
         loadRestoData(RESTOS[0].id);
+        syncTeamFromServer(RESTOS[0].id);
       }
     } catch(restoErr){
       if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
