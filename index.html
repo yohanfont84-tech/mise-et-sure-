@@ -654,10 +654,14 @@ function fmtDateLong(d){ return d.getDate()+' '+MONTHS_LONG[d.getMonth()]+' '+d.
    en mémoire pour l'instant — seule la couche compte/authentification est déjà réelle.
 ============================================================ */
 const API_URL = 'https://mise-et-sure-backend-production.up.railway.app';
-// Jeton de connexion : le cookie de session seul ne suffit pas partout — Safari bloque par
-// défaut les cookies posés par un serveur sur un autre domaine que celui du site visité. Ce
-// jeton, envoyé dans l'en-tête "Authorization", contourne complètement ce blocage.
-let AUTH_TOKEN = null;
+// Jeton de connexion : le cookie de session seul ne suffit pas partout — Safari (et d'autres
+// navigateurs) bloquent par défaut les cookies posés par un serveur sur un autre domaine que
+// celui du site visité. Ce jeton, envoyé dans l'en-tête "Authorization", contourne ce blocage.
+// On le garde aussi dans localStorage : sans ça, il disparaîtrait à chaque rechargement complet
+// de la page (ex : l'aller-retour vers la page de paiement Stripe), donnant l'impression fausse
+// d'être déconnecté alors que le compte est bien toujours actif.
+const AUTH_TOKEN_KEY = 'mise_et_sure_auth_token';
+let AUTH_TOKEN = localStorage.getItem(AUTH_TOKEN_KEY) || null;
 async function apiRequest(path, options={}){
   const headers = { 'Content-Type': 'application/json' };
   if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
@@ -674,7 +678,7 @@ async function apiRequest(path, options={}){
     err.code = data.code;
     throw err;
   }
-  if(data.token) AUTH_TOKEN = data.token;
+  if(data.token){ AUTH_TOKEN = data.token; localStorage.setItem(AUTH_TOKEN_KEY, data.token); }
   return data;
 }
 
@@ -1079,6 +1083,7 @@ async function signOutAccount(){
   try{ await apiRequest('/api/auth/logout', { method:'POST' }); } catch(e){}
   ACCOUNT = null;
   AUTH_TOKEN = null;
+  localStorage.removeItem(AUTH_TOKEN_KEY);
   goToSite('marketing');
 }
 
@@ -3752,6 +3757,7 @@ async function checkExistingSession(){
   const checkoutSuccess = urlParams.get('checkout') === 'success';
   if(tokenFromUrl){
     AUTH_TOKEN = tokenFromUrl;
+    localStorage.setItem(AUTH_TOKEN_KEY, tokenFromUrl);
     window.history.replaceState({}, document.title, window.location.pathname);
   }
   if(oauthError){
