@@ -105,6 +105,35 @@ a{text-decoration:none;color:inherit;}
   font-size:12px;color:#8E8E88;
 }
 
+/* Bouton "menu" (☰) — caché sur grand écran, visible uniquement sur mobile */
+.menu-toggle{display:none;border:none;background:transparent;padding:6px;color:var(--text);}
+.menu-toggle svg{width:22px;height:22px;}
+.sidebar-backdrop{display:none;}
+
+@media(max-width:900px){
+  #app{display:block;}
+  .menu-toggle{display:flex;align-items:center;}
+  .sidebar{
+    position:fixed;left:0;top:0;z-index:100;
+    transform:translateX(-100%);
+    transition:transform .22s ease;
+    box-shadow:0 0 40px rgba(0,0,0,0.3);
+  }
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-backdrop{
+    display:block;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:90;
+    opacity:0;pointer-events:none;transition:opacity .2s ease;
+  }
+  .sidebar-backdrop.open{opacity:1;pointer-events:auto;}
+  .main{width:100%;}
+  .topbar{padding:0 16px;height:58px;}
+  .content{padding:16px 16px 50px 16px;}
+  .page-title{font-size:16.5px;}
+  .role-switcher{display:none;}
+  .topbar-right{gap:8px;}
+  table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}
+}
+
 .main{flex:1;min-width:0;display:flex;flex-direction:column;}
 .topbar{
   height:66px;background:var(--surface);border-bottom:1px solid var(--border);
@@ -225,6 +254,7 @@ tr.tr-hover:hover{background:var(--paper);}
 }
 .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--black);outline-offset:1px;border-color:var(--black);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:480px){.field-row{grid-template-columns:1fr;}}
 
 .tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
 @media(max-width:900px){.tile-grid{grid-template-columns:repeat(2,1fr);}}
@@ -414,6 +444,7 @@ tr.tr-hover:hover{background:var(--paper);}
    ICONS
 ============================================================ */
 const I = {
+  menu:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`,
   dash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>`,
   box:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
   cart:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.4a2 2 0 0 0 2 1.6h8.8a2 2 0 0 0 2-1.6L22 7H6"/></svg>`,
@@ -1064,6 +1095,17 @@ async function toggleFreeAccess(userId, currentlyGranted){
     toast(err.message, 'alert');
   }
 }
+async function changeUserPlan(userId, newPlan){
+  try{
+    await apiRequest(`/api/admin/users/${userId}/plan`, { method:'PATCH', body:{ plan: newPlan } });
+    toast('Forfait mis à jour — ' + (newPlan==='pro' ? 'Pro' : 'Essentiel'));
+    const data = await apiRequest('/api/admin/users');
+    state.adminUsers = data.users;
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
 
 function chooseLoginPerson(identity, employeeId){
   state.loginSelectedRole = identity;
@@ -1131,6 +1173,13 @@ function login(identity, employeeId){
   const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
   state.theme = (member ? member.theme : CREDENTIALS.patron.theme) || 'light';
   render();
+}
+function toggleSidebar(){
+  state.sidebarOpen = !state.sidebarOpen;
+  render();
+}
+function closeSidebar(){
+  if(state.sidebarOpen){ state.sidebarOpen = false; render(); }
 }
 function toggleTheme(){
   state.theme = state.theme==='dark' ? 'light' : 'dark';
@@ -1285,7 +1334,7 @@ function renderShell(){
     : (resto.name||'?').charAt(0).toUpperCase();
 
   const sidebarHtml = `
-    <div class="sidebar">
+    <div class="sidebar ${state.sidebarOpen?'open':''}">
       <div class="brand">
         <div class="brand-mark">${brandMarkContent}</div>
         <div>
@@ -1298,18 +1347,20 @@ function renderShell(){
         ${nav.map(item=>{
           let badge = '';
           if(item.badgeKey==='demandes' && pendingDemandesFor('Salle')>0) badge = `<span class="nav-badge">${pendingDemandesFor('Salle')}</span>`;
-          return `<button class="nav-item ${state.view===item.id?'active':''}" onclick="setView('${item.id}')">${item.icon}<span>${item.label}</span>${badge}</button>`;
+          return `<button class="nav-item ${state.view===item.id?'active':''}" onclick="setView('${item.id}');closeSidebar();">${item.icon}<span>${item.label}</span>${badge}</button>`;
         }).join('')}
       </div>
       <div class="sidebar-foot">
         Mise&nbsp;&amp;&nbsp;Sûre
       </div>
     </div>
+    <div class="sidebar-backdrop ${state.sidebarOpen?'open':''}" onclick="closeSidebar()"></div>
   `;
 
   const topbarHtml = `
     <div class="topbar">
       <div class="topbar-left">
+        <button class="menu-toggle" onclick="toggleSidebar()" title="Menu" aria-label="Menu">${I.menu}</button>
         <div class="page-title">${(NAV[state.role].find(n=>n.id===state.view)||{}).label || ''}</div>
       </div>
       <div class="topbar-right">
@@ -3284,7 +3335,7 @@ function renderAdminPage(){
       <div class="login-brand">
         <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
         <h1>Mise &amp; Sûre</h1>
-        <p>Panneau administrateur — accordez un accès gratuit à n'importe quel compte, sans passer par un paiement Stripe.</p>
+        <p>Panneau administrateur — changez le forfait ou accordez un accès gratuit à n'importe quel compte, sans passer par Stripe.</p>
       </div>
       <div class="login-form-side">
         <div class="login-form-inner" style="max-width:640px;">
@@ -3294,16 +3345,23 @@ function renderAdminPage(){
           ${!rows ? `<div class="small muted">Chargement…</div>` : rows.length===0 ? `<div class="small muted">Aucun compte pour l'instant.</div>` : `
             <div style="display:flex;flex-direction:column;gap:10px;">
               ${rows.map(u => `
-                <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
                   <div style="min-width:0;">
                     <div style="font-weight:700;font-size:14px;">${u.first_name||''} ${u.last_name||''} ${u.is_admin?'· <span class="small muted">(admin)</span>':''}</div>
                     <div class="small muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${u.email}</div>
-                    <div class="small muted">Forfait ${u.plan||'—'} · ${u.stripe_subscription_status==='active' ? 'Abonnement Stripe actif' : (u.free_access_granted ? 'Accès gratuit accordé' : 'Aucun accès payant actif')}</div>
+                    <div class="small muted">${u.stripe_subscription_status==='active' ? 'Abonnement Stripe actif' : (u.free_access_granted ? 'Accès gratuit accordé' : 'Aucun accès payant actif')}</div>
                   </div>
                   ${u.is_admin ? '' : `
-                    <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="toggleFreeAccess(${u.id}, ${u.free_access_granted})">
-                      ${u.free_access_granted ? 'Retirer cet accès gratuit' : 'Accorder un accès gratuit'}
-                    </button>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                      <select id="plan-select-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
+                        <option value="essentiel" ${u.plan==='essentiel'?'selected':''}>Essentiel</option>
+                        <option value="pro" ${u.plan==='pro'?'selected':''}>Pro</option>
+                      </select>
+                      <button class="btn btn-ghost btn-sm" onclick="changeUserPlan(${u.id}, document.getElementById('plan-select-${u.id}').value)">Changer le forfait</button>
+                      <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="toggleFreeAccess(${u.id}, ${u.free_access_granted})">
+                        ${u.free_access_granted ? 'Retirer cet accès gratuit' : 'Accorder un accès gratuit'}
+                      </button>
+                    </div>
                   `}
                 </div>
               `).join('')}
