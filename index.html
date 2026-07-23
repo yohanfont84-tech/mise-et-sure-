@@ -1869,33 +1869,11 @@ function viewMulti(){
     </div>
   `;
 }
-function setUpgradeCycle(c){
-  state.billingCycle = c;
-  openUpgradeModal();
-}
+// Direction directe la vraie page de paiement Stripe pour le forfait Pro — plus de mise à
+// niveau simulée : la personne doit réellement payer pour débloquer le forfait Pro.
 function openUpgradeModal(){
-  const proPlan = PLANS.find(p=>p.id==='pro');
-  const cycle = state.billingCycle;
-  const price = cycle==='monthly' ? proPlan.monthly : planAnnualPrice(proPlan.monthly);
-  const per = cycle==='monthly' ? '/ mois' : '/ an';
-  openModal(`
-    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Passer au forfait Pro</h3>
-    <div class="modal-sub">Établissements illimités, membres d'équipe illimités, achats personnalisés, export comptable, support prioritaire.</div>
-    <div class="pill-nav" style="margin-bottom:14px;">
-      <button class="${cycle==='monthly'?'active':''}" onclick="setUpgradeCycle('monthly')">Mensuel</button>
-      <button class="${cycle==='annual'?'active':''}" onclick="setUpgradeCycle('annual')">Annuel — 2 mois offerts</button>
-    </div>
-    <div class="payment-summary"><div class="flex between center"><span>Forfait Pro · ${cycle==='monthly'?'mensuel':'annuel'}</span><span class="mono" style="font-weight:700;">${price}&nbsp;€${per}</span></div></div>
-    <button class="btn btn-primary btn-block" onclick="confirmUpgrade()">Confirmer la mise à niveau</button>
-    <div class="login-hint">Démonstration — mise à niveau simulée, aucun paiement réel ici.</div>
-  `);
-}
-function confirmUpgrade(){
-  if(ACCOUNT){ ACCOUNT.plan = 'pro'; ACCOUNT.billing = state.billingCycle; }
-  closeModal();
-  toast('Mise à niveau réussie — forfait Pro activé (' + (state.billingCycle==='monthly'?'mensuel':'annuel') + ')');
-  render();
+  state.selectedPlan = 'pro';
+  startCheckout('pro');
 }
 function switchResto(id){
   state.resto = id;
