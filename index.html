@@ -847,9 +847,22 @@ document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.
 function goToSite(site){
   state.site = site;
   state.accountError = null;
+  // Mémorise cette page dans l'historique du navigateur, pour que le bouton "précédent" du
+  // navigateur ramène à CETTE page précise (ex : Tarifs) plutôt qu'à l'accueil par défaut —
+  // utile en particulier après un aller-retour vers la page de paiement Stripe.
+  if(!state._restoringFromHistory){
+    window.history.pushState({ site }, '', window.location.pathname);
+  }
   render();
   window.scrollTo(0,0);
 }
+window.addEventListener('popstate', (e) => {
+  if(e.state && e.state.site){
+    state._restoringFromHistory = true;
+    goToSite(e.state.site);
+    state._restoringFromHistory = false;
+  }
+});
 function setBillingCycle(c){ state.billingCycle = c; render(); }
 function choosePlan(planId){
   state.selectedPlan = planId;
@@ -3759,6 +3772,7 @@ async function checkExistingSession(){
         // Compte connecté mais pas encore payé : on le laisse sur la page d'accueil, il ira
         // sur "Tarifs" et choisira de payer quand il le souhaite — jamais de redirection forcée.
         state.site = 'marketing';
+        window.history.replaceState({ site: state.site }, '', window.location.pathname);
         render();
         return;
       }
@@ -3767,6 +3781,7 @@ async function checkExistingSession(){
   } catch(err){
     // Pas de session active : reste sur 'marketing' (valeur par défaut de state.site), c'est normal.
   }
+  window.history.replaceState({ site: state.site }, '', window.location.pathname);
   render();
 }
 checkExistingSession();
