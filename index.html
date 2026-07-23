@@ -3749,6 +3749,7 @@ async function checkExistingSession(){
   const tokenFromUrl = urlParams.get('token');
   const oauthError = urlParams.get('oauth') === 'error';
   const checkoutCancelled = urlParams.get('checkout') === 'cancelled';
+  const checkoutSuccess = urlParams.get('checkout') === 'success';
   if(tokenFromUrl){
     AUTH_TOKEN = tokenFromUrl;
     window.history.replaceState({}, document.title, window.location.pathname);
@@ -3761,6 +3762,9 @@ async function checkExistingSession(){
     toast("Paiement annulé — vous pouvez réessayer à tout moment.", 'alert');
     window.history.replaceState({}, document.title, window.location.pathname);
   }
+  if(checkoutSuccess){
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
   try{
     const meData = await apiRequest('/api/auth/me');
     ACCOUNT = meData.user;
@@ -3768,7 +3772,23 @@ async function checkExistingSession(){
       // C'est CETTE étape qui vérifie réellement l'abonnement, quelle que soit la façon dont
       // la personne s'est connectée (email, Google ou Apple) — le serveur bloque avec le code
       // SUBSCRIPTION_REQUIRED si le paiement n'est pas actif.
-      const restosData = await apiRequest('/api/restaurants');
+      //
+      // Juste après un paiement Stripe réussi, le navigateur peut revenir sur le site un peu
+      // AVANT que Stripe n'ait fini de prévenir notre serveur (le "webhook") que le paiement est
+      // passé — sans ça, on risquerait de croire à tort que la personne n'a toujours pas payé.
+      // On retente donc plusieurs fois, avec une petite pause, uniquement dans ce cas précis.
+      let restosData;
+      const maxAttempts = checkoutSuccess ? 6 : 1;
+      for(let attempt=1; attempt<=maxAttempts; attempt++){
+        try{
+          restosData = await apiRequest('/api/restaurants');
+          break;
+        } catch(e){
+          const isLastAttempt = attempt===maxAttempts;
+          if(e.code!=='SUBSCRIPTION_REQUIRED' || isLastAttempt) throw e;
+          await new Promise(r=>setTimeout(r, 1200));
+        }
+      }
       state.site = (restosData.restaurants && restosData.restaurants.length) ? 'team-login' : 'setup-restaurant';
     } catch(restoErr){
       if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
