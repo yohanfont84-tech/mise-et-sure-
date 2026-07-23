@@ -3271,7 +3271,9 @@ function siteNav(active){
       </button>
       <nav class="site-nav-links">
         <button class="site-nav-link ${active==='pricing'?'active':''}" onclick="goToSite('pricing')">Tarifs</button>
-        <button class="btn btn-primary btn-sm" onclick="goToLogin()">Se connecter</button>
+        ${ACCOUNT
+          ? `<button class="btn btn-ghost btn-sm" onclick="signOutAccount()" title="Se déconnecter">${iconXs(I.check)} Connecté</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="goToLogin()">Se connecter</button>`}
       </nav>
     </header>
   `;
@@ -3286,7 +3288,7 @@ function renderMarketingPage(){
         <p>Commandes fournisseurs, équipe, factures — un espace pour le patron, un espace pour chacun des vôtres.</p>
         <div class="flex gap8" style="justify-content:center;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="goToSite('pricing')">Voir les tarifs</button>
-          <button class="btn btn-ghost" onclick="goToLogin()">J'ai déjà un compte</button>
+          ${ACCOUNT ? '' : `<button class="btn btn-ghost" onclick="goToLogin()">J'ai déjà un compte</button>`}
         </div>
       </section>
       <section class="site-features">
