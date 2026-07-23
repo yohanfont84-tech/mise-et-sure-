@@ -853,22 +853,23 @@ function goToSite(site){
 function setBillingCycle(c){ state.billingCycle = c; render(); }
 function choosePlan(planId){
   state.selectedPlan = planId;
+  if(ACCOUNT){
+    // Déjà inscrit et connecté : direction la vraie page de paiement pour ce forfait précis.
+    startCheckout(planId);
+    return;
+  }
   state.authMode = 'signup';
   goToSite('account-auth');
 }
-// Après la création du compte (email vérifié, ou retour Google/Apple), on tente un vrai paiement
-// Stripe. Si Stripe n'est pas encore configuré côté serveur (clés absentes), le serveur répond
-// une erreur — dans ce cas précis on laisse passer vers la création d'établissement, pour ne pas
-// bloquer les tests avant d'avoir renseigné de vraies clés Stripe.
-async function proceedToPaymentOrApp(){
+async function startCheckout(planId){
   try{
     const data = await apiRequest('/api/billing/create-checkout-session', {
       method:'POST',
-      body:{ plan: (ACCOUNT && ACCOUNT.plan) || 'essentiel', billingCycle: (ACCOUNT && ACCOUNT.billing) || state.billingCycle },
+      body:{ plan: planId, billingCycle: state.billingCycle },
     });
     window.location.href = data.url; // vraie page de paiement hébergée par Stripe
   } catch(err){
-    goToSite('setup-restaurant');
+    toast(err.message, 'alert');
   }
 }
 function setAuthMode(mode){ state.authMode = mode; state.accountError = null; render(); }
@@ -973,8 +974,8 @@ async function attemptAccountSignup(){
   if(pass.length<8){ showFormError('account-error-slot', 'Mot de passe trop court (8 caractères minimum).', ['acc-password']); return; }
   if(pass!==pass2){ showFormError('account-error-slot', 'Les mots de passe ne correspondent pas.', ['acc-password','acc-password2']); return; }
   try{
-    await apiRequest('/api/auth/signup', { method:'POST', body:{ firstName, lastName, phone, email, password: pass, plan: state.selectedPlan || 'essentiel', billingCycle: state.billingCycle } });
-    state.pendingSignup = { firstName, lastName, phone, email, plan: state.selectedPlan || 'essentiel', billing: state.billingCycle };
+    await apiRequest('/api/auth/signup', { method:'POST', body:{ firstName, lastName, phone, email, password: pass, ...(state.selectedPlan?{plan:state.selectedPlan}:{}), billingCycle: state.billingCycle } });
+    state.pendingSignup = { firstName, lastName, phone, email, plan: state.selectedPlan, billing: state.billingCycle };
     toast('Code de vérification envoyé à ' + email);
     goToSite('verify-email');
   } catch(err){
@@ -1000,7 +1001,7 @@ async function attemptVerifyEmail(){
     state.pendingSignup = null;
     state.verifyError = null;
     toast('Email vérifié — bienvenue sur Mise & Sûre');
-    await proceedToPaymentOrApp();
+    goToSite('marketing');
   } catch(err){
     showFormError('verify-error-slot', err.message, ['verify-code']);
   }
@@ -3755,7 +3756,10 @@ async function checkExistingSession(){
       state.site = (restosData.restaurants && restosData.restaurants.length) ? 'team-login' : 'setup-restaurant';
     } catch(restoErr){
       if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
-        await proceedToPaymentOrApp();
+        // Compte connecté mais pas encore payé : on le laisse sur la page d'accueil, il ira
+        // sur "Tarifs" et choisira de payer quand il le souhaite — jamais de redirection forcée.
+        state.site = 'marketing';
+        render();
         return;
       }
       throw restoErr;
