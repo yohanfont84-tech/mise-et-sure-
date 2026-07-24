@@ -547,7 +547,8 @@ function photoFor(role, employeeId){
 }
 function patronDisplayName(){
   if(ACCOUNT && ACCOUNT.firstName){
-    return `${ACCOUNT.firstName} ${ACCOUNT.lastName||''}`.trim();
+    const lastInitial = (ACCOUNT.lastName||'').trim().charAt(0).toUpperCase();
+    return lastInitial ? `${ACCOUNT.firstName}.${lastInitial}` : ACCOUNT.firstName;
   }
   return 'Patron';
 }
@@ -2109,10 +2110,24 @@ async function syncBasketsFromServer(localId){
     render();
   } catch(err){}
 }
+async function syncRestaurantInfoFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/info`);
+    resto.name = data.restaurant.name;
+    resto.address = data.restaurant.address;
+    resto.postalCode = data.restaurant.postal_code;
+    resto.city = data.restaurant.city;
+    resto.currency = data.restaurant.currency;
+    render();
+  } catch(err){}
+}
 async function syncRestoOperationalData(localId){
   // Les fournisseurs doivent être rechargés AVANT les produits, puisque chaque produit se relie
   // à un fournisseur déjà chargé localement. Idem pour les commandes et les paniers, qui se
   // relient eux aussi à un fournisseur et des produits déjà chargés.
+  await syncRestaurantInfoFromServer(localId);
   await syncSuppliersFromServer(localId);
   await syncProductsFromServer(localId);
   await syncOrdersFromServer(localId);
@@ -2317,20 +2332,27 @@ async function saveNewPassword(employeeId){
     toast(err.message, 'alert');
   }
 }
-function saveRestoInfo(){
+async function saveRestoInfo(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   const name = document.getElementById('set-name').value.trim();
   const address = document.getElementById('set-address').value.trim();
   const postalCode = document.getElementById('set-postal').value.trim();
   const city = document.getElementById('set-city').value.trim();
   const currency = document.getElementById('set-currency').value;
-  if(name) resto.name = name;
-  resto.address = address;
-  resto.postalCode = postalCode;
-  if(city) resto.city = city;
-  resto.currency = currency;
-  toast('Paramètres enregistrés');
-  render();
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, {
+      method:'PATCH', body:{ name: name||undefined, address, postalCode, city: city||undefined, currency },
+    });
+    resto.name = data.restaurant.name;
+    resto.address = data.restaurant.address;
+    resto.postalCode = data.restaurant.postal_code;
+    resto.city = data.restaurant.city;
+    resto.currency = data.restaurant.currency;
+    toast('Paramètres enregistrés');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 /* ============================================================
