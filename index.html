@@ -794,6 +794,7 @@ let NOTIF_STATE = {
 const NAV = {
   patron: [
     {id:'dashboard', label:'Tableau de bord', icon:I.dash},
+    {id:'demandes', label:'Demandes internes', icon:I.bell, badgeKey:'demandes'},
     {id:'stocks', label:'Produits', icon:I.doc},
     {id:'commandes', label:'Commandes', icon:I.cart},
     {id:'fournisseurs', label:'Fournisseurs', icon:I.truck},
@@ -1441,7 +1442,10 @@ function renderShell(){
       <div class="nav">
         ${nav.map(item=>{
           let badge = '';
-          if(item.badgeKey==='demandes' && pendingDemandesFor('Salle')>0) badge = `<span class="nav-badge">${pendingDemandesFor('Salle')}</span>`;
+          if(item.badgeKey==='demandes'){
+            const count = state.role==='patron' ? pendingDemandes() : pendingDemandesFor('Salle');
+            if(count>0) badge = `<span class="nav-badge">${count}</span>`;
+          }
           return `<button class="nav-item ${state.view===item.id?'active':''}" onclick="setView('${item.id}');closeSidebar();">${item.icon}<span>${item.label}</span>${badge}</button>`;
         }).join('')}
       </div>
@@ -2413,6 +2417,26 @@ function viewManagerDashboard(){
   `;
 }
 
+function viewPatronDemandes(){
+  return `
+    <div class="section-head" style="margin-top:0;"><div><h2>Demandes internes</h2><div class="sub">Salle et cuisine — vous seul pouvez approuver les demandes de la cuisine ; celles de la salle peuvent aussi être traitées par le manager.</div></div></div>
+    <div class="card">
+      <div class="card-title">${iconSm(I.chef)} Cuisine</div>
+      <div class="rail">${REQUESTS.filter(r=>r.from==='Cuisine' && r.status==='attente').map(r=>ticketDemande(r,'patron')).join('') || emptyState('Rien à signaler côté cuisine')}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">${iconSm(I.tray)} Salle</div>
+      <div class="rail">${REQUESTS.filter(r=>r.from==='Salle' && r.status==='attente').map(r=>ticketDemande(r,'patron')).join('') || emptyState('Rien à signaler côté salle')}</div>
+    </div>
+    <div class="section-head"><div><h2>Historique</h2></div></div>
+    <div class="card">
+      <table>
+        <tr><th>Réf.</th><th>Origine</th><th>Employé</th><th>Article</th><th>Statut</th><th>Quand</th></tr>
+        ${REQUESTS.filter(r=>r.status!=='attente').map(r=>`<tr class="tr-hover"><td class="mono">${r.id}</td><td class="muted small">${r.from}</td><td class="muted">${r.by}</td><td>${r.item}${r.qty?' <span class="mono muted">×'+r.qty+'</span>':''}</td><td>${r.status==='approuvee'?'<span class="tag tag-subtle">Approuvée</span>':'<span class="tag tag-red">Refusée</span>'}</td><td class="muted small">${r.time}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty">Aucun historique pour l'instant</div></td></tr>`}
+      </table>
+    </div>
+  `;
+}
 function viewManagerDemandes(){
   return `
     <div class="section-head" style="margin-top:0;"><div><h2>Demandes internes</h2><div class="sub">Salle — approuvez pour lancer une commande fournisseur. Les demandes de la cuisine sont traitées par le patron.</div></div></div>
@@ -3625,6 +3649,7 @@ function renderContent(){
   if(view==='notifications') return viewNotifications(role);
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
+    if(view==='demandes') return viewPatronDemandes();
     if(view==='stocks') return viewStocks();
     if(view==='commandes') return viewCommandes('patron');
     if(view==='fournisseurs') return viewFournisseurs();
