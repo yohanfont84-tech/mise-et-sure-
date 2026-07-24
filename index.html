@@ -444,6 +444,7 @@ tr.tr-hover:hover{background:var(--paper);}
    ICONS
 ============================================================ */
 const I = {
+  refresh:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5"/></svg>`,
   menu:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`,
   dash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>`,
   box:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
@@ -1321,6 +1322,7 @@ function backToOwnSpace(){
 function setView(v){
   state.view = v;
   state.notifOpen = false;
+  localStorage.setItem('mise_et_sure_last_view', v);
   render();
 }
 function pendingDemandes(){ return REQUESTS.filter(r=>r.status==='attente').length; }
@@ -1427,6 +1429,7 @@ function renderShell(){
         <div class="role-switcher">
           ${Object.keys(ROLE_META).map(r=>`<button class="role-btn ${state.role===r?'active':''}" onclick="previewRole('${r}')">${ROLE_META[r].label}</button>`).join('')}
         </div>` : `<span class="tag tag-neutral" style="padding:7px 14px;font-size:12.5px;">${meta.label}</span>`}
+        <button class="btn btn-ghost btn-sm" onclick="manualRefresh()" title="Actualiser les données">${iconSm(I.refresh)}</button>
         <div class="notif-wrap">
           <button class="btn btn-ghost btn-sm" style="position:relative" onclick="toggleNotifPanel()">
             ${I.bell}
@@ -2043,6 +2046,11 @@ async function syncCustomRequestsFromServer(localId){
     if(state.resto === localId) CUSTOM_REQUESTS = d.customRequests;
     render();
   } catch(err){}
+}
+async function manualRefresh(){
+  toast('Actualisation…');
+  await syncRestoOperationalData(state.resto);
+  toast('Données à jour');
 }
 async function syncRestoOperationalData(localId){
   // Les fournisseurs doivent être rechargés AVANT les produits, puisque chaque produit se relie
@@ -2934,7 +2942,7 @@ function openNewProductModal(){
     <div class="field-row"><div class="field"><label>Catégorie</label><input id="np-cat" placeholder="Épicerie"></div><div class="field"><label>Unité</label><input id="np-unit" placeholder="L"></div></div>
     <div class="field-row"><div class="field"><label>Prix unitaire (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div><div class="field"><label>Quantité de commande standard</label><input id="np-qty" type="number" min="1" step="1" value="10"></div></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
-    <div class="field"><label>Utilisé en</label><select id="np-department"><option value="cuisine">Cuisine</option><option value="salle">Salle</option><option value="both">Cuisine &amp; salle</option></select></div>
+    <div class="field"><label>Utilisé en</label><select id="np-department"><option value="both" selected>Cuisine &amp; salle</option><option value="cuisine">Cuisine</option><option value="salle">Salle</option></select></div>
     <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
   `);
 }
@@ -4220,7 +4228,37 @@ async function checkExistingSession(){
       throw restoErr;
     }
   } catch(err){
-    // Pas de session active : reste sur 'marketing' (valeur par défaut de state.site), c'est normal.
+    // Pas de session de compte (patron) active : si un employé était connecté avant ce
+    // rechargement de page, on tente de retrouver SA session grâce au jeton conservé — sans
+    // ça, tout rechargement de page renverrait systématiquement à l'écran de connexion, même
+    // en pleine utilisation de l'application.
+    if(TEAM_TOKEN){
+      try{
+        const data = await apiRequest('/api/restaurants/team-me');
+        const localId = 'r'+nextId();
+        RESTOS.push({
+          id: localId, name: data.restaurant.name, address:'', postalCode:'',
+          city: data.restaurant.city, currency:'EUR', remoteId: data.restaurant.id,
+        });
+        const d = ensureRestoData(localId);
+        const localEmployeeId = 't'+nextId();
+        d.team = [{
+          id: localEmployeeId, remoteId: data.member.id, name: data.member.name,
+          role: data.member.role, photoDataUrl: data.member.photo_url,
+        }];
+        state.resto = localId;
+        loadRestoData(localId);
+        state.site = 'team-login';
+        login(identityForTeamRole(data.member.role), localEmployeeId);
+        const lastView = localStorage.getItem('mise_et_sure_last_view');
+        if(lastView) state.view = lastView;
+        await syncRestoOperationalData(localId);
+      } catch(teamErr){
+        // Jeton expiré ou invalide : reste sur 'marketing', la personne devra rouvrir son lien.
+        TEAM_TOKEN = null;
+        localStorage.removeItem(TEAM_TOKEN_KEY);
+      }
+    }
   }
   window.history.replaceState({ site: state.site }, '', window.location.pathname);
   render();
