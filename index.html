@@ -596,28 +596,57 @@ function fmtMonthYear(d){ return MONTHS_LONG[d.getMonth()] + ' ' + d.getFullYear
    PANIERS PAR FOURNISSEUR — on regroupe les besoins avant d'envoyer
    une seule commande (et donc une seule facture) par fournisseur.
 ============================================================ */
-function addToBasket(supplierId, productId, qty){
+async function addToBasket(supplierId, productId, qty){
   qty = Math.round(qty);
   if(!supplierId || !productId || !qty) return;
-  if(!BASKETS[supplierId]) BASKETS[supplierId] = [];
-  const existing = BASKETS[supplierId].find(li=>li.productId===productId);
-  if(existing){ existing.qty = Math.round(existing.qty + qty); }
-  else { BASKETS[supplierId].push({productId, qty}); }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const supplierObj = SUPPLIERS.find(s=>s.id===supplierId);
+  const productObj = PRODUCTS.find(p=>p.id===productId);
+  if(!resto || !resto.remoteId || !supplierObj || !productObj) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/basket-items`, {
+      method:'POST', body:{ supplierId: supplierObj.remoteId, productId: productObj.remoteId, qty },
+    });
+    if(!BASKETS[supplierId]) BASKETS[supplierId] = [];
+    const existing = BASKETS[supplierId].find(li=>li.productId===productId);
+    if(existing){ existing.qty = parseFloat(data.basketItem.qty); existing.remoteId = data.basketItem.id; }
+    else { BASKETS[supplierId].push({productId, qty: parseFloat(data.basketItem.qty), remoteId: data.basketItem.id}); }
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
-function removeBasketLine(supplierId, productId){
+async function removeBasketLine(supplierId, productId){
   if(!BASKETS[supplierId]) return;
-  BASKETS[supplierId] = BASKETS[supplierId].filter(li=>li.productId!==productId);
-  if(BASKETS[supplierId].length===0) delete BASKETS[supplierId];
-  render();
+  const line = BASKETS[supplierId].find(li=>li.productId===productId);
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    if(line && line.remoteId && resto){
+      await apiRequest(`/api/restaurants/${resto.remoteId}/basket-items/${line.remoteId}`, { method:'DELETE' });
+    }
+    BASKETS[supplierId] = BASKETS[supplierId].filter(li=>li.productId!==productId);
+    if(BASKETS[supplierId].length===0) delete BASKETS[supplierId];
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
-function updateBasketLineQty(supplierId, productId, value){
+async function updateBasketLineQty(supplierId, productId, value){
   if(!BASKETS[supplierId]) return;
   const qty = Math.round(parseFloat(value));
-  if(!qty || qty<=0){ removeBasketLine(supplierId, productId); return; }
+  if(!qty || qty<=0){ await removeBasketLine(supplierId, productId); return; }
   const line = BASKETS[supplierId].find(li=>li.productId===productId);
   if(!line) return;
-  line.qty = Math.round(qty*100)/100;
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    if(line.remoteId && resto){
+      await apiRequest(`/api/restaurants/${resto.remoteId}/basket-items/${line.remoteId}`, { method:'PATCH', body:{ qty } });
+    }
+    line.qty = Math.round(qty*100)/100;
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function basketTotal(supplierId){
   return (BASKETS[supplierId]||[]).reduce((a,li)=>{
@@ -652,6 +681,9 @@ async function sendBasket(supplierId){
       lineItems: items.map(li=>({productId:li.productId, qty:li.qty})),
       amount: Math.round(amount*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now
     });
+    try{
+      await apiRequest(`/api/restaurants/${resto.remoteId}/baskets/${supplierObj.remoteId}`, { method:'DELETE' });
+    } catch(e){ /* la commande est déjà bien envoyée ; on nettoiera le panier au prochain chargement si besoin */ }
     delete BASKETS[supplierId];
     toast('Commande envoyée pour validation — '+supplierName(supplierId));
     render();
@@ -1193,11 +1225,13 @@ async function attemptLogin(){
     }
     return;
   }
-  // Patron : vérification locale, en plus de la vraie session de compte déjà établie plus tôt
-  // (email + mot de passe, ou Google/Apple) — cette étape sert de verrou rapide supplémentaire.
-  if(userVal===CREDENTIALS.patron.username && passVal===CREDENTIALS.patron.password){
+  // Patron : vérification réellement faite par le serveur (en plus de la vraie session de
+  // compte déjà établie plus tôt par email/mot de passe, ou Google/Apple) — cette étape sert de
+  // verrou rapide supplémentaire, mais ses identifiants sont désormais vraiment sauvegardés.
+  try{
+    await apiRequest('/api/account/team-login', { method:'POST', body:{ username: userVal, password: passVal } });
     login(role, null);
-  } else {
+  } catch(err){
     showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
   }
 }
@@ -2052,13 +2086,33 @@ async function manualRefresh(){
   await syncRestoOperationalData(state.resto);
   toast('Données à jour');
 }
+async function syncBasketsFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/basket-items`);
+    const d = ensureRestoData(localId);
+    const newBaskets = {};
+    data.basketItems.forEach(bi => {
+      const localSupplier = d.suppliers.find(s => s.remoteId === bi.supplier_id);
+      const localProduct = d.products.find(p => p.remoteId === bi.product_id);
+      if(!localSupplier || !localProduct) return;
+      if(!newBaskets[localSupplier.id]) newBaskets[localSupplier.id] = [];
+      newBaskets[localSupplier.id].push({ productId: localProduct.id, qty: parseFloat(bi.qty), remoteId: bi.id });
+    });
+    d.baskets = newBaskets;
+    if(state.resto === localId) BASKETS = d.baskets;
+    render();
+  } catch(err){}
+}
 async function syncRestoOperationalData(localId){
   // Les fournisseurs doivent être rechargés AVANT les produits, puisque chaque produit se relie
-  // à un fournisseur déjà chargé localement. Idem pour les commandes, qui se relient aussi à un
-  // fournisseur déjà chargé.
+  // à un fournisseur déjà chargé localement. Idem pour les commandes et les paniers, qui se
+  // relient eux aussi à un fournisseur et des produits déjà chargés.
   await syncSuppliersFromServer(localId);
   await syncProductsFromServer(localId);
   await syncOrdersFromServer(localId);
+  await syncBasketsFromServer(localId);
   await syncRequestsFromServer(localId);
   await syncCustomRequestsFromServer(localId);
   await syncTeamFromServer(localId);
@@ -2227,7 +2281,7 @@ function openChangePasswordModal(employeeId){
     <button class="btn btn-primary btn-block" onclick="saveNewPassword(${employeeId?`'${employeeId}'`:'null'})">Enregistrer</button>
   `);
 }
-function saveNewPassword(employeeId){
+async function saveNewPassword(employeeId){
   const username = document.getElementById('np-username').value.trim();
   if(!username){ toast("Le nom d'utilisateur est requis",'alert'); return; }
   const p1 = document.getElementById('np-pass1').value;
@@ -2237,16 +2291,27 @@ function saveNewPassword(employeeId){
     if(p1!==p2){ toast('Les deux mots de passe ne correspondent pas','alert'); return; }
   }
   let name = patronDisplayName();
-  if(employeeId){
-    const m = TEAM.find(t=>t.id===employeeId);
-    if(m){ m.username = username; if(p1) m.password = p1; name = m.name; }
-  } else {
-    CREDENTIALS.patron.username = username;
-    if(p1) CREDENTIALS.patron.password = p1;
+  try{
+    if(employeeId){
+      const m = TEAM.find(t=>t.id===employeeId);
+      if(!m) return;
+      const resto = RESTOS.find(r=>r.id===state.resto);
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team/${m.remoteId}`, {
+        method:'PATCH', body:{ username, ...(p1?{newPassword:p1}:{}) },
+      });
+      m.username = data.member.username;
+      name = m.name;
+    } else {
+      await apiRequest('/api/account/team-credentials', { method:'PATCH', body:{ username, ...(p1?{newPassword:p1}:{}) } });
+      CREDENTIALS.patron.username = username;
+      if(p1) CREDENTIALS.patron.password = p1;
+    }
+    closeModal();
+    toast('Identifiants mis à jour pour ' + name);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
   }
-  closeModal();
-  toast('Identifiants mis à jour pour ' + name);
-  render();
 }
 function saveRestoInfo(){
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -2688,7 +2753,7 @@ async function confirmValidateDemande(id){
     r.unit = prod ? prod.unit : r.unit;
     closeModal();
     if(prod){
-      addToBasket(prod.supplier, prod.id, qty);
+      await addToBasket(prod.supplier, prod.id, qty);
       toast('Demande approuvée — ajoutée au panier ' + supplierName(prod.supplier));
     } else {
       const now = new Date();
@@ -2730,10 +2795,10 @@ function quickOrder(productId){
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
   `);
 }
-function confirmQuickOrder(productId){
+async function confirmQuickOrder(productId){
   const p = PRODUCTS.find(x=>x.id===productId); if(!p) return;
   const qty = Math.round(parseFloat(document.getElementById('qo-qty').value)) || 1;
-  addToBasket(p.supplier, p.id, qty);
+  await addToBasket(p.supplier, p.id, qty);
   closeModal();
   toast('Ajouté au panier ' + supplierName(p.supplier));
   setView('commandes');
@@ -3092,22 +3157,22 @@ function openNewOrderModal(prefillSupplierId){
     <button class="btn btn-primary btn-block" onclick="createOrder()">Ajouter au panier</button>
   `);
 }
-function createOrder(){
+async function createOrder(){
   const supplierId = document.getElementById('ord-supplier').value;
   const rows = document.querySelectorAll('.ord-row');
   let addedCount = 0;
-  rows.forEach(row=>{
+  for(const row of rows){
     const pid = row.dataset.pid;
     const chk = document.getElementById('ord-chk-'+pid);
     const qtyInput = document.getElementById('ord-qty-'+pid);
     if(chk && chk.checked){
       const qty = Math.round(parseFloat(qtyInput.value)) || 0;
       if(qty>0){
-        addToBasket(supplierId, pid, qty);
+        await addToBasket(supplierId, pid, qty);
         addedCount++;
       }
     }
-  });
+  }
   if(addedCount===0){ toast('Sélectionnez au moins un produit avec une quantité','alert'); return; }
   closeModal();
   toast('Ajouté au panier ' + supplierName(supplierId));
@@ -3931,10 +3996,14 @@ async function completeSetupRestaurant(){
 
     if(ACCOUNT && !CREDENTIALS.patron.username){
       const derived = ACCOUNT.email.split('@')[0].toLowerCase().replace(/[^a-z0-9.]/g,'') || 'patron';
+      const generatedPassword = generateDefaultPassword(derived);
       CREDENTIALS.patron.username = derived;
-      CREDENTIALS.patron.password = generateDefaultPassword(derived);
+      CREDENTIALS.patron.password = generatedPassword;
       if(!NOTIF_STATE.patron.email) NOTIF_STATE.patron.email = ACCOUNT.email;
       toast('Établissement créé — identifiant équipe : ' + CREDENTIALS.patron.username);
+      try{
+        await apiRequest('/api/account/team-credentials', { method:'PATCH', body:{ username: derived, newPassword: generatedPassword } });
+      } catch(e){ /* pas bloquant : les identifiants restent au moins utilisables pour cette session */ }
     } else {
       toast('Établissement créé — bienvenue !');
     }
@@ -4032,7 +4101,7 @@ function openRecoverPatronCredentialsModal(){
     <button class="btn btn-primary btn-block" onclick="confirmRecoverPatronCredentials()">Enregistrer</button>
   `);
 }
-function confirmRecoverPatronCredentials(){
+async function confirmRecoverPatronCredentials(){
   const username = document.getElementById('recover-username').value.trim();
   if(!username){ toast("Le nom d'utilisateur est requis",'alert'); return; }
   const p1 = document.getElementById('recover-pass1').value;
@@ -4041,11 +4110,16 @@ function confirmRecoverPatronCredentials(){
     if(p1.length<4){ toast('4 caractères minimum','alert'); return; }
     if(p1!==p2){ toast('Les mots de passe ne correspondent pas','alert'); return; }
   }
-  CREDENTIALS.patron.username = username;
-  if(p1) CREDENTIALS.patron.password = p1;
-  closeModal();
-  toast('Identifiants mis à jour — vous pouvez vous reconnecter');
-  render();
+  try{
+    await apiRequest('/api/account/team-credentials', { method:'PATCH', body:{ username, ...(p1?{newPassword:p1}:{}) } });
+    CREDENTIALS.patron.username = username;
+    if(p1) CREDENTIALS.patron.password = p1;
+    closeModal();
+    toast('Identifiants mis à jour — vous pouvez vous reconnecter');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function renderBanner(){
   if(state.identity==='patron' && state.role!==state.identity){
@@ -4174,6 +4248,7 @@ async function checkExistingSession(){
   try{
     const meData = await apiRequest('/api/auth/me');
     ACCOUNT = meData.user;
+    if(ACCOUNT.team_username) CREDENTIALS.patron.username = ACCOUNT.team_username;
     try{
       // C'est CETTE étape qui vérifie réellement l'abonnement, quelle que soit la façon dont
       // la personne s'est connectée (email, Google ou Apple) — le serveur bloque avec le code
