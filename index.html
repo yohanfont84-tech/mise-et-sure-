@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root{
   --black:#111111;
@@ -261,6 +263,7 @@ tr.tr-hover:hover{background:var(--paper);}
 .product-picker-row{padding:8px 6px;border-radius:6px;cursor:pointer;font-size:13.5px;}
 .product-picker-row:hover{background:var(--surface-hover, rgba(0,0,0,0.04));}
 .product-picker-row.selected{background:var(--accent, #111);color:#fff;}
+.text-alert{color:#b91c1c;font-weight:700;}
 .tag-remove{border:none;background:transparent;padding:0 0 0 4px;cursor:pointer;display:inline-flex;vertical-align:middle;color:inherit;opacity:0.6;}
 .tag-remove:hover{opacity:1;}
 @media(max-width:480px){.field-row{grid-template-columns:1fr;}}
@@ -455,6 +458,8 @@ tr.tr-hover:hover{background:var(--paper);}
 const I = {
   refresh:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5"/></svg>`,
   copy:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  alertTriangle:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+  chart:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/></svg>`,
   menu:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`,
   dash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>`,
   box:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
@@ -814,6 +819,8 @@ const NAV = {
     {id:'demandes', label:'Demandes internes', icon:I.bell, badgeKey:'demandes'},
     {id:'stocks', label:'Produits', icon:I.doc},
     {id:'commandes', label:'Commandes', icon:I.cart},
+    {id:'ecarts', label:'Écarts de livraison', icon:I.alertTriangle},
+    {id:'stats', label:'Statistiques', icon:I.chart},
     {id:'fournisseurs', label:'Fournisseurs', icon:I.truck},
     {id:'equipe', label:'Équipe', icon:I.team},
     {id:'multi', label:'Multi-établissements', icon:I.building},
@@ -1518,6 +1525,72 @@ function renderShell(){
 /* ============================================================
    VUES — PATRON
 ============================================================ */
+function spendByCategoryData(){
+  const map = {};
+  ORDERS.filter(o=>o.status!=='refusee').forEach(o=>{
+    (o.lineItems||[]).forEach(li=>{
+      if(!li.productId) return;
+      const p = PRODUCTS.find(x=>x.id===li.productId);
+      const cat = (p && p.cat) || 'Non catégorisé';
+      const qty = li.qtyReceived!=null ? li.qtyReceived : li.qty;
+      const price = li.priceReceived!=null ? li.priceReceived : (li.price!=null ? li.price : (p?p.price:0));
+      map[cat] = (map[cat]||0) + (Number(qty)||0)*(Number(price)||0);
+    });
+  });
+  return Object.entries(map).map(([label,value])=>({label, value:Math.round(value*100)/100})).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
+}
+function monthlyTrendData(monthsBack){
+  monthsBack = monthsBack || 6;
+  const now = new Date();
+  const months = [];
+  for(let i=monthsBack-1;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push({ year:d.getFullYear(), month:d.getMonth(), label: d.toLocaleDateString('fr-FR',{month:'short'}) });
+  }
+  return months.map(m=>{
+    const total = ORDERS.filter(o=>o.status!=='refusee' && o.createdAt).filter(o=>{
+      const d = new Date(o.createdAt);
+      return d.getFullYear()===m.year && d.getMonth()===m.month;
+    }).reduce((sum,o)=>sum+(o.amount||0),0);
+    return { label: m.label, value: Math.round(total*100)/100 };
+  });
+}
+function totalSpendThisMonth(){
+  const now = new Date();
+  return ORDERS.filter(o=>o.status!=='refusee' && o.createdAt).filter(o=>{
+    const d = new Date(o.createdAt);
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  }).reduce((sum,o)=>sum+(o.amount||0),0);
+}
+function viewStats(){
+  const spendSupplier = achatsBySupplier();
+  const spendCategory = spendByCategoryData();
+  const thisMonth = totalSpendThisMonth();
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Statistiques</h2><div class="sub">Dépenses par fournisseur, par catégorie, et évolution dans le temps</div></div>
+    </div>
+    <div class="grid grid-3">
+      <div class="card"><div class="small muted">Dépenses ce mois-ci</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${fmtEUR(thisMonth)}</div></div>
+      <div class="card"><div class="small muted">Commandes au total</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.status!=='refusee').length}</div></div>
+      <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy).length}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Évolution des dépenses (6 derniers mois)</div>
+      <div style="height:220px;"><canvas id="chartMonthlyTrend"></canvas></div>
+    </div>
+    <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">Dépenses par fournisseur</div>
+        ${spendSupplier.length ? `<div style="height:220px;"><canvas id="chartSpendSupplier"></canvas></div>` : emptyState('Aucune commande pour l\u2019instant')}
+      </div>
+      <div class="card">
+        <div class="card-title">Dépenses par catégorie</div>
+        ${spendCategory.length ? `<div style="height:220px;"><canvas id="chartSpendCategory"></canvas></div>` : emptyState('Aucune commande avec produits catégorisés')}
+      </div>
+    </div>
+  `;
+}
 function achatsBySupplier(){
   const map = {};
   ORDERS.filter(o=>o.status!=='refusee').forEach(o=>{ map[o.supplier] = (map[o.supplier]||0) + o.amount; });
@@ -1630,7 +1703,7 @@ function viewPatronDashboard(){
         <div class="card-title">Historique des achats — commandes récentes</div>
         ${ORDERS.length ? `<table>
           <tr><th>Réf.</th><th>Fournisseur</th><th>Montant</th><th>Statut</th></tr>
-          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="mono">${fmtEUR(o.amount)}</td><td>${orderStatusTag(o.status)}</td></tr>`).join('')}
+          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="mono">${fmtEUR(o.amount)}</td><td>${orderStatusTag(o)}</td></tr>`).join('')}
         </table>` : emptyState('Aucun achat pour le moment')}
       </div>
       <div class="card">
@@ -1654,7 +1727,7 @@ function ticketOrder(o){
         <button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">${iconXs(I.doc)} Modifier</button>
         <button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">${iconXs(I.check)} Valider</button>
         <button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">${iconXs(I.x)} Refuser</button>
-      </div>` : `<div style="margin-top:8px;">${orderStatusTag(o.status)}</div>`}
+      </div>` : `<div style="margin-top:8px;">${orderStatusTag(o)}</div>`}
     </div>
   `;
 }
@@ -1790,6 +1863,64 @@ function viewStocks(){
   `;
 }
 
+function ensureEcartsFilters(){
+  if(!state.ecartsFilters) state.ecartsFilters = { supplier:'tous', period:'tous' };
+  return state.ecartsFilters;
+}
+function orderInPeriod(o, period){
+  if(period==='tous') return true;
+  const d = o.createdAt ? new Date(o.createdAt) : null;
+  if(!d) return true;
+  const now = new Date();
+  if(period==='mois') return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  if(period==='trimestre'){ const diffMonths = (now.getFullYear()-d.getFullYear())*12 + (now.getMonth()-d.getMonth()); return diffMonths>=0 && diffMonths<3; }
+  if(period==='annee') return d.getFullYear()===now.getFullYear();
+  return true;
+}
+function viewEcarts(){
+  const f = ensureEcartsFilters();
+  const withDiscrepancy = ORDERS.filter(o=>o.hasDiscrepancy);
+  const filtered = withDiscrepancy.filter(o=> (f.supplier==='tous'||o.supplier===f.supplier) && orderInPeriod(o,f.period));
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Écarts de livraison</h2><div class="sub">Commandes où la quantité ou le prix reçu diffère de ce qui avait été commandé</div></div>
+    </div>
+    <div class="product-filter-bar">
+      <select onchange="state.ecartsFilters.supplier=this.value;render();">
+        <option value="tous">Tous fournisseurs</option>
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}
+      </select>
+      <select onchange="state.ecartsFilters.period=this.value;render();">
+        <option value="tous" ${f.period==='tous'?'selected':''}>Toutes périodes</option>
+        <option value="mois" ${f.period==='mois'?'selected':''}>Ce mois-ci</option>
+        <option value="trimestre" ${f.period==='trimestre'?'selected':''}>3 derniers mois</option>
+        <option value="annee" ${f.period==='annee'?'selected':''}>Cette année</option>
+      </select>
+    </div>
+    <div class="card">
+      ${filtered.length ? filtered.map(o=>`
+        <div style="padding:14px 0;border-bottom:1px solid var(--border);">
+          <div class="flex between center" style="margin-bottom:8px;">
+            <div><span class="mono" style="font-weight:600;">${o.id}</span> · <span class="muted">${supplierName(o.supplier)}</span> · <span class="muted small">${o.date}</span></div>
+            <span class="mono" style="font-weight:600;">${fmtEUR(o.amount)}</span>
+          </div>
+          <table style="width:100%;">
+            <tr><th class="small muted">Article</th><th class="small muted">Qté commandée</th><th class="small muted">Qté reçue</th><th class="small muted">Prix attendu</th><th class="small muted">Prix facturé</th></tr>
+            ${(o.lineItems||[]).filter(li=>li.discrepancy).map(li=>`
+              <tr>
+                <td>${li.name || (PRODUCTS.find(p=>p.id===li.productId)||{}).name || '—'}</td>
+                <td class="mono">${li.qty}</td>
+                <td class="mono ${Number(li.qtyReceived)!==Number(li.qty)?'text-alert':''}">${li.qtyReceived}</td>
+                <td class="mono">${li.price!=null?Number(li.price).toFixed(2)+' €':'—'}</td>
+                <td class="mono ${Number(li.priceReceived)!==Number(li.price)?'text-alert':''}">${li.priceReceived!=null?Number(li.priceReceived).toFixed(2)+' €':'—'}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </div>
+      `).join('') : emptyState(withDiscrepancy.length ? 'Aucun écart sur cette période/ce fournisseur' : 'Aucun écart détecté — tout correspond aux commandes')}
+    </div>
+  `;
+}
 function viewCommandes(role){
   const basketSupplierIds = Object.keys(BASKETS).filter(sid=>BASKETS[sid] && BASKETS[sid].length>0);
   const f = state.orderFilter;
@@ -1840,7 +1971,7 @@ function viewCommandes(role){
           <td style="font-weight:600;">${supplierName(o.supplier)}</td>
           <td class="muted small">${o.items}</td>
           <td class="mono">${fmtEUR(o.amount)}</td>
-          <td>${orderStatusTag(o.status)}</td>
+          <td>${orderStatusTag(o)}</td>
           <td class="muted small">${o.date}</td>
           <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document">${iconXs(I.doc)}</button><button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
         </tr>`).join('')}
@@ -1884,9 +2015,10 @@ function renderBasketCard(supplierId, role){
 function orderRowActions(o, role){
   const canDuplicate = role==='patron' && !o.custom && (o.lineItems||[]).some(li=>li.productId);
   const dupBtn = canDuplicate ? `<button class="btn btn-ghost btn-sm" onclick="duplicateOrder('${o.id}')" title="Réutiliser cette commande">${iconXs(I.copy)} Dupliquer</button>` : '';
-  if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8">${dupBtn}<button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
-  if((role==='manager' || role==='cuisine' || role==='patron') && o.status==='validee') return `<div class="flex gap8">${dupBtn}<button class="btn btn-ghost btn-sm" onclick="deliverOrder('${o.id}')">Marquer reçue</button></div>`;
-  return dupBtn;
+  const pdfBtn = (o.supplier && ['patron','manager'].includes(role)) ? `<button class="btn btn-ghost btn-sm" onclick="openOrderPdfOptions('${o.id}')" title="Bon de commande PDF">${iconXs(I.doc)} PDF</button>` : '';
+  if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
+  if((role==='manager' || role==='cuisine' || role==='patron') && o.status==='validee') return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></div>`;
+  return `<div class="flex gap8">${pdfBtn}${dupBtn}</div>`;
 }
 async function duplicateOrder(id){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
@@ -1903,12 +2035,15 @@ async function duplicateOrder(id){
   toast('Commande dupliquée dans le panier '+supplierName(o.supplier)+' — modifiez-la si besoin avant de l\u2019envoyer');
   setView('commandes');
 }
-function orderStatusTag(s){
-  if(s==='en_attente_validation') return `<span class="tag tag-neutral">En attente</span>`;
-  if(s==='validee') return `<span class="tag tag-neutral">Validée</span>`;
-  if(s==='livree') return `<span class="tag tag-strong">Livrée</span>`;
-  if(s==='refusee') return `<span class="tag tag-red">Refusée</span>`;
-  return `<span class="tag tag-subtle">${s}</span>`;
+function orderStatusTag(o){
+  const s = o.status;
+  let tag;
+  if(s==='en_attente_validation') tag = `<span class="tag tag-neutral">En attente</span>`;
+  else if(s==='validee') tag = `<span class="tag tag-neutral">Validée</span>`;
+  else if(s==='livree') tag = `<span class="tag tag-strong">Livrée</span>`;
+  else if(s==='refusee') tag = `<span class="tag tag-red">Refusée</span>`;
+  else tag = `<span class="tag tag-subtle">${s}</span>`;
+  return o.hasDiscrepancy ? `${tag} <span class="tag tag-red" title="La quantité ou le prix reçu diffère de la commande">⚠ Écart</span>` : tag;
 }
 
 function orderDepartments(o){
@@ -2192,10 +2327,16 @@ async function syncOrdersFromServer(localId){
     const d = ensureRestoData(localId);
     d.orders = data.orders.map(o => {
       const localSupplier = o.supplier_id ? d.suppliers.find(s => s.remoteId === o.supplier_id) : null;
+      const lineItems = (o.line_items || []).map(li => {
+        if(!li.productId) return li;
+        const localProduct = d.products.find(p => p.remoteId === li.productId);
+        return { ...li, productId: localProduct ? localProduct.id : null };
+      });
       return {
         id: 'CMD-'+o.id, remoteId: o.id, supplier: localSupplier ? localSupplier.id : null,
-        items: o.items, lineItems: o.line_items || [], amount: parseFloat(o.amount), status: o.status,
+        items: o.items, lineItems, amount: parseFloat(o.amount), status: o.status,
         date: o.order_date, createdAt: new Date(o.created_at), custom: o.is_custom,
+        hasDiscrepancy: o.has_discrepancy, deliveryNotePhotoUrl: o.delivery_note_photo_url,
       };
     });
     if(state.resto === localId) ORDERS = d.orders;
@@ -2727,7 +2868,7 @@ function viewLivraisons(){
       <div class="card-title">En attente de réception</div>
       <table>
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Montant</th><th></th></tr>
-        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td><td class="mono">${fmtEUR(o.amount)}</td><td><button class="btn btn-primary btn-sm" onclick="deliverOrder('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
+        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td><td class="mono">${fmtEUR(o.amount)}</td><td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
         ${awaiting.length===0?`<tr><td colspan="5"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
@@ -2878,15 +3019,78 @@ async function refuseOrder(id){
     toast(err.message, 'alert');
   }
 }
-async function deliverOrder(id){
+function openReceiveOrderModal(id){
   if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
   if(o.status!=='validee'){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
+  const lines = (o.lineItems||[]).map((li,idx)=>{
+    const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
+    const name = p ? p.name : (li.name || 'Article');
+    const unit = p ? p.unit : '';
+    return `
+      <div class="receive-line" data-idx="${idx}" style="padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:6px;">${name}</div>
+        <div class="field-row">
+          <div class="field"><label>Quantité commandée</label><input value="${li.qty}" disabled style="opacity:0.6;"></div>
+          <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${li.qty}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Prix attendu (€)</label><input value="${li.price!=null?Number(li.price).toFixed(2):'—'}" disabled style="opacity:0.6;"></div>
+          <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Réceptionner la commande ${o.id}</h3>
+    <div class="modal-sub">Vérifiez ce qui a vraiment été livré et facturé — les écarts éventuels seront signalés automatiquement.</div>
+    <div style="max-height:320px;overflow-y:auto;">${lines || emptyState('Aucun article détaillé sur cette commande')}</div>
+    <div class="field">
+      <label>Photo du bon de livraison / facture (facultatif)</label>
+      <div id="rcv-photo-preview"></div>
+      <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'rcv')">
+    </div>
+    <label class="flex center gap8" style="margin:10px 0 16px 0;"><input type="checkbox" id="rcv-update-catalog" checked> Mettre à jour le prix au catalogue si un prix facturé diffère</label>
+    <button class="btn btn-primary btn-block" onclick="confirmReceiveOrder('${id}')">Confirmer la réception</button>
+  `);
+}
+async function confirmReceiveOrder(id){
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  const receivedLineItems = (o.lineItems||[]).map((li,idx)=>{
+    const qtyInput = document.getElementById('rcv-qty-'+idx);
+    const priceInput = document.getElementById('rcv-price-'+idx);
+    const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
+    return {
+      productId: p ? p.remoteId : null, name: p ? p.name : li.name,
+      qtyOrdered: li.qty, qtyReceived: qtyInput ? parseFloat(qtyInput.value)||0 : li.qty,
+      priceOrdered: li.price, priceReceived: priceInput ? parseFloat(priceInput.value)||0 : li.price,
+    };
+  });
+  const updateCatalogPrices = document.getElementById('rcv-update-catalog').checked;
+  const photoPreview = document.getElementById('rcv-photo-preview');
+  const deliveryNotePhotoUrl = (photoPreview && photoPreview.dataset.value) || null;
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
-    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, { method:'PATCH', body:{ status:'livree' } });
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/receive`, {
+      method:'PATCH', body:{ receivedLineItems, updateCatalogPrices, deliveryNotePhotoUrl },
+    });
     o.status = 'livree';
-    toast('Livraison réceptionnée — ajoutée à votre historique d\u2019achats');
+    o.hasDiscrepancy = data.order.has_discrepancy;
+    o.lineItems = (data.order.line_items||[]).map(li=>{
+      const localProduct = li.productId ? PRODUCTS.find(p=>p.remoteId===li.productId) : null;
+      return { ...li, productId: localProduct ? localProduct.id : null };
+    });
+    o.amount = parseFloat(data.order.amount);
+    if(updateCatalogPrices){
+      receivedLineItems.forEach(li=>{
+        if(!li.productId) return;
+        const localProduct = PRODUCTS.find(p=>p.remoteId===li.productId);
+        if(localProduct && li.priceReceived != null) localProduct.price = li.priceReceived;
+      });
+    }
+    closeModal();
+    toast(data.order.has_discrepancy ? 'Réception confirmée — écart détecté par rapport à la commande' : 'Livraison réceptionnée — tout correspond à la commande');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -3148,7 +3352,7 @@ async function submitSignal(from, urgent){
   const note = document.getElementById('sig-note').value;
   if(!item){ toast('Merci de sélectionner un produit','alert'); return; }
   const prod = PRODUCTS.find(p=>p.name===item);
-  const author = ROLE_META[state.role].name.split(' — ')[0];
+  const author = currentPersonDisplayName();
   const now = new Date();
   const resto = RESTOS.find(r=>r.id===state.resto);
   const byName = author + ' ('+(from==='Cuisine'?'cuisine':'salle')+')';
@@ -3869,7 +4073,7 @@ function openSupplierDetail(id){
     <div class="card-title">Produits fournis (${linkedProducts.length})</div>
     <div class="small muted" style="margin-bottom:14px;">${linkedProducts.map(p=>p.name).join(', ') || 'Aucun produit lié'}</div>
     <div class="card-title">Dernières commandes</div>
-    ${linkedOrders.map(o=>`<div class="flex between small" style="padding:5px 0;"><span class="mono">${o.id}</span>${orderStatusTag(o.status)}</div>`).join('') || '<div class="small muted">Aucune commande</div>'}
+    ${linkedOrders.map(o=>`<div class="flex between small" style="padding:5px 0;"><span class="mono">${o.id}</span>${orderStatusTag(o)}</div>`).join('') || '<div class="small muted">Aucune commande</div>'}
   `);
 }
 async function saveSupplier(id){
@@ -4076,6 +4280,8 @@ function renderContent(){
     if(view==='demandes') return viewPatronDemandes();
     if(view==='stocks') return viewStocks();
     if(view==='commandes') return viewCommandes('patron');
+    if(view==='ecarts') return viewEcarts();
+    if(view==='stats') return viewStats();
     if(view==='fournisseurs') return viewFournisseurs();
     if(view==='equipe') return viewEquipe();
     if(view==='multi') return viewMulti();
@@ -4105,8 +4311,98 @@ function renderContent(){
 }
 
 /* ============================================================
-   GRAPHIQUES (Chart.js) — palette monochrome
+   BON DE COMMANDE — génération PDF (jsPDF) et envoi par email au fournisseur
 ============================================================ */
+function buildOrderPdf(o){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const supplier = SUPPLIERS.find(s=>s.id===o.supplier);
+  const marginX = 15;
+  let y = 20;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(18);
+  doc.text(resto ? resto.name : 'Restaurant', marginX, y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  y += 7;
+  if(resto && resto.address){ doc.text(resto.address, marginX, y); y += 5; }
+  if(resto && (resto.postalCode || resto.city)){ doc.text(`${resto.postalCode||''} ${resto.city||''}`.trim(), marginX, y); y += 5; }
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(14);
+  doc.text('BON DE COMMANDE', 195, 20, { align:'right' });
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.text(`Référence : ${o.id}`, 195, 27, { align:'right' });
+  doc.text(`Date : ${o.date || fmtDateShort(o.createdAt||new Date())}`, 195, 32, { align:'right' });
+
+  y += 10;
+  doc.setDrawColor(220,220,215); doc.line(marginX, y, 195, y);
+  y += 8;
+  doc.setFont('helvetica','bold'); doc.text('Fournisseur', marginX, y);
+  doc.setFont('helvetica','normal'); y += 6;
+  doc.text(supplier ? supplier.name : 'Fournisseur', marginX, y); y += 5;
+  if(supplier && supplier.address){ doc.text(supplier.address, marginX, y); y += 5; }
+  if(supplier && supplier.email){ doc.text(supplier.email, marginX, y); y += 5; }
+
+  y += 8;
+  const rows = (o.lineItems||[]).map(li=>{
+    const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
+    const name = p ? p.name : (li.name || 'Article');
+    const unit = p ? p.unit : '';
+    const price = li.priceReceived != null ? li.priceReceived : (li.price != null ? li.price : (p?p.price:0));
+    const qty = li.qtyReceived != null ? li.qtyReceived : li.qty;
+    return [name, `${qty} ${unit}`.trim(), `${Number(price).toFixed(2)} €`, `${(Number(qty)*Number(price)).toFixed(2)} €`];
+  });
+  doc.autoTable ? doc.autoTable({
+    startY: y, margin:{left:marginX,right:15},
+    head:[['Article','Quantité','Prix unitaire','Total']],
+    body: rows,
+    styles:{ font:'helvetica', fontSize:10, textColor:[30,30,30] },
+    headStyles:{ fillColor:[20,20,20], textColor:255 },
+    theme:'grid',
+  }) : null;
+  const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : y + 10 + rows.length*8;
+  doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text(`Total : ${fmtEUR(o.amount)}`, 195, finalY, { align:'right' });
+
+  return doc;
+}
+function openOrderPdfOptions(id){
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  const supplier = SUPPLIERS.find(s=>s.id===o.supplier);
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Bon de commande ${o.id}</h3>
+    <div class="modal-sub">${supplier?supplier.name:''}</div>
+    <button class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="downloadOrderPdf('${id}')">${iconSm(I.doc)} Télécharger le PDF</button>
+    ${supplier && supplier.email
+      ? `<button class="btn btn-ghost btn-block" onclick="emailOrderPdf('${id}')">${iconSm(I.mail)} Envoyer par email à ${supplier.email}</button>`
+      : `<div class="small muted">Ajoutez un email à ce fournisseur pour pouvoir le lui envoyer directement.</div>`}
+  `);
+}
+function downloadOrderPdf(id){
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  const doc = buildOrderPdf(o);
+  doc.save(`bon-de-commande-${o.id}.pdf`);
+  closeModal();
+}
+async function emailOrderPdf(id){
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  const supplier = SUPPLIERS.find(s=>s.id===o.supplier);
+  if(!supplier || !supplier.email){ toast("Ce fournisseur n'a pas d'adresse email enregistrée",'alert'); return; }
+  const doc = buildOrderPdf(o);
+  const base64 = doc.output('datauristring').split(',')[1];
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/send-pdf`, {
+      method:'POST',
+      body:{ to: supplier.email, filename:`bon-de-commande-${o.id}.pdf`, pdfBase64: base64 },
+    });
+    toast('Bon de commande envoyé à '+supplier.email);
+    closeModal();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
 let charts = {};
 function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
 function drawCharts(){
@@ -4142,6 +4438,45 @@ function drawCharts(){
         plugins:{legend:{display:false}},
         scales:{x:{min:70,max:100, grid:{color:'#EEEEE7'}}, y:{grid:{display:false}}}
       }
+    });
+  }
+  const trendCanvas = document.getElementById('chartMonthlyTrend');
+  if(trendCanvas){
+    const data = monthlyTrendData(6);
+    charts.trend = new Chart(trendCanvas, {
+      type:'line',
+      data:{
+        labels: data.map(d=>d.label),
+        datasets:[{data:data.map(d=>d.value), borderColor:'#141414', backgroundColor:'rgba(20,20,20,0.06)', fill:true, tension:0.3, pointRadius:3}]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{x:{grid:{display:false}}, y:{grid:{color:'#EEEEE7'}, ticks:{callback:v=>v+' €'}}}
+      }
+    });
+  }
+  const spendSuppCanvas = document.getElementById('chartSpendSupplier');
+  if(spendSuppCanvas){
+    const data = achatsBySupplier();
+    charts.spendSupp = new Chart(spendSuppCanvas, {
+      type:'bar',
+      data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor:'#141414', borderRadius:5, maxBarThickness:26}] },
+      options:{
+        indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{x:{grid:{color:'#EEEEE7'}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
+      }
+    });
+  }
+  const spendCatCanvas = document.getElementById('chartSpendCategory');
+  if(spendCatCanvas){
+    const data = spendByCategoryData();
+    const palette = ['#141414','#5B5B55','#8A8A84','#A93A2E','#BDBDB5','#2E4A3A'];
+    charts.spendCat = new Chart(spendCatCanvas, {
+      type:'doughnut',
+      data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor: data.map((_,i)=>palette[i%palette.length])}] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{boxWidth:12}}} }
     });
   }
 }
