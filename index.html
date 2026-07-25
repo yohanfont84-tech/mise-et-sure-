@@ -254,6 +254,15 @@ tr.tr-hover:hover{background:var(--paper);}
 }
 .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--black);outline-offset:1px;border-color:var(--black);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.zone-checklist{max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.product-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center;}
+.product-filter-bar input[type="text"]{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
+.product-filter-bar select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
+.product-picker-row{padding:8px 6px;border-radius:6px;cursor:pointer;font-size:13.5px;}
+.product-picker-row:hover{background:var(--surface-hover, rgba(0,0,0,0.04));}
+.product-picker-row.selected{background:var(--accent, #111);color:#fff;}
+.tag-remove{border:none;background:transparent;padding:0 0 0 4px;cursor:pointer;display:inline-flex;vertical-align:middle;color:inherit;opacity:0.6;}
+.tag-remove:hover{opacity:1;}
 @media(max-width:480px){.field-row{grid-template-columns:1fr;}}
 
 .tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
@@ -445,6 +454,7 @@ tr.tr-hover:hover{background:var(--paper);}
 ============================================================ */
 const I = {
   refresh:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5"/></svg>`,
+  copy:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
   menu:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`,
   dash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>`,
   box:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
@@ -494,9 +504,13 @@ let RESTOS = [];
 
 let SUPPLIERS = [];
 
+let CATEGORIES = []; // {id, remoteId, name} — catégories personnalisées par établissement
+let ZONES = []; // {id, remoteId, name} — lieux/zones personnalisés par établissement (Bar, Plage, Cuisine chaude...)
+
 let PRODUCTS = [];
-// Modèle d'un produit : {id, name, unit, price, qtyCommande, supplier, cat, department}
-// department : 'cuisine' | 'salle' | 'both' — sert à séparer ce qui est utilisé en cuisine et en salle
+// Modèle d'un produit : {id, name, unit, price, qtyCommande, supplier, cat, department, photoDataUrl, packaging, supplierReference, zoneIds}
+// department : 'cuisine' | 'salle' | 'both' — sert à séparer ce qui est utilisé en cuisine et en salle (visibilité)
+// zoneIds : lieux/zones associés (un produit peut être dans plusieurs à la fois, ex: Bar + Plage) — sert à l'organisation et la recherche
 // qtyCommande : quantité commandée par défaut (le site est un outil de commande, pas un inventaire en temps réel)
 
 let REQUESTS = [];
@@ -513,7 +527,7 @@ let TEAM = []; // aucun employé pré-créé — chaque établissement démarre 
 // ne sont jamais partagés entre deux restaurants d'un même compte patron.
 let RESTO_DATA = {};
 function ensureRestoData(id){
-  if(!RESTO_DATA[id]) RESTO_DATA[id] = { suppliers: [], products: [], requests: [], orders: [], baskets: {}, customRequests: [], team: [] };
+  if(!RESTO_DATA[id]) RESTO_DATA[id] = { suppliers: [], products: [], requests: [], orders: [], baskets: {}, customRequests: [], team: [], categories: [], zones: [] };
   return RESTO_DATA[id];
 }
 function loadRestoData(id){
@@ -525,6 +539,8 @@ function loadRestoData(id){
   BASKETS = d.baskets;
   CUSTOM_REQUESTS = d.customRequests;
   TEAM = d.team;
+  CATEGORIES = d.categories;
+  ZONES = d.zones;
 }
 
 function identityForTeamRole(role){
@@ -1673,9 +1689,74 @@ function emptyState(msg){
 }
 
 function setStockFilter(f){ state.stockFilter = f; render(); }
+function ensureProductFilters(){
+  if(!state.productFilters) state.productFilters = { search:'', category:'tous', zone:'tous', supplier:'tous' };
+  return state.productFilters;
+}
+function matchesProductSearch(p, q){
+  if(!q) return true;
+  q = q.toLowerCase();
+  if(p.name.toLowerCase().includes(q)) return true;
+  if((p.cat||'').toLowerCase().includes(q)) return true;
+  if((p.supplierReference||'').toLowerCase().includes(q)) return true;
+  if(supplierName(p.supplier).toLowerCase().includes(q)) return true;
+  if((p.zoneIds||[]).some(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z && z.name.toLowerCase().includes(q); })) return true;
+  return false;
+}
+function filterProductsList(products, f){
+  return products.filter(p=>{
+    if(f.search && !matchesProductSearch(p, f.search)) return false;
+    if(f.category && f.category!=='tous' && p.cat!==f.category) return false;
+    if(f.zone && f.zone!=='tous' && !(p.zoneIds||[]).includes(f.zone)) return false;
+    if(f.supplier && f.supplier!=='tous' && p.supplier!==f.supplier) return false;
+    return true;
+  });
+}
+function productFilterBar(f){
+  return `
+    <div class="product-filter-bar">
+      <input type="text" id="product-search-input" placeholder="🔎 Nom, catégorie, lieu, fournisseur, référence…" value="${f.search||''}" oninput="updateProductFilter('search',this.value)">
+      <select onchange="updateProductFilter('category',this.value)">
+        <option value="tous">Toutes catégories</option>
+        ${CATEGORIES.map(c=>`<option value="${c.name}" ${f.category===c.name?'selected':''}>${c.name}</option>`).join('')}
+      </select>
+      <select onchange="updateProductFilter('zone',this.value)">
+        <option value="tous">Tous les lieux</option>
+        ${ZONES.map(z=>`<option value="${z.id}" ${f.zone===z.id?'selected':''}>${z.name}</option>`).join('')}
+      </select>
+      <select onchange="updateProductFilter('supplier',this.value)">
+        <option value="tous">Tous fournisseurs</option>
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}
+      </select>
+      ${(f.search||f.category!=='tous'||f.zone!=='tous'||f.supplier!=='tous') ? `<button class="btn btn-ghost btn-sm" onclick="resetProductFilters()">Réinitialiser</button>` : ''}
+    </div>
+  `;
+}
+function updateProductFilter(key, value){
+  const f = ensureProductFilters();
+  f[key] = value;
+  const active = document.activeElement;
+  const activeId = active && active.id;
+  const selStart = active && active.selectionStart;
+  const selEnd = active && active.selectionEnd;
+  render();
+  if(activeId){
+    const el = document.getElementById(activeId);
+    if(el && el.focus){ el.focus(); if(selStart!=null && el.setSelectionRange) el.setSelectionRange(selStart, selEnd); }
+  }
+}
+function resetProductFilters(){
+  state.productFilters = { search:'', category:'tous', zone:'tous', supplier:'tous' };
+  render();
+}
+function zoneTagsFor(p){
+  return (p.zoneIds||[]).map(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z ? `<span class="tag tag-neutral" style="margin:2px;">${z.name}</span>` : ''; }).join('');
+}
 function viewStocks(){
   const filter = state.stockFilter || 'tous';
-  const filtered = PRODUCTS.filter(p=> filter==='tous' ? true : (filter==='cuisine' ? (p.department==='cuisine'||p.department==='both') : (p.department==='salle'||p.department==='both')));
+  const f = ensureProductFilters();
+  const byDept = PRODUCTS.filter(p=> filter==='tous' ? true : (filter==='cuisine' ? (p.department==='cuisine'||p.department==='both') : (p.department==='salle'||p.department==='both')));
+  const filtered = filterProductsList(byDept, f);
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Produits</h2><div class="sub">${PRODUCTS.length} produit${PRODUCTS.length>1?'s':''} au catalogue · le site sert à commander, pas à suivre un stock en temps réel</div></div>
@@ -1686,20 +1767,25 @@ function viewStocks(){
       <button class="${filter==='cuisine'?'active':''}" onclick="setStockFilter('cuisine')">Cuisine</button>
       <button class="${filter==='salle'?'active':''}" onclick="setStockFilter('salle')">Salle</button>
     </div>
+    ${productFilterBar(f)}
     <div class="card">
       ${filtered.length ? `<table>
-        <tr><th>Produit</th><th>Département</th><th>Fournisseur</th><th>Qté de commande standard</th><th>Prix unit.</th><th></th></tr>
+        <tr><th></th><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th><th>Prix d'achat</th><th></th></tr>
         ${filtered.map(p=>{
           return `<tr class="tr-hover">
-            <td style="font-weight:600;">${p.name}</td>
+            <td>${p.photoDataUrl ? `<img src="${p.photoDataUrl}" alt="${p.name}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;">` : ''}</td>
+            <td style="font-weight:600;">${p.name}${p.supplierReference?`<div class="small muted mono">${p.supplierReference}</div>`:''}</td>
+            <td class="muted small">${p.cat||'—'}</td>
+            <td>${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
             <td><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
             <td class="muted">${supplierName(p.supplier)}</td>
+            <td class="muted small">${p.packaging||'—'}</td>
             <td class="mono">${p.qtyCommande} ${p.unit}</td>
             <td class="mono">${p.price.toFixed(2)} €</td>
             <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button><button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
           </tr>`;
         }).join('')}
-      </table>` : emptyState(PRODUCTS.length ? 'Aucun produit dans cette catégorie' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
+      </table>` : emptyState(PRODUCTS.length ? 'Aucun produit ne correspond à ces critères' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
     </div>
   `;
 }
@@ -1796,9 +1882,26 @@ function renderBasketCard(supplierId, role){
   `;
 }
 function orderRowActions(o, role){
-  if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
-  if((role==='manager' || role==='cuisine' || role==='patron') && o.status==='validee') return `<button class="btn btn-ghost btn-sm" onclick="deliverOrder('${o.id}')">Marquer reçue</button>`;
-  return '';
+  const canDuplicate = role==='patron' && !o.custom && (o.lineItems||[]).some(li=>li.productId);
+  const dupBtn = canDuplicate ? `<button class="btn btn-ghost btn-sm" onclick="duplicateOrder('${o.id}')" title="Réutiliser cette commande">${iconXs(I.copy)} Dupliquer</button>` : '';
+  if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8">${dupBtn}<button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
+  if((role==='manager' || role==='cuisine' || role==='patron') && o.status==='validee') return `<div class="flex gap8">${dupBtn}<button class="btn btn-ghost btn-sm" onclick="deliverOrder('${o.id}')">Marquer reçue</button></div>`;
+  return dupBtn;
+}
+async function duplicateOrder(id){
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  if(!o.supplier){ toast("Cette commande n'a pas de fournisseur identifié",'alert'); return; }
+  let addedCount = 0;
+  for(const li of (o.lineItems||[])){
+    if(!li.productId) continue;
+    const stillExists = PRODUCTS.find(p=>p.id===li.productId);
+    if(!stillExists) continue; // le produit a peut-être été supprimé du catalogue depuis
+    await addToBasket(o.supplier, li.productId, li.qty);
+    addedCount++;
+  }
+  if(addedCount===0){ toast("Aucun produit de cette commande n'existe plus dans le catalogue",'alert'); return; }
+  toast('Commande dupliquée dans le panier '+supplierName(o.supplier)+' — modifiez-la si besoin avant de l\u2019envoyer');
+  setView('commandes');
 }
 function orderStatusTag(s){
   if(s==='en_attente_validation') return `<span class="tag tag-neutral">En attente</span>`;
@@ -2021,6 +2124,28 @@ async function syncTeamFromServer(localId){
     // telle quelle — sans bloquer le reste de l'application.
   }
 }
+async function syncCategoriesFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`);
+    const d = ensureRestoData(localId);
+    d.categories = data.categories.map(c => ({ id:'cat'+c.id, remoteId:c.id, name:c.name }));
+    if(state.resto === localId) CATEGORIES = d.categories;
+    render();
+  } catch(err){}
+}
+async function syncZonesFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`);
+    const d = ensureRestoData(localId);
+    d.zones = data.zones.map(z => ({ id:'zone'+z.id, remoteId:z.id, name:z.name }));
+    if(state.resto === localId) ZONES = d.zones;
+    render();
+  } catch(err){}
+}
 async function syncSuppliersFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
   if(!resto || !resto.remoteId) return;
@@ -2045,10 +2170,12 @@ async function syncProductsFromServer(localId){
     const d = ensureRestoData(localId);
     d.products = data.products.map(p => {
       const localSupplier = d.suppliers.find(s => s.remoteId === p.supplier_id);
+      const localZoneIds = (p.zone_ids||[]).map(zid => { const z = d.zones.find(zz=>zz.remoteId===zid); return z ? z.id : null; }).filter(Boolean);
       return {
         id: 'p'+p.id, remoteId: p.id, name: p.name, unit: p.unit, price: parseFloat(p.price),
         qtyCommande: parseFloat(p.qty_commande), supplier: localSupplier ? localSupplier.id : null,
-        cat: p.category, department: p.department,
+        cat: p.category, department: p.department, photoDataUrl: p.photo_url,
+        packaging: p.packaging, supplierReference: p.supplier_reference, zoneIds: localZoneIds,
       };
     });
     if(state.resto === localId) PRODUCTS = d.products;
@@ -2156,11 +2283,13 @@ async function syncNotificationSettingsFromServer(localId){
   } catch(err){}
 }
 async function syncRestoOperationalData(localId){
-  // Les fournisseurs doivent être rechargés AVANT les produits, puisque chaque produit se relie
-  // à un fournisseur déjà chargé localement. Idem pour les commandes et les paniers, qui se
-  // relient eux aussi à un fournisseur et des produits déjà chargés.
+  // Les fournisseurs et les lieux/zones doivent être rechargés AVANT les produits, puisque
+  // chaque produit s'y relie. Idem pour les commandes et les paniers, qui se relient eux aussi
+  // à un fournisseur et des produits déjà chargés.
   await syncRestaurantInfoFromServer(localId);
   await syncNotificationSettingsFromServer(localId);
+  await syncCategoriesFromServer(localId);
+  await syncZonesFromServer(localId);
   await syncSuppliersFromServer(localId);
   await syncProductsFromServer(localId);
   await syncOrdersFromServer(localId);
@@ -2250,6 +2379,24 @@ function viewParametres(){
         </div>
         <div class="field"><label>Devise</label><select id="set-currency"><option ${resto.currency==='EUR'?'selected':''}>EUR</option><option ${resto.currency==='CHF'?'selected':''}>CHF</option><option ${resto.currency==='USD'?'selected':''}>USD</option></select></div>
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Catégories et lieux du catalogue</div>
+        <div class="small muted" style="margin-bottom:14px;">Utilisés pour organiser vos produits et les retrouver rapidement.</div>
+        <div class="field">
+          <label>Catégories de produits</label>
+          <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
+            ${CATEGORIES.map(c=>`<span class="tag tag-neutral">${c.name} <button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
+          </div>
+          <div class="flex gap8"><input id="new-category-name" placeholder="Ex : Fromages" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addCategoryFromSettings()">Ajouter</button></div>
+        </div>
+        <div class="field">
+          <label>Lieux / zones</label>
+          <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
+            ${ZONES.map(z=>`<span class="tag tag-neutral">${z.name} <button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
+          </div>
+          <div class="flex gap8"><input id="new-zone-name" placeholder="Ex : Terrasse" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addZoneFromSettings()">Ajouter</button></div>
+        </div>
       </div>
       <div class="card">
         <div class="card-title">Apparence de cet établissement</div>
@@ -2360,6 +2507,61 @@ async function saveNewPassword(employeeId){
     }
     closeModal();
     toast('Identifiants mis à jour pour ' + name);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function addCategoryFromSettings(){
+  const name = document.getElementById('new-category-name').value.trim();
+  if(!name){ toast('Nom requis','alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
+    CATEGORIES.push({id:'cat'+nextId(), remoteId:data.category.id, name:data.category.name});
+    toast('Catégorie « '+name+' » ajoutée');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function deleteCategory(id){
+  const idx = CATEGORIES.findIndex(c=>c.id===id);
+  if(idx===-1) return;
+  const c = CATEGORIES[idx];
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/categories/${c.remoteId}`, { method:'DELETE' });
+    CATEGORIES.splice(idx,1);
+    toast('Catégorie supprimée');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function addZoneFromSettings(){
+  const name = document.getElementById('new-zone-name').value.trim();
+  if(!name){ toast('Nom requis','alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`, { method:'POST', body:{ name } });
+    ZONES.push({id:'zone'+nextId(), remoteId:data.zone.id, name:data.zone.name});
+    toast('Lieu « '+name+' » ajouté');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function deleteZone(id){
+  const idx = ZONES.findIndex(z=>z.id===id);
+  if(idx===-1) return;
+  const z = ZONES[idx];
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/zones/${z.remoteId}`, { method:'DELETE' });
+    ZONES.splice(idx,1);
+    PRODUCTS.forEach(p=>{ if(p.zoneIds) p.zoneIds = p.zoneIds.filter(zid=>zid!==id); });
+    toast('Lieu supprimé');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2989,14 +3191,27 @@ function openSignalModal(from, urgent){
     <h3>${urgent?'Signaler une commande urgente':'Demander une commande'}</h3>
     <div class="modal-sub">${urgent?"Le manager et le patron sont notifiés à l'instant — aucune quantité à indiquer, la quantité standard du produit est utilisée.":'Votre demande sera envoyée au manager pour validation. Aucune quantité à indiquer.'}</div>
     <div class="field"><label>Produit</label>
-      <select id="sig-item">
-        <option value="">Sélectionner un produit…</option>
-        ${list.map(p=>`<option value="${p.name}">${p.name}</option>`).join('')}
-      </select>
+      <input type="text" id="sig-search" placeholder="🔎 Nom, catégorie, lieu…" oninput="filterProductPicker('sig-picker')" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+      <input type="hidden" id="sig-item" value="">
+      <div id="sig-picker" class="zone-checklist" style="max-height:200px;">
+        ${list.map(p=>`<div class="product-picker-row" data-name="${p.name}" data-search="${(p.name+' '+(p.cat||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase()}" onclick="selectProductPickerRow(this,'sig-item','sig-picker')">${p.name}${p.cat?` <span class="muted small">· ${p.cat}</span>`:''}</div>`).join('')}
+      </div>
     </div>
     <div class="field"><label>Note (optionnel)</label><textarea id="sig-note" rows="2" placeholder="Ex : besoin avant le coup de feu de ce soir"></textarea></div>
     <button class="btn ${urgent?'btn-danger':'btn-primary'} btn-block" onclick="submitSignal('${from}', ${urgent})">${urgent?'Signaler la commande urgente':'Envoyer la demande'}</button>
   `);
+}
+function filterProductPicker(pickerId){
+  const input = document.getElementById(pickerId==='sig-picker'?'sig-search':pickerId+'-search');
+  const q = (input ? input.value : '').toLowerCase();
+  document.querySelectorAll('#'+pickerId+' .product-picker-row').forEach(row=>{
+    row.style.display = row.dataset.search.includes(q) ? '' : 'none';
+  });
+}
+function selectProductPickerRow(el, hiddenInputId, pickerId){
+  document.getElementById(hiddenInputId).value = el.dataset.name;
+  document.querySelectorAll('#'+pickerId+' .product-picker-row').forEach(r=>r.classList.remove('selected'));
+  el.classList.add('selected');
 }
 
 /* ============================================================
@@ -3136,31 +3351,96 @@ function openNewProductModal(){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Nouveau produit</h3><div class="modal-sub">Aucun champ n'est codé en dur — tout est personnalisable</div>
+    <div class="field">
+      <label>Photo (facultatif)</label>
+      <div id="np-photo-preview"></div>
+      <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'np')">
+    </div>
     <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive"></div>
-    <div class="field-row"><div class="field"><label>Catégorie</label><input id="np-cat" placeholder="Épicerie"></div><div class="field"><label>Unité</label><input id="np-unit" placeholder="L"></div></div>
-    <div class="field-row"><div class="field"><label>Prix unitaire (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div><div class="field"><label>Quantité de commande standard</label><input id="np-qty" type="number" min="1" step="1" value="10"></div></div>
+    <div class="field-row">
+      <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
+      <div class="field"><label>Unité</label><input id="np-unit" placeholder="Kg" list="unit-suggestions"></div>
+    </div>
+    <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
+    <div class="field-row">
+      <div class="field"><label>Conditionnement (facultatif)</label><input id="np-packaging" placeholder="Carton de 6" list="packaging-suggestions"></div>
+      <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234"></div>
+    </div>
+    <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
+    <div class="field-row"><div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div><div class="field"><label>Quantité de commande standard</label><input id="np-qty" type="number" min="1" step="1" value="10"></div></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="np-department"><option value="both" selected>Cuisine &amp; salle</option><option value="cuisine">Cuisine</option><option value="salle">Salle</option></select></div>
+    <div class="field">
+      <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
+      <div class="zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk"> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant — gérez-les depuis Paramètres.</div>'}</div>
+    </div>
     <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
   `);
+}
+function handleProductPhotoUpload(input, prefix){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const preview = document.getElementById(prefix+'-photo-preview');
+    preview.innerHTML = `<img src="${e.target.result}" alt="Photo du produit" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-bottom:8px;">`;
+    preview.dataset.value = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function onNewProductCategoryChange(select){
+  if(select.value==='__new__'){
+    const name = prompt('Nom de la nouvelle catégorie ?');
+    if(name && name.trim()){
+      const opt = document.createElement('option');
+      // Pas utilisé directement : la vraie création se fait à l'enregistrement du produit (addProduct/saveProduct),
+      // qui appelle createCategoryIfNeeded avant d'envoyer le produit.
+      select.dataset.pendingNew = name.trim();
+    } else {
+      select.value = CATEGORIES[0] ? CATEGORIES[0].name : '';
+    }
+  }
+}
+async function createCategoryIfNeeded(selectEl){
+  if(selectEl.value === '__new__' && selectEl.dataset.pendingNew){
+    const name = selectEl.dataset.pendingNew;
+    const resto = RESTOS.find(r=>r.id===state.resto);
+    try{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
+      CATEGORIES.push({id:'cat'+nextId(), remoteId:data.category.id, name:data.category.name});
+      return data.category.name;
+    } catch(err){
+      toast(err.message, 'alert');
+      return null;
+    }
+  }
+  return selectEl.value || null;
 }
 async function addProduct(){
   const name = document.getElementById('np-name').value.trim();
   if(!name){ toast('Le nom du produit est requis','alert'); return; }
-  const cat = document.getElementById('np-cat').value.trim() || 'Divers';
+  const catSelect = document.getElementById('np-cat');
+  const cat = await createCategoryIfNeeded(catSelect);
+  if(cat===null) return;
   const unit = document.getElementById('np-unit').value.trim() || 'unité';
+  const packaging = document.getElementById('np-packaging').value.trim();
+  const supplierReference = document.getElementById('np-reference').value.trim();
   const price = parseFloat(document.getElementById('np-price').value)||0;
   const qtyCommande = Math.round(parseFloat(document.getElementById('np-qty').value))||1;
   const supplier = document.getElementById('np-supplier').value;
   const department = document.getElementById('np-department').value;
+  const photoDataUrl = (document.getElementById('np-photo-preview').dataset||{}).value || null;
+  const zoneIds = Array.from(document.querySelectorAll('.np-zone-chk:checked')).map(el=>el.value);
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
+  const zoneRemoteIds = zoneIds.map(zid=>{ const z = ZONES.find(zz=>zz.id===zid); return z?z.remoteId:null; }).filter(Boolean);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
-      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null },
+      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, zoneIds: zoneRemoteIds },
     });
-    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department});
+    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, photoDataUrl, packaging, supplierReference, zoneIds});
     closeModal();
     toast('Produit « '+name+' » créé');
     render();
@@ -3170,40 +3450,68 @@ async function addProduct(){
 }
 function editProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
+  const zoneIds = p.zoneIds || [];
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Modifier le produit</h3>
+    <div class="field">
+      <label>Photo (facultatif)</label>
+      <div id="ep-photo-preview" data-value="${p.photoDataUrl||''}">${p.photoDataUrl ? `<img src="${p.photoDataUrl}" alt="Photo du produit" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-bottom:8px;">` : ''}</div>
+      <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'ep')">
+    </div>
     <div class="field"><label>Nom du produit</label><input id="ep-name" value="${p.name}"></div>
-    <div class="field-row"><div class="field"><label>Catégorie</label><input id="ep-cat" value="${p.cat}"></div><div class="field"><label>Unité</label><input id="ep-unit" value="${p.unit}"></div></div>
-    <div class="field-row"><div class="field"><label>Prix unitaire (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div><div class="field"><label>Quantité de commande standard</label><input id="ep-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div></div>
+    <div class="field-row">
+      <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${c.name===p.cat?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
+      <div class="field"><label>Unité</label><input id="ep-unit" value="${p.unit}" list="unit-suggestions"></div>
+    </div>
+    <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
+    <div class="field-row">
+      <div class="field"><label>Conditionnement (facultatif)</label><input id="ep-packaging" value="${p.packaging||''}" list="packaging-suggestions"></div>
+      <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${p.supplierReference||''}"></div>
+    </div>
+    <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
+    <div class="field-row"><div class="field"><label>Prix d'achat (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div><div class="field"><label>Quantité de commande standard</label><input id="ep-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div></div>
     <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="ep-department">
       <option value="cuisine" ${p.department==='cuisine'?'selected':''}>Cuisine</option>
       <option value="salle" ${p.department==='salle'?'selected':''}>Salle</option>
       <option value="both" ${p.department==='both'?'selected':''}>Cuisine &amp; salle</option>
     </select></div>
+    <div class="field">
+      <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
+      <div class="zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="ep-zone-chk" ${zoneIds.includes(z.id)?'checked':''}> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant — gérez-les depuis Paramètres.</div>'}</div>
+    </div>
     <button class="btn btn-primary btn-block" onclick="saveProduct('${id}')">Enregistrer</button>
   `);
 }
 async function saveProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
   const name = document.getElementById('ep-name').value.trim() || p.name;
-  const cat = document.getElementById('ep-cat').value.trim() || p.cat;
+  const catSelect = document.getElementById('ep-cat');
+  const cat = await createCategoryIfNeeded(catSelect);
+  if(cat===null) return;
   const unit = document.getElementById('ep-unit').value.trim() || p.unit;
+  const packaging = document.getElementById('ep-packaging').value.trim();
+  const supplierReference = document.getElementById('ep-reference').value.trim();
   const price = parseFloat(document.getElementById('ep-price').value) || p.price;
   const qtyCommande = Math.round(parseFloat(document.getElementById('ep-qty').value)) || p.qtyCommande;
   const supplier = document.getElementById('ep-supplier').value;
   const department = document.getElementById('ep-department').value;
+  const photoPreview = document.getElementById('ep-photo-preview');
+  const photoDataUrl = photoPreview.dataset.value || null;
+  const zoneIds = Array.from(document.querySelectorAll('.ep-zone-chk:checked')).map(el=>el.value);
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
+  const zoneRemoteIds = zoneIds.map(zid=>{ const z = ZONES.find(zz=>zz.id===zid); return z?z.remoteId:null; }).filter(Boolean);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
       method:'PATCH',
-      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null },
+      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, zoneIds: zoneRemoteIds },
     });
     p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
     p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
     p.supplier = supplier; p.department = data.product.department;
+    p.photoDataUrl = photoDataUrl; p.packaging = packaging; p.supplierReference = supplierReference; p.zoneIds = zoneIds;
     closeModal();
     toast('Produit mis à jour');
     render();
@@ -3250,15 +3558,21 @@ function orderProductRows(supplierId){
   const list = supplierId ? PRODUCTS.filter(p=>p.supplier===supplierId) : PRODUCTS;
   if(list.length===0) return `<div class="empty small">Aucun produit pour ce fournisseur</div>`;
   return list.map(p=>`
-    <div class="ord-row" data-pid="${p.id}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
+    <div class="ord-row" data-pid="${p.id}" data-search="${(p.name+' '+(p.cat||'')+' '+(p.supplierReference||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase()}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
       <input type="checkbox" id="ord-chk-${p.id}">
       <div style="flex:1;">
         <div style="font-weight:600;font-size:13.5px;">${p.name}</div>
-        <div class="small muted">Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}</div>
+        <div class="small muted">${p.cat?p.cat+' · ':''}Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}</div>
       </div>
       <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
     </div>
   `).join('');
+}
+function filterOrderProductSearch(){
+  const q = document.getElementById('ord-search').value.toLowerCase();
+  document.querySelectorAll('#ord-products .ord-row').forEach(row=>{
+    row.style.display = row.dataset.search.includes(q) ? '' : 'none';
+  });
 }
 function filterOrderProducts(){
   const supplierId = document.getElementById('ord-supplier').value;
@@ -3285,6 +3599,7 @@ function openNewOrderModal(prefillSupplierId){
       </select>
     </div>
     <div class="field"><label>Produits</label>
+      <input type="text" id="ord-search" placeholder="🔎 Nom, catégorie, lieu, référence…" oninput="filterOrderProductSearch()" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
       <div id="ord-products" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:0 10px;">${orderProductRows(supplierId)}</div>
     </div>
     <button class="btn btn-primary btn-block" onclick="createOrder()">Ajouter au panier</button>
