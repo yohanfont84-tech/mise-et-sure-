@@ -343,7 +343,7 @@ tr.tr-hover:hover{background:var(--paper);}
 .site-footer{text-align:center;padding:26px;font-size:11.5px;color:var(--muted-2);}
 .site-pricing-head{max-width:640px;margin:0 auto;padding:70px 24px 40px 24px;text-align:center;}
 .site-pricing-head h1{font-family:'Fraunces',serif;font-size:32px;margin:0 0 10px 0;}
-.site-plans-grid{max-width:760px;margin:0 auto;padding:0 24px 90px 24px;display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.site-plans-grid{max-width:1080px;margin:0 auto;padding:0 24px 90px 24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
 .site-plan-card{padding:32px 28px;}
 .site-plan-name{font-family:'Fraunces',serif;font-size:20px;font-weight:700;}
 .site-plan-price{font-family:'Fraunces',serif;font-size:34px;font-weight:700;margin-bottom:22px;}
@@ -351,6 +351,9 @@ tr.tr-hover:hover{background:var(--paper);}
 .site-plan-features li{display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:var(--text);}
 .site-plan-features li svg{flex-shrink:0;margin-top:3px;color:var(--text);}
 .payment-summary{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin:2px 0 20px 0;font-size:13.5px;}
+@media(max-width:1000px) and (min-width:761px){
+  .site-plans-grid{grid-template-columns:1fr 1fr;max-width:700px;}
+}
 @media(max-width:760px){
   .site-nav{padding:14px 20px;}
   .site-hero{padding:50px 20px 40px 20px;}
@@ -511,8 +514,7 @@ function financialsHidden(){
   return !!(resto && resto.hideFinancials);
 }
 function soloModeEnabled(){
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  return !!(resto && resto.soloMode);
+  return !!(ACCOUNT && ACCOUNT.plan === 'solo');
 }
 function parseNum(value){
   // Certains navigateurs/claviers (réglages en français) peuvent renvoyer une virgule à la
@@ -816,6 +818,8 @@ const state = {
 
 let ACCOUNT = null; // { email, plan, billing, via } une fois le compte connecté pendant la session (vient du vrai serveur)
 const PLANS = [
+  { id:'solo', name:'Solo', monthly:19, tagline:"Pour un restaurateur qui travaille seul",
+    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Factures et historique d’achats','Notifications par email'] },
   { id:'essentiel', name:'Essentiel', monthly:39, tagline:"Pour un restaurant qui démarre",
     features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Factures et historique d’achats','Notifications par email'] },
   { id:'pro', name:'Pro', monthly:79, tagline:"Pour les groupes multi-établissements",
@@ -2468,7 +2472,6 @@ async function syncRestaurantInfoFromServer(localId){
     resto.city = data.restaurant.city;
     resto.currency = data.restaurant.currency;
     resto.hideFinancials = data.restaurant.hide_financials;
-    resto.soloMode = data.restaurant.solo_mode;
     render();
   } catch(err){}
 }
@@ -2591,14 +2594,12 @@ function viewParametres(){
           <span>Masquer entièrement les prix, montants et statistiques de dépenses</span>
         </label>
       </div>
+      ${soloModeEnabled() ? `
       <div class="card">
-        <div class="card-title">Mode solo</div>
-        <div class="small muted" style="margin-bottom:14px;">Si vous travaillez seul(e), sans équipe, retirez tout le circuit de demandes internes et d'approbation pour ne garder que l'essentiel.</div>
-        <label class="flex center gap8" style="cursor:pointer;">
-          <input type="checkbox" id="solo-mode-toggle" ${resto.soloMode?'checked':''} onchange="toggleSoloMode(this.checked)">
-          <span>Je travaille seul(e) — masquer "Équipe" et "Demandes internes"</span>
-        </label>
+        <div class="card-title">Forfait Solo</div>
+        <div class="small muted">Vous êtes sur le forfait Solo, pensé pour un restaurateur qui travaille seul — la gestion d'équipe et les demandes internes ne sont donc pas proposées. Passez au forfait Essentiel ou Pro à tout moment pour gérer une équipe.</div>
       </div>
+      ` : ''}
       <div class="card">
         <div class="card-title">Catégories et lieux du catalogue</div>
         <div class="small muted" style="margin-bottom:14px;">Utilisés pour organiser vos produits et les retrouver rapidement.</div>
@@ -2813,18 +2814,6 @@ async function deleteZone(id){
     ZONES.splice(idx,1);
     PRODUCTS.forEach(p=>{ if(p.zoneIds) p.zoneIds = p.zoneIds.filter(zid=>zid!==id); });
     toast('Lieu supprimé');
-    render();
-  } catch(err){
-    toast(err.message, 'alert');
-  }
-}
-async function toggleSoloMode(checked){
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ soloMode: checked } });
-    resto.soloMode = data.restaurant.solo_mode;
-    if(checked && ['equipe','demandes'].includes(state.view)) state.view = 'dashboard';
-    toast(checked ? 'Mode solo activé' : 'Mode solo désactivé');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -4802,6 +4791,7 @@ function renderAdminPage(){
                   ${u.is_admin ? '' : `
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                       <select id="plan-select-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
+                        <option value="solo" ${u.plan==='solo'?'selected':''}>Solo</option>
                         <option value="essentiel" ${u.plan==='essentiel'?'selected':''}>Essentiel</option>
                         <option value="pro" ${u.plan==='pro'?'selected':''}>Pro</option>
                       </select>
