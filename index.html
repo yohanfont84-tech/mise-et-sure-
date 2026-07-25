@@ -886,10 +886,23 @@ function maskEmail(email){
   if(!domain) return email;
   return user.slice(0,2) + '***@' + domain;
 }
-function notifyByEmail(roleKey, message){
+async function notifyByEmail(roleKey, message, eventKey){
   const cfg = NOTIF_STATE[roleKey];
   if(!cfg || !cfg.enabled || !cfg.email) return;
-  setTimeout(()=>{ toast(`<b>Email envoyé</b> à ${maskEmail(cfg.email)} — ${message}`, 'mail'); }, 650);
+  if(eventKey && cfg.events && cfg.events[eventKey]===false) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/notify`, {
+      method:'POST',
+      body:{ role: roleKey, message },
+    });
+    if(data.sent) toast(`<b>Email envoyé</b> à ${maskEmail(cfg.email)} — ${message}`, 'mail');
+  } catch(err){
+    // Une notification manquée ne doit jamais bloquer l'action en cours (approbation d'une
+    // demande, envoi d'une commande...) — on l'indique discrètement, sans interrompre.
+    toast(`Email non envoyé (${err.message})`, 'alert');
+  }
 }
 function openModal(html){
   document.getElementById('modalContent').innerHTML = html;
@@ -1631,10 +1644,12 @@ function ticketOrder(o){
 }
 function ticketDemande(r, viewerRole){
   const canAct = canActOnDemande(viewerRole, r) && r.status==='attente';
+  const myMember = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+  const isMine = (viewerRole==='cuisine' || viewerRole==='salle') && myMember && r.createdByMemberId === myMember.remoteId && r.status==='attente';
   let stateTag = '';
   if(r.status==='approuvee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-subtle">${iconXs(I.check)} Approuvée${r.qty?' · '+r.qty+' '+r.unit+' commandé'+(r.qty>1?'s':''):''}</span></div>`;
   if(r.status==='refusee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-red">${iconXs(I.x)} Refusée</span></div>`;
-  if(r.status==='attente' && !canAct) stateTag = `<div style="margin-top:8px;"><span class="tag tag-neutral">${iconXs(I.clock)} En attente</span></div>`;
+  if(r.status==='attente' && !canAct && !isMine) stateTag = `<div style="margin-top:8px;"><span class="tag tag-neutral">${iconXs(I.clock)} En attente</span></div>`;
   return `
     <div class="ticket ${r.status==='attente' && r.urgent ? 'urgent' : (r.status==='attente' ? 'normal' : 'done')}">
       <div class="ticket-top">
@@ -1646,6 +1661,9 @@ function ticketDemande(r, viewerRole){
       ${canAct ? `<div class="ticket-actions">
         <button class="btn btn-primary btn-sm" onclick="openApproveDemandeModal('${r.id}')">${iconXs(I.check)} Approuver</button>
         <button class="btn btn-danger btn-sm" onclick="refuseDemande('${r.id}')">${iconXs(I.x)} Refuser</button>
+      </div>` : isMine ? `<div class="ticket-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openEditMyRequestModal('${r.id}')">Modifier</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMyRequest('${r.id}')">${iconXs(I.trash)} Supprimer</button>
       </div>` : stateTag}
     </div>
   `;
@@ -2067,6 +2085,7 @@ async function syncRequestsFromServer(localId){
       id: 'D-'+r.id, remoteId: r.id, from: r.from_dept, by: r.by_name, item: r.item_name,
       unit: r.unit, qty: r.qty ? parseFloat(r.qty) : null, urgent: r.urgent, note: r.note,
       status: r.status, time: fmtTime(new Date(r.created_at)), createdAt: new Date(r.created_at),
+      createdByMemberId: r.created_by_member_id,
     }));
     if(state.resto === localId) REQUESTS = d.requests;
     render();
@@ -2123,11 +2142,25 @@ async function syncRestaurantInfoFromServer(localId){
     render();
   } catch(err){}
 }
+async function syncNotificationSettingsFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/notification-settings`);
+    Object.keys(NOTIF_STATE).forEach(role=>{
+      if(data.notificationSettings && data.notificationSettings[role]){
+        NOTIF_STATE[role] = { ...NOTIF_STATE[role], ...data.notificationSettings[role] };
+      }
+    });
+    render();
+  } catch(err){}
+}
 async function syncRestoOperationalData(localId){
   // Les fournisseurs doivent être rechargés AVANT les produits, puisque chaque produit se relie
   // à un fournisseur déjà chargé localement. Idem pour les commandes et les paniers, qui se
   // relient eux aussi à un fournisseur et des produits déjà chargés.
   await syncRestaurantInfoFromServer(localId);
+  await syncNotificationSettingsFromServer(localId);
   await syncSuppliersFromServer(localId);
   await syncProductsFromServer(localId);
   await syncOrdersFromServer(localId);
@@ -2401,7 +2434,7 @@ function viewNotifications(role){
     </div>
   `;
 }
-function saveNotifSettings(role){
+async function saveNotifSettings(role){
   const cfg = NOTIF_STATE[role];
   const email = document.getElementById('notif-email').value.trim();
   if(!email || !email.includes('@')){ toast('Adresse email invalide','alert'); return; }
@@ -2410,9 +2443,17 @@ function saveNotifSettings(role){
   notifEventsForRole(role).forEach(ev=>{
     cfg.events[ev.key] = document.getElementById('notif-ev-'+ev.key).checked;
   });
-  toast('Préférences enregistrées');
-  if(cfg.enabled) notifyByEmail(role, "confirmation : vos notifications arriveront ici désormais.");
-  render();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/notification-settings`, {
+      method:'PATCH', body:{ role, settings: cfg },
+    });
+    toast('Préférences enregistrées');
+    if(cfg.enabled) notifyByEmail(role, "confirmation : vos notifications arriveront ici désormais.");
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 /* ============================================================
@@ -2615,7 +2656,7 @@ async function validateOrder(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, { method:'PATCH', body:{ status:'validee' } });
     o.status = 'validee';
     toast('Commande '+id+' validée');
-    notifyByEmail('manager', `commande ${id} validée par le patron — prête à réceptionner.`);
+    notifyByEmail('manager', `commande ${id} validée par le patron — prête à réceptionner.`, 'commandes');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2629,7 +2670,7 @@ async function refuseOrder(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
     o.status = 'refusee';
     toast('Commande '+id+' refusée', 'alert');
-    notifyByEmail('manager', `commande ${id} refusée par le patron.`);
+    notifyByEmail('manager', `commande ${id} refusée par le patron.`, 'commandes');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2811,7 +2852,7 @@ async function confirmValidateDemande(id){
       ORDERS.unshift({id:'CMD-'+nextId(), remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:[], amount: Math.round(qty*5*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
       toast('Demande approuvée — commande fournisseur créée');
     }
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`);
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`, 'decision');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2825,7 +2866,52 @@ async function refuseDemande(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
     r.status = 'refusee';
     toast('Demande refusée', 'alert');
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`);
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`, 'decision');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+function openEditMyRequestModal(id){
+  const r = REQUESTS.find(x=>x.id===id); if(!r) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>Modifier votre demande</h3>
+    <div class="modal-sub">Vous pouvez corriger votre demande tant qu'elle n'a pas encore été traitée.</div>
+    <div class="field"><label>Produit</label><input id="emr-item" value="${r.item}"></div>
+    <div class="field"><label>Note (facultatif)</label><input id="emr-note" value="${r.note||''}"></div>
+    <label class="flex center gap8" style="margin:4px 0 16px 0;"><input type="checkbox" id="emr-urgent" ${r.urgent?'checked':''}> Urgent</label>
+    <button class="btn btn-primary btn-block" onclick="saveMyRequestEdit('${id}')">Enregistrer</button>
+  `);
+}
+async function saveMyRequestEdit(id){
+  const r = REQUESTS.find(x=>x.id===id); if(!r) return;
+  const itemName = document.getElementById('emr-item').value.trim();
+  if(!itemName){ toast('Le produit est requis','alert'); return; }
+  const note = document.getElementById('emr-note').value.trim();
+  const urgent = document.getElementById('emr-urgent').checked;
+  const resto = RESTOS.find(rr=>rr.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, {
+      method:'PATCH', body:{ itemName, note, urgent },
+    });
+    r.item = itemName; r.note = note; r.urgent = urgent;
+    closeModal();
+    toast('Demande mise à jour');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function deleteMyRequest(id){
+  const idx = REQUESTS.findIndex(x=>x.id===id);
+  if(idx===-1) return;
+  const r = REQUESTS[idx];
+  const resto = RESTOS.find(rr=>rr.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, { method:'DELETE' });
+    REQUESTS.splice(idx,1);
+    toast('Demande supprimée');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2871,14 +2957,15 @@ async function submitSignal(from, urgent){
     });
     REQUESTS.unshift({
       id:'D-'+nextId(), remoteId: data.request.id, from, by: byName,
-      item, unit: prod?prod.unit:'unité', urgent, note, status:'attente', time: fmtTime(now), createdAt: now
+      item, unit: prod?prod.unit:'unité', urgent, note, status:'attente', time: fmtTime(now), createdAt: now,
+      createdByMemberId: data.request.created_by_member_id,
     });
     closeModal();
     const recipient = from==='Cuisine' ? 'patron' : 'manager';
     toast(urgent ? `Commande urgente signalée au ${recipient}` : `Demande envoyée au ${recipient}`);
     if(urgent){
-      if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`);
-      notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`);
+      if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`, 'demandes');
+      notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`, 'urgent');
     }
     render();
   } catch(err){
@@ -2939,7 +3026,7 @@ async function submitCustomRequest(){
     CUSTOM_REQUESTS.unshift({id:'P-'+nextId(), remoteId:data.customRequest.id, from: ROLE_META[state.role].label, by: author, itemName, note, status:'attente', time: fmtTime(now), createdAt: now});
     closeModal();
     toast('Proposition envoyée au patron');
-    notifyByEmail('patron', `nouvelle proposition d'achat : ${itemName} (par ${author}).`);
+    notifyByEmail('patron', `nouvelle proposition d'achat : ${itemName} (par ${author}).`, 'commandes');
     render();
   } catch(err){
     toast(err.message, 'alert');
