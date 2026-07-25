@@ -266,6 +266,7 @@ tr.tr-hover:hover{background:var(--paper);}
 .text-alert{color:#b91c1c;font-weight:700;}
 .tag-remove{border:none;background:transparent;padding:0 0 0 4px;cursor:pointer;display:inline-flex;vertical-align:middle;color:inherit;opacity:0.6;}
 .tag-remove:hover{opacity:1;}
+.tag-name-btn{border:none;background:transparent;padding:0;cursor:pointer;color:inherit;font:inherit;text-decoration:underline dotted;text-underline-offset:2px;}
 @media(max-width:480px){.field-row{grid-template-columns:1fr;}}
 
 .tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
@@ -2527,15 +2528,17 @@ function viewParametres(){
         <div class="small muted" style="margin-bottom:14px;">Utilisés pour organiser vos produits et les retrouver rapidement.</div>
         <div class="field">
           <label>Catégories de produits</label>
+          <div class="small muted" style="margin:-2px 0 8px 0;">Cliquez sur le nom pour le renommer.</div>
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
-            ${CATEGORIES.map(c=>`<span class="tag tag-neutral">${c.name} <button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
+            ${CATEGORIES.map(c=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameCategory('${c.id}')" title="Renommer">${c.name}</button><button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
           </div>
           <div class="flex gap8"><input id="new-category-name" placeholder="Ex : Fromages" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addCategoryFromSettings()">Ajouter</button></div>
         </div>
         <div class="field">
           <label>Lieux / zones</label>
+          <div class="small muted" style="margin:-2px 0 8px 0;">Cliquez sur le nom pour le renommer.</div>
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
-            ${ZONES.map(z=>`<span class="tag tag-neutral">${z.name} <button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
+            ${ZONES.map(z=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameZone('${z.id}')" title="Renommer">${z.name}</button><button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
           </div>
           <div class="flex gap8"><input id="new-zone-name" placeholder="Ex : Terrasse" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addZoneFromSettings()">Ajouter</button></div>
         </div>
@@ -2649,6 +2652,36 @@ async function saveNewPassword(employeeId){
     }
     closeModal();
     toast('Identifiants mis à jour pour ' + name);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function renameCategory(id){
+  const c = CATEGORIES.find(x=>x.id===id); if(!c) return;
+  const newName = prompt('Nouveau nom de la catégorie :', c.name);
+  if(!newName || !newName.trim() || newName.trim()===c.name) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories/${c.remoteId}`, { method:'PATCH', body:{ name: newName.trim() } });
+    const oldName = c.name;
+    c.name = data.category.name;
+    PRODUCTS.forEach(p=>{ if(p.cat===oldName) p.cat = c.name; });
+    toast('Catégorie renommée');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function renameZone(id){
+  const z = ZONES.find(x=>x.id===id); if(!z) return;
+  const newName = prompt('Nouveau nom du lieu :', z.name);
+  if(!newName || !newName.trim() || newName.trim()===z.name) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones/${z.remoteId}`, { method:'PATCH', body:{ name: newName.trim() } });
+    z.name = data.zone.name;
+    toast('Lieu renommé');
     render();
   } catch(err){
     toast(err.message, 'alert');
