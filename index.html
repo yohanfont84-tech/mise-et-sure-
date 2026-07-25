@@ -2310,7 +2310,8 @@ async function syncProductsFromServer(localId){
         id: 'p'+p.id, remoteId: p.id, name: p.name, unit: p.unit, price: parseFloat(p.price),
         qtyCommande: parseFloat(p.qty_commande), supplier: localSupplier ? localSupplier.id : null,
         cat: p.category, department: p.department, photoDataUrl: p.photo_url,
-        packaging: p.packaging, supplierReference: p.supplier_reference, zoneIds: localZoneIds,
+        packaging: p.packaging, supplierReference: p.supplier_reference,
+        volumeLiters: p.volume_liters!=null ? parseFloat(p.volume_liters) : null, zoneIds: localZoneIds,
       };
     });
     if(state.resto === localId) PRODUCTS = d.products;
@@ -3554,32 +3555,57 @@ function openNewProductModal(){
   }
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Nouveau produit</h3><div class="modal-sub">Aucun champ n'est codé en dur — tout est personnalisable</div>
+    <h3>Nouveau produit</h3>
     <div class="field">
       <label>Photo (facultatif)</label>
       <div id="np-photo-preview"></div>
       <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'np')">
     </div>
     <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive"></div>
+    <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field-row">
-      <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
       <div class="field"><label>Unité</label><input id="np-unit" placeholder="Kg" list="unit-suggestions"></div>
+      <div class="field"><label>Conditionnement (facultatif)</label><input id="np-packaging" placeholder="Carton de 6" list="packaging-suggestions"></div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
-    <div class="field-row">
-      <div class="field"><label>Conditionnement (facultatif)</label><input id="np-packaging" placeholder="Carton de 6" list="packaging-suggestions"></div>
-      <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234"></div>
-    </div>
     <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
-    <div class="field-row"><div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div><div class="field"><label>Quantité de commande standard</label><input id="np-qty" type="number" min="1" step="1" value="10"></div></div>
+    <div class="field"><label>Contenance en litres (facultatif — pour les liquides, ex : une bouteille de 0.75L)</label><input id="np-volume" type="number" step="0.01" placeholder="0.75"></div>
+    <div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div>
+    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234"></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="np-department"><option value="both" selected>Cuisine &amp; salle</option><option value="cuisine">Cuisine</option><option value="salle">Salle</option></select></div>
     <div class="field">
       <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
-      <div class="zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk"> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant — gérez-les depuis Paramètres.</div>'}</div>
+      <div class="zone-checklist" id="np-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk"> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
+      <div class="flex gap8" style="margin-top:8px;"><input id="np-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('np')">Ajouter</button></div>
     </div>
     <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
   `);
+}
+function addZoneInline(prefix){
+  return (async()=>{
+    const input = document.getElementById(prefix+'-new-zone');
+    const name = input.value.trim();
+    if(!name) return;
+    const resto = RESTOS.find(r=>r.id===state.resto);
+    try{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`, { method:'POST', body:{ name } });
+      const newZone = {id:'zone'+nextId(), remoteId:data.zone.id, name:data.zone.name};
+      ZONES.push(newZone);
+      const checklist = document.getElementById(prefix+'-zone-checklist');
+      const emptyMsg = checklist.querySelector('.small.muted');
+      if(emptyMsg) emptyMsg.remove();
+      const label = document.createElement('label');
+      label.className = 'flex center gap8';
+      label.style.marginBottom = '6px';
+      label.innerHTML = `<input type="checkbox" value="${newZone.id}" class="${prefix}-zone-chk" checked> ${newZone.name}`;
+      checklist.appendChild(label);
+      input.value = '';
+      toast('Lieu « '+name+' » ajouté');
+    } catch(err){
+      toast(err.message, 'alert');
+    }
+  })();
 }
 function handleProductPhotoUpload(input, prefix){
   const file = input.files && input.files[0];
@@ -3629,9 +3655,10 @@ async function addProduct(){
   if(cat===null) return;
   const unit = document.getElementById('np-unit').value.trim() || 'unité';
   const packaging = document.getElementById('np-packaging').value.trim();
+  const volumeInput = document.getElementById('np-volume').value;
+  const volumeLiters = volumeInput ? parseFloat(volumeInput) : null;
   const supplierReference = document.getElementById('np-reference').value.trim();
   const price = parseFloat(document.getElementById('np-price').value)||0;
-  const qtyCommande = Math.round(parseFloat(document.getElementById('np-qty').value))||1;
   const supplier = document.getElementById('np-supplier').value;
   const department = document.getElementById('np-department').value;
   const photoDataUrl = (document.getElementById('np-photo-preview').dataset||{}).value || null;
@@ -3642,9 +3669,9 @@ async function addProduct(){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
-      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
     });
-    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, photoDataUrl, packaging, supplierReference, zoneIds});
+    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, photoDataUrl, packaging, supplierReference, volumeLiters, zoneIds});
     closeModal();
     toast('Produit « '+name+' » créé');
     render();
@@ -3664,17 +3691,16 @@ function editProduct(id){
       <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'ep')">
     </div>
     <div class="field"><label>Nom du produit</label><input id="ep-name" value="${p.name}"></div>
+    <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${c.name===p.cat?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field-row">
-      <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${c.name===p.cat?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
       <div class="field"><label>Unité</label><input id="ep-unit" value="${p.unit}" list="unit-suggestions"></div>
+      <div class="field"><label>Conditionnement (facultatif)</label><input id="ep-packaging" value="${p.packaging||''}" list="packaging-suggestions"></div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
-    <div class="field-row">
-      <div class="field"><label>Conditionnement (facultatif)</label><input id="ep-packaging" value="${p.packaging||''}" list="packaging-suggestions"></div>
-      <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${p.supplierReference||''}"></div>
-    </div>
     <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
-    <div class="field-row"><div class="field"><label>Prix d'achat (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div><div class="field"><label>Quantité de commande standard</label><input id="ep-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div></div>
+    <div class="field"><label>Contenance en litres (facultatif — pour les liquides, ex : une bouteille de 0.75L)</label><input id="ep-volume" type="number" step="0.01" value="${p.volumeLiters!=null?p.volumeLiters:''}" placeholder="0.75"></div>
+    <div class="field"><label>Prix d'achat (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>
+    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${p.supplierReference||''}"></div>
     <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="ep-department">
       <option value="cuisine" ${p.department==='cuisine'?'selected':''}>Cuisine</option>
@@ -3683,7 +3709,8 @@ function editProduct(id){
     </select></div>
     <div class="field">
       <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
-      <div class="zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="ep-zone-chk" ${zoneIds.includes(z.id)?'checked':''}> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant — gérez-les depuis Paramètres.</div>'}</div>
+      <div class="zone-checklist" id="ep-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="ep-zone-chk" ${zoneIds.includes(z.id)?'checked':''}> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
+      <div class="flex gap8" style="margin-top:8px;"><input id="ep-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('ep')">Ajouter</button></div>
     </div>
     <button class="btn btn-primary btn-block" onclick="saveProduct('${id}')">Enregistrer</button>
   `);
@@ -3696,9 +3723,10 @@ async function saveProduct(id){
   if(cat===null) return;
   const unit = document.getElementById('ep-unit').value.trim() || p.unit;
   const packaging = document.getElementById('ep-packaging').value.trim();
+  const volumeInput = document.getElementById('ep-volume').value;
+  const volumeLiters = volumeInput ? parseFloat(volumeInput) : null;
   const supplierReference = document.getElementById('ep-reference').value.trim();
   const price = parseFloat(document.getElementById('ep-price').value) || p.price;
-  const qtyCommande = Math.round(parseFloat(document.getElementById('ep-qty').value)) || p.qtyCommande;
   const supplier = document.getElementById('ep-supplier').value;
   const department = document.getElementById('ep-department').value;
   const photoPreview = document.getElementById('ep-photo-preview');
@@ -3710,12 +3738,12 @@ async function saveProduct(id){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
       method:'PATCH',
-      body:{ name, category:cat, unit, price, qtyCommande, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
     });
     p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
     p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
     p.supplier = supplier; p.department = data.product.department;
-    p.photoDataUrl = photoDataUrl; p.packaging = packaging; p.supplierReference = supplierReference; p.zoneIds = zoneIds;
+    p.photoDataUrl = photoDataUrl; p.packaging = packaging; p.supplierReference = supplierReference; p.volumeLiters = volumeLiters; p.zoneIds = zoneIds;
     closeModal();
     toast('Produit mis à jour');
     render();
