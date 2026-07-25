@@ -506,6 +506,13 @@ function iconSm(svg){ return svg.replace('width="24"','width="14"').replace('hei
 ============================================================ */
 let uidSeq = 1000;
 const nextId = () => (uidSeq++).toString();
+function parseNum(value){
+  // Certains navigateurs/claviers (réglages en français) peuvent renvoyer une virgule à la
+  // place du point comme séparateur décimal — on la convertit avant de faire le calcul, pour
+  // ne jamais silencieusement tronquer un nombre comme "1,45" en "1".
+  if(value==null || value==='') return NaN;
+  return parseFloat(String(value).replace(',', '.'));
+}
 
 let RESTOS = [];
 
@@ -1850,10 +1857,9 @@ function viewStocks(){
     ${productFilterBar(f)}
     <div class="card">
       ${filtered.length ? `<table>
-        <tr><th></th><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th><th>Prix d'achat</th><th></th></tr>
+        <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th><th>Prix d'achat</th><th></th></tr>
         ${filtered.map(p=>{
           return `<tr class="tr-hover">
-            <td>${p.photoDataUrl ? `<img src="${p.photoDataUrl}" alt="${p.name}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;">` : ''}</td>
             <td style="font-weight:600;">${p.name}${p.supplierReference?`<div class="small muted mono">${p.supplierReference}</div>`:''}</td>
             <td class="muted small">${p.cat||'—'}</td>
             <td>${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
@@ -2316,7 +2322,7 @@ async function syncProductsFromServer(localId){
       return {
         id: 'p'+p.id, remoteId: p.id, name: p.name, unit: p.unit, price: parseFloat(p.price),
         qtyCommande: parseFloat(p.qty_commande), supplier: localSupplier ? localSupplier.id : null,
-        cat: p.category, department: p.department, photoDataUrl: p.photo_url,
+        cat: p.category, department: p.department,
         packaging: p.packaging, supplierReference: p.supplier_reference,
         volumeLiters: p.volume_liters!=null ? parseFloat(p.volume_liters) : null, zoneIds: localZoneIds,
       };
@@ -3626,11 +3632,6 @@ function openNewProductModal(){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Nouveau produit</h3>
-    <div class="field">
-      <label>Photo (facultatif)</label>
-      <div id="np-photo-preview"></div>
-      <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'np')">
-    </div>
     <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive"></div>
     <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field-row">
@@ -3726,12 +3727,11 @@ async function addProduct(){
   const unit = document.getElementById('np-unit').value.trim() || 'unité';
   const packaging = document.getElementById('np-packaging').value.trim();
   const volumeInput = document.getElementById('np-volume').value;
-  const volumeLiters = volumeInput ? parseFloat(volumeInput) : null;
+  const volumeLiters = volumeInput ? parseNum(volumeInput) : null;
   const supplierReference = document.getElementById('np-reference').value.trim();
-  const price = parseFloat(document.getElementById('np-price').value)||0;
+  const price = parseNum(document.getElementById('np-price').value)||0;
   const supplier = document.getElementById('np-supplier').value;
   const department = document.getElementById('np-department').value;
-  const photoDataUrl = (document.getElementById('np-photo-preview').dataset||{}).value || null;
   const zoneIds = Array.from(document.querySelectorAll('.np-zone-chk:checked')).map(el=>el.value);
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
@@ -3739,9 +3739,9 @@ async function addProduct(){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
-      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
     });
-    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, photoDataUrl, packaging, supplierReference, volumeLiters, zoneIds});
+    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, volumeLiters, zoneIds});
     closeModal();
     toast('Produit « '+name+' » créé');
     render();
@@ -3755,11 +3755,6 @@ function editProduct(id){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Modifier le produit</h3>
-    <div class="field">
-      <label>Photo (facultatif)</label>
-      <div id="ep-photo-preview" data-value="${p.photoDataUrl||''}">${p.photoDataUrl ? `<img src="${p.photoDataUrl}" alt="Photo du produit" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-bottom:8px;">` : ''}</div>
-      <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'ep')">
-    </div>
     <div class="field"><label>Nom du produit</label><input id="ep-name" value="${p.name}"></div>
     <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${c.name===p.cat?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field-row">
@@ -3794,13 +3789,11 @@ async function saveProduct(id){
   const unit = document.getElementById('ep-unit').value.trim() || p.unit;
   const packaging = document.getElementById('ep-packaging').value.trim();
   const volumeInput = document.getElementById('ep-volume').value;
-  const volumeLiters = volumeInput ? parseFloat(volumeInput) : null;
+  const volumeLiters = volumeInput ? parseNum(volumeInput) : null;
   const supplierReference = document.getElementById('ep-reference').value.trim();
-  const price = parseFloat(document.getElementById('ep-price').value) || p.price;
+  const price = parseNum(document.getElementById('ep-price').value) || p.price;
   const supplier = document.getElementById('ep-supplier').value;
   const department = document.getElementById('ep-department').value;
-  const photoPreview = document.getElementById('ep-photo-preview');
-  const photoDataUrl = photoPreview.dataset.value || null;
   const zoneIds = Array.from(document.querySelectorAll('.ep-zone-chk:checked')).map(el=>el.value);
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
@@ -3808,12 +3801,12 @@ async function saveProduct(id){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
       method:'PATCH',
-      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, photoUrl: photoDataUrl, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
     });
     p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
     p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
     p.supplier = supplier; p.department = data.product.department;
-    p.photoDataUrl = photoDataUrl; p.packaging = packaging; p.supplierReference = supplierReference; p.volumeLiters = volumeLiters; p.zoneIds = zoneIds;
+    p.packaging = packaging; p.supplierReference = supplierReference; p.volumeLiters = volumeLiters; p.zoneIds = zoneIds;
     closeModal();
     toast('Produit mis à jour');
     render();
