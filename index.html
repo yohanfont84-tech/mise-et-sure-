@@ -510,6 +510,10 @@ function financialsHidden(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   return !!(resto && resto.hideFinancials);
 }
+function soloModeEnabled(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  return !!(resto && resto.soloMode);
+}
 function parseNum(value){
   // Certains navigateurs/claviers (réglages en français) peuvent renvoyer une virgule à la
   // place du point comme séparateur décimal — on la convertit avant de faire le calcul, pour
@@ -689,8 +693,13 @@ function basketTotal(supplierId){
     return a + (p ? li.qty*p.price : 0);
   }, 0);
 }
+function canSendOrders(){
+  if(state.role==='patron') return true;
+  const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+  return !!(m && m.canOrderDirectly);
+}
 async function sendBasket(supplierId){
-  if(state.role!=='patron'){ toast('Seul le patron peut envoyer une commande au fournisseur','alert'); return; }
+  if(!canSendOrders()){ toast("Vous n'avez pas l'autorisation de commander directement — demandez au patron",'alert'); return; }
   const items = BASKETS[supplierId];
   if(!items || items.length===0) return;
   const parts = [];
@@ -1469,7 +1478,7 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
    SHELL
 ============================================================ */
 function renderShell(){
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats'));
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats') && !(soloModeEnabled() && ['equipe','demandes'].includes(n.id)));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -2007,7 +2016,7 @@ function viewCommandes(role){
 function renderBasketCard(supplierId, role){
   const items = BASKETS[supplierId] || [];
   const total = basketTotal(supplierId);
-  const canSend = role === 'patron';
+  const canSend = canSendOrders();
   return `
     <div class="card">
       <div class="flex between center">
@@ -2156,6 +2165,17 @@ function viewEquipe(){
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
+    <div class="section-head"><div><h2>Autorisation de commande directe</h2><div class="sub">Ces personnes peuvent envoyer une commande au fournisseur sans attendre la validation du patron</div></div></div>
+    <div class="card">
+      ${TEAM.length ? `<table>
+        <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th></tr>
+        ${TEAM.map(t=>`<tr class="tr-hover">
+          <td style="font-weight:600;">${t.name}</td>
+          <td class="muted">${t.role}</td>
+          <td><label class="flex center gap8" style="cursor:pointer;"><input type="checkbox" ${t.canOrderDirectly?'checked':''} onchange="toggleCanOrderDirectly('${t.id}', this.checked)"> ${t.canOrderDirectly?'Autorisé':'Non autorisé'}</label></td>
+        </tr>`).join('')}
+      </table>` : emptyState('Aucun employé pour le moment')}
+    </div>
     <div class="section-head"><div><h2>Rôles &amp; permissions</h2><div class="sub">Modifiable librement par l'administrateur, sans aucun élément codé en dur</div></div></div>
     <div class="grid grid-4">
       ${[['Patron','Accès total : validation des commandes, demandes de la cuisine, finances, paramètres'],['Manager','Demandes de la salle, commandes, produits, livraisons'],['Cuisine','Signaler une commande, consulter le catalogue (validée par le patron)'],['Salle','Signaler une commande, demander un réassort (validée par le manager)']].map(([r,d])=>`
@@ -2163,6 +2183,20 @@ function viewEquipe(){
       `).join('')}
     </div>
   `;
+}
+async function toggleCanOrderDirectly(id, checked){
+  const t = TEAM.find(x=>x.id===id); if(!t) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team/${t.remoteId}`, {
+      method:'PATCH', body:{ canOrderDirectly: checked },
+    });
+    t.canOrderDirectly = !!data.member.can_order_directly;
+    toast(checked ? `${t.name} peut désormais commander directement` : `${t.name} ne peut plus commander directement`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function permsForRole(role){
   if(role==='Manager') return 'Demandes · Commandes · Produits';
@@ -2275,7 +2309,7 @@ async function syncTeamFromServer(localId){
     d.team = data.team.map(m => ({
       id: 't'+m.id, remoteId: m.id, name: m.name, role: m.role, shift: m.shift,
       status: m.status, username: m.username, photoDataUrl: m.photo_url, theme: m.theme,
-      inviteToken: m.invite_token,
+      inviteToken: m.invite_token, canOrderDirectly: !!m.can_order_directly,
     }));
     if(state.resto === localId) TEAM = d.team;
     render();
@@ -2434,6 +2468,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.city = data.restaurant.city;
     resto.currency = data.restaurant.currency;
     resto.hideFinancials = data.restaurant.hide_financials;
+    resto.soloMode = data.restaurant.solo_mode;
     render();
   } catch(err){}
 }
@@ -2554,6 +2589,14 @@ function viewParametres(){
         <label class="flex center gap8" style="cursor:pointer;">
           <input type="checkbox" id="hide-financials-toggle" ${resto.hideFinancials?'checked':''} onchange="toggleHideFinancials(this.checked)">
           <span>Masquer entièrement les prix, montants et statistiques de dépenses</span>
+        </label>
+      </div>
+      <div class="card">
+        <div class="card-title">Mode solo</div>
+        <div class="small muted" style="margin-bottom:14px;">Si vous travaillez seul(e), sans équipe, retirez tout le circuit de demandes internes et d'approbation pour ne garder que l'essentiel.</div>
+        <label class="flex center gap8" style="cursor:pointer;">
+          <input type="checkbox" id="solo-mode-toggle" ${resto.soloMode?'checked':''} onchange="toggleSoloMode(this.checked)">
+          <span>Je travaille seul(e) — masquer "Équipe" et "Demandes internes"</span>
         </label>
       </div>
       <div class="card">
@@ -2770,6 +2813,18 @@ async function deleteZone(id){
     ZONES.splice(idx,1);
     PRODUCTS.forEach(p=>{ if(p.zoneIds) p.zoneIds = p.zoneIds.filter(zid=>zid!==id); });
     toast('Lieu supprimé');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function toggleSoloMode(checked){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ soloMode: checked } });
+    resto.soloMode = data.restaurant.solo_mode;
+    if(checked && ['equipe','demandes'].includes(state.view)) state.view = 'dashboard';
+    toast(checked ? 'Mode solo activé' : 'Mode solo désactivé');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -4427,13 +4482,13 @@ function renderContent(){
   if(view==='notifications') return viewNotifications(role);
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
-    if(view==='demandes') return viewPatronDemandes();
+    if(view==='demandes') return soloModeEnabled() ? viewPatronDashboard() : viewPatronDemandes();
     if(view==='stocks') return viewStocks();
     if(view==='commandes') return viewCommandes('patron');
     if(view==='ecarts') return viewEcarts();
     if(view==='stats') return financialsHidden() ? viewPatronDashboard() : viewStats();
     if(view==='fournisseurs') return viewFournisseurs();
-    if(view==='equipe') return viewEquipe();
+    if(view==='equipe') return soloModeEnabled() ? viewPatronDashboard() : viewEquipe();
     if(view==='multi') return viewMulti();
     if(view==='parametres') return viewParametres();
   }
