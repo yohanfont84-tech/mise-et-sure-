@@ -51,7 +51,7 @@ html.theme-dark{
   --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
 }
 *{box-sizing:border-box;}
-html,body{margin:0;padding:0;}
+html,body{margin:0;padding:0;overflow-x:hidden;max-width:100%;}
 body{
   font-family:'Inter',sans-serif;
   background:var(--paper);
@@ -133,7 +133,8 @@ a{text-decoration:none;color:inherit;}
   .page-title{font-size:16.5px;}
   .role-switcher{display:none;}
   .topbar-right{gap:8px;}
-  table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}
+  .card{overflow-x:auto;-webkit-overflow-scrolling:touch;min-width:0;max-width:100%;}
+  table{white-space:nowrap;}
 }
 
 .main{flex:1;min-width:0;display:flex;flex-direction:column;}
@@ -160,7 +161,7 @@ a{text-decoration:none;color:inherit;}
 .avatar img{width:100%;height:100%;object-fit:cover;}
 .avatar-btn{border:none;padding:0;background:none;cursor:pointer;}
 
-.content{padding:26px 28px 60px 28px;flex:1;}
+.content{padding:26px 28px 60px 28px;flex:1;min-width:0;}
 
 .demo-banner{
   background:var(--black);color:#EDEDE8;
@@ -1372,20 +1373,17 @@ function openMyProfileModal(){
 function handleMyPhotoUpload(input){
   const file = input.files && input.files[0];
   if(!file) return;
-  if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
-  const reader = new FileReader();
-  reader.onload = function(e){
+  compressImageFile(file, 500, 0.8, (compressed) => {
     if(state.loggedInEmployeeId){
       const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
-      if(m) m.photoDataUrl = e.target.result;
+      if(m) m.photoDataUrl = compressed;
     } else if(state.identity==='patron'){
-      CREDENTIALS.patron.photoDataUrl = e.target.result;
+      CREDENTIALS.patron.photoDataUrl = compressed;
     }
     toast('Photo de profil mise à jour');
     render();
     openMyProfileModal();
-  };
-  reader.readAsDataURL(file);
+  });
 }
 function removeMyPhoto(){
   if(state.loggedInEmployeeId){
@@ -2670,15 +2668,12 @@ function saveAppearance(){
 function handleLogoUpload(input){
   const file = input.files && input.files[0];
   if(!file) return;
-  if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
   const resto = RESTOS.find(r=>r.id===state.resto);
-  const reader = new FileReader();
-  reader.onload = function(e){
-    resto.logoDataUrl = e.target.result;
+  compressImageFile(file, 500, 0.8, (compressed) => {
+    resto.logoDataUrl = compressed;
     toast('Logo mis à jour pour ' + resto.name);
     render();
-  };
-  reader.readAsDataURL(file);
+  });
 }
 function removeLogo(){
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -3758,17 +3753,14 @@ function addZoneInline(prefix){
     }
   })();
 }
-function handleProductPhotoUpload(input, prefix){
-  const file = input.files && input.files[0];
-  if(!file) return;
+function compressImageFile(file, maxDim, quality, callback){
   if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
   const reader = new FileReader();
   reader.onload = function(e){
     const img = new Image();
     img.onload = function(){
       // Redimensionne et compresse avant de stocker, pour qu'une photo prise avec un
-      // téléphone (souvent plusieurs Mo) ne fasse jamais échouer l'envoi.
-      const maxDim = 1200;
+      // téléphone (souvent plusieurs Mo) reste toujours légère et rapide à charger.
       let { width, height } = img;
       if(width > maxDim || height > maxDim){
         const ratio = Math.min(maxDim/width, maxDim/height);
@@ -3778,16 +3770,22 @@ function handleProductPhotoUpload(input, prefix){
       const canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
       canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      const compressed = canvas.toDataURL('image/jpeg', 0.75);
-      const preview = document.getElementById(prefix+'-photo-preview');
-      if(preview){
-        preview.innerHTML = `<img src="${compressed}" alt="Photo" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-bottom:8px;">`;
-        preview.dataset.value = compressed;
-      }
+      callback(canvas.toDataURL('image/jpeg', quality));
     };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+function handleProductPhotoUpload(input, prefix){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  compressImageFile(file, 1200, 0.75, (compressed) => {
+    const preview = document.getElementById(prefix+'-photo-preview');
+    if(preview){
+      preview.innerHTML = `<img src="${compressed}" alt="Photo" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-bottom:8px;">`;
+      preview.dataset.value = compressed;
+    }
+  });
 }
 function onNewProductCategoryChange(select){
   if(select.value==='__new__'){
