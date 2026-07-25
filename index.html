@@ -684,9 +684,14 @@ async function sendBasket(supplierId){
   if(!items || items.length===0) return;
   const parts = [];
   let amount = 0;
+  const enrichedItems = []; // {productId (local), remoteProductId, name, qty, price} — pour un affichage fiable partout
   items.forEach(li=>{
     const p = PRODUCTS.find(x=>x.id===li.productId);
-    if(p){ parts.push(`${p.name} × ${li.qty} ${p.unit}`); amount += li.qty*p.price; }
+    if(p){
+      parts.push(`${p.name} × ${li.qty} ${p.unit}`);
+      amount += li.qty*p.price;
+      enrichedItems.push({ productId: li.productId, remoteProductId: p.remoteId, name: p.name, qty: li.qty, price: p.price });
+    }
   });
   const now = new Date();
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -696,13 +701,13 @@ async function sendBasket(supplierId){
       method:'POST',
       body:{
         supplierId: supplierObj?supplierObj.remoteId:null, items: parts.join(', '),
-        lineItems: items.map(li=>({productId:li.productId, qty:li.qty})),
+        lineItems: enrichedItems.map(li=>({productId:li.remoteProductId, name:li.name, qty:li.qty, price:li.price})),
         amount: Math.round(amount*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now),
       },
     });
     ORDERS.unshift({
       id:'CMD-'+nextId(), remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
-      lineItems: items.map(li=>({productId:li.productId, qty:li.qty})),
+      lineItems: enrichedItems.map(li=>({productId:li.productId, name:li.name, qty:li.qty, price:li.price})),
       amount: Math.round(amount*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now
     });
     try{
@@ -3054,6 +3059,29 @@ async function refuseOrder(id){
     toast(err.message, 'alert');
   }
 }
+function updateReceiveSummary(id){
+  const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  let receivedTotal = 0;
+  let hasDiscrepancy = false;
+  (o.lineItems||[]).forEach((li,idx)=>{
+    const qtyInput = document.getElementById('rcv-qty-'+idx);
+    const priceInput = document.getElementById('rcv-price-'+idx);
+    const qty = qtyInput ? parseFloat(qtyInput.value)||0 : li.qty;
+    const price = priceInput ? parseFloat(priceInput.value)||0 : li.price;
+    receivedTotal += qty*price;
+    if(qty !== Number(li.qty) || price !== Number(li.price)) hasDiscrepancy = true;
+  });
+  const expectedTotal = (o.lineItems||[]).reduce((sum,li)=>sum+(Number(li.qty)||0)*(Number(li.price)||0),0);
+  const totalEl = document.getElementById('rcv-total-received');
+  if(totalEl) totalEl.textContent = receivedTotal.toFixed(2)+' €';
+  const diffRow = document.getElementById('rcv-diff-row');
+  if(diffRow){
+    const diff = receivedTotal - expectedTotal;
+    diffRow.innerHTML = hasDiscrepancy
+      ? `<span class="small" style="color:#b91c1c;font-weight:700;">⚠ Écart détecté</span><span class="mono" style="color:#b91c1c;font-weight:700;">${diff>=0?'+':''}${diff.toFixed(2)} €</span>`
+      : `<span class="small muted">Aucun écart pour l'instant</span><span class="mono muted">0.00 €</span>`;
+  }
+}
 function openReceiveOrderModal(id){
   if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
@@ -3067,20 +3095,26 @@ function openReceiveOrderModal(id){
         <div style="font-weight:600;font-size:13.5px;margin-bottom:6px;">${name}</div>
         <div class="field-row">
           <div class="field"><label>Quantité commandée</label><input value="${li.qty}" disabled style="opacity:0.6;"></div>
-          <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${li.qty}"></div>
+          <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${li.qty}" oninput="updateReceiveSummary('${id}')"></div>
         </div>
         <div class="field-row">
           <div class="field"><label>Prix attendu (€)</label><input value="${li.price!=null?Number(li.price).toFixed(2):'—'}" disabled style="opacity:0.6;"></div>
-          <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}"></div>
+          <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}" oninput="updateReceiveSummary('${id}')"></div>
         </div>
       </div>
     `;
   }).join('');
+  const expectedTotal = (o.lineItems||[]).reduce((sum,li)=>sum+(Number(li.qty)||0)*(Number(li.price)||0),0);
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Réceptionner la commande ${o.id}</h3>
     <div class="modal-sub">Vérifiez ce qui a vraiment été livré et facturé — les écarts éventuels seront signalés automatiquement.</div>
     <div style="max-height:320px;overflow-y:auto;">${lines || emptyState('Aucun article détaillé sur cette commande')}</div>
+    <div id="rcv-summary" style="margin:14px 0;padding:12px 14px;border-radius:8px;background:var(--surface-subtle,rgba(0,0,0,0.03));">
+      <div class="flex between"><span class="small muted">Total commandé</span><span class="mono" id="rcv-total-expected">${expectedTotal.toFixed(2)} €</span></div>
+      <div class="flex between" style="margin-top:4px;"><span class="small muted">Total facturé (en direct)</span><span class="mono" id="rcv-total-received">${expectedTotal.toFixed(2)} €</span></div>
+      <div class="flex between" style="margin-top:4px;" id="rcv-diff-row"></div>
+    </div>
     <div class="field">
       <label>Photo du bon de livraison / facture (facultatif)</label>
       <div id="rcv-photo-preview"></div>
@@ -3286,11 +3320,13 @@ async function confirmValidateDemande(id){
     } else {
       const now = new Date();
       const supplierObj = SUPPLIERS[0];
+      const estimatedPrice = 5;
+      const fallbackLineItems = [{ productId:null, name:r.item, qty, price:estimatedPrice, unit:r.unit }];
       const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
         method:'POST',
-        body:{ supplierId: supplierObj?supplierObj.remoteId:null, items: r.item+' × '+qty+' '+r.unit, lineItems:[], amount: Math.round(qty*5*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now) },
+        body:{ supplierId: supplierObj?supplierObj.remoteId:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now) },
       });
-      ORDERS.unshift({id:'CMD-'+nextId(), remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:[], amount: Math.round(qty*5*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
+      ORDERS.unshift({id:'CMD-'+nextId(), remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
       toast('Demande approuvée — commande fournisseur créée');
     }
     notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`, 'decision');
