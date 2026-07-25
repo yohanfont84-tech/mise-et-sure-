@@ -3684,9 +3684,28 @@ function handleProductPhotoUpload(input, prefix){
   if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
   const reader = new FileReader();
   reader.onload = function(e){
-    const preview = document.getElementById(prefix+'-photo-preview');
-    preview.innerHTML = `<img src="${e.target.result}" alt="Photo du produit" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-bottom:8px;">`;
-    preview.dataset.value = e.target.result;
+    const img = new Image();
+    img.onload = function(){
+      // Redimensionne et compresse avant de stocker, pour qu'une photo prise avec un
+      // téléphone (souvent plusieurs Mo) ne fasse jamais échouer l'envoi.
+      const maxDim = 1200;
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const ratio = Math.min(maxDim/width, maxDim/height);
+        width = Math.round(width*ratio);
+        height = Math.round(height*ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const compressed = canvas.toDataURL('image/jpeg', 0.75);
+      const preview = document.getElementById(prefix+'-photo-preview');
+      if(preview){
+        preview.innerHTML = `<img src="${compressed}" alt="Photo" style="width:64px;height:64px;border-radius:8px;object-fit:cover;margin-bottom:8px;">`;
+        preview.dataset.value = compressed;
+      }
+    };
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }
