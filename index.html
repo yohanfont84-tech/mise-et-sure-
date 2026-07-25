@@ -506,6 +506,10 @@ function iconSm(svg){ return svg.replace('width="24"','width="14"').replace('hei
 ============================================================ */
 let uidSeq = 1000;
 const nextId = () => (uidSeq++).toString();
+function financialsHidden(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  return !!(resto && resto.hideFinancials);
+}
 function parseNum(value){
   // Certains navigateurs/claviers (réglages en français) peuvent renvoyer une virgule à la
   // place du point comme séparateur décimal — on la convertit avant de faire le calcul, pour
@@ -612,7 +616,7 @@ function supplierLastOrderDate(id){
   return fmtDateShort(new Date(latest.createdAt));
 }
 function productName(id){ return (PRODUCTS.find(p=>p.id===id)||{}).name || '—'; }
-function fmtEUR(n){ return n.toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
+function fmtEUR(n){ if(financialsHidden()) return ''; return n.toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
 function fullAddress(resto){
   const line2 = [resto.postalCode, resto.city].filter(Boolean).join(' ');
   return [resto.address, line2].filter(Boolean).join(', ');
@@ -1465,7 +1469,7 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
    SHELL
 ============================================================ */
 function renderShell(){
-  const nav = NAV[state.role];
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats'));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -1617,9 +1621,13 @@ function buildAIInsights(){
     return insights;
   }
   if(ORDERS.length>0){
-    const totalAchats = ORDERS.reduce((a,o)=>a+o.amount,0);
-    const avg = totalAchats/ORDERS.length;
-    insights.push(`Vous avez dépensé <b>${fmtEUR(totalAchats)}</b> sur <b>${ORDERS.length}</b> commande${ORDERS.length>1?'s':''} — soit une moyenne de <b>${fmtEUR(avg)}</b> par commande.`);
+    if(financialsHidden()){
+      insights.push(`Vous avez passé <b>${ORDERS.length}</b> commande${ORDERS.length>1?'s':''} au total.`);
+    } else {
+      const totalAchats = ORDERS.reduce((a,o)=>a+o.amount,0);
+      const avg = totalAchats/ORDERS.length;
+      insights.push(`Vous avez dépensé <b>${fmtEUR(totalAchats)}</b> sur <b>${ORDERS.length}</b> commande${ORDERS.length>1?'s':''} — soit une moyenne de <b>${fmtEUR(avg)}</b> par commande.`);
+    }
   } else {
     insights.push("Aucune commande enregistrée pour le moment.");
   }
@@ -1633,7 +1641,9 @@ function buildAIInsights(){
   if(SUPPLIERS.length){
     const bySpend = SUPPLIERS.map(s=>({s, spend:supplierSpend(s.id)})).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend)[0];
     if(bySpend){
-      insights.push(`<b>${bySpend.s.name}</b> est votre fournisseur le plus sollicité, avec ${fmtEUR(bySpend.spend)} d'achats au total.`);
+      insights.push(financialsHidden()
+        ? `<b>${bySpend.s.name}</b> est votre fournisseur le plus sollicité.`
+        : `<b>${bySpend.s.name}</b> est votre fournisseur le plus sollicité, avec ${fmtEUR(bySpend.spend)} d'achats au total.`);
     } else {
       insights.push(`${SUPPLIERS.length} fournisseur${SUPPLIERS.length>1?'s':''} référencé${SUPPLIERS.length>1?'s':''} — aucun achat enregistré pour le moment.`);
     }
@@ -1716,8 +1726,8 @@ function viewPatronDashboard(){
       <div class="card">
         <div class="card-title">Historique des achats — commandes récentes</div>
         ${ORDERS.length ? `<table>
-          <tr><th>Réf.</th><th>Fournisseur</th><th>Montant</th><th>Statut</th></tr>
-          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="mono">${fmtEUR(o.amount)}</td><td>${orderStatusTag(o)}</td></tr>`).join('')}
+          <tr><th>Réf.</th><th>Fournisseur</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th></tr>
+          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td></tr>`).join('')}
         </table>` : emptyState('Aucun achat pour le moment')}
       </div>
       <div class="card">
@@ -1734,7 +1744,7 @@ function ticketOrder(o){
     <div class="ticket normal">
       <div class="ticket-top">
         <div><span class="ticket-id">${o.id}</span><div class="ticket-item">${supplierName(o.supplier)}</div></div>
-        <div class="mono" style="font-weight:700;">${fmtEUR(o.amount)}</div>
+        ${financialsHidden() ? '' : `<div class="mono" style="font-weight:700;">${fmtEUR(o.amount)}</div>`}
       </div>
       <div class="ticket-meta">${o.items}</div>
       ${canAct ? `<div class="ticket-actions">
@@ -1857,7 +1867,7 @@ function viewStocks(){
     ${productFilterBar(f)}
     <div class="card">
       ${filtered.length ? `<table>
-        <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th><th>Prix d'achat</th><th></th></tr>
+        <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th>${financialsHidden()?'':`<th>Prix d'achat</th>`}<th></th></tr>
         ${filtered.map(p=>{
           return `<tr class="tr-hover">
             <td style="font-weight:600;">${p.name}${p.supplierReference?`<div class="small muted mono">${p.supplierReference}</div>`:''}</td>
@@ -1867,7 +1877,7 @@ function viewStocks(){
             <td class="muted">${supplierName(p.supplier)}</td>
             <td class="muted small">${p.packaging||'—'}</td>
             <td class="mono">${p.qtyCommande} ${p.unit}</td>
-            <td class="mono">${p.price.toFixed(2)} €</td>
+            ${financialsHidden()?'':`<td class="mono">${p.price.toFixed(2)} €</td>`}
             <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button><button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
           </tr>`;
         }).join('')}
@@ -1892,11 +1902,12 @@ function orderInPeriod(o, period){
 }
 function viewEcarts(){
   const f = ensureEcartsFilters();
+  const hideFin = financialsHidden();
   const withDiscrepancy = ORDERS.filter(o=>o.hasDiscrepancy);
   const filtered = withDiscrepancy.filter(o=> (f.supplier==='tous'||o.supplier===f.supplier) && orderInPeriod(o,f.period));
   return `
     <div class="section-head" style="margin-top:0;">
-      <div><h2>Écarts de livraison</h2><div class="sub">Commandes où la quantité ou le prix reçu diffère de ce qui avait été commandé</div></div>
+      <div><h2>Écarts de livraison</h2><div class="sub">Commandes où la quantité${hideFin?'':' ou le prix'} reçu${hideFin?'e':''} diffère de ce qui avait été commandé</div></div>
     </div>
     <div class="product-filter-bar">
       <select onchange="state.ecartsFilters.supplier=this.value;render();">
@@ -1915,17 +1926,18 @@ function viewEcarts(){
         <div style="padding:14px 0;border-bottom:1px solid var(--border);">
           <div class="flex between center" style="margin-bottom:8px;">
             <div><span class="mono" style="font-weight:600;">${o.id}</span> · <span class="muted">${supplierName(o.supplier)}</span> · <span class="muted small">${o.date}</span></div>
-            <span class="mono" style="font-weight:600;">${fmtEUR(o.amount)}</span>
+            ${hideFin ? '' : `<span class="mono" style="font-weight:600;">${fmtEUR(o.amount)}</span>`}
           </div>
           <table style="width:100%;">
-            <tr><th class="small muted">Article</th><th class="small muted">Qté commandée</th><th class="small muted">Qté reçue</th><th class="small muted">Prix attendu</th><th class="small muted">Prix facturé</th></tr>
+            <tr><th class="small muted">Article</th><th class="small muted">Qté commandée</th><th class="small muted">Qté reçue</th>${hideFin?'':'<th class="small muted">Prix attendu</th><th class="small muted">Prix facturé</th>'}</tr>
             ${(o.lineItems||[]).filter(li=>li.discrepancy).map(li=>`
               <tr>
                 <td>${li.name || (PRODUCTS.find(p=>p.id===li.productId)||{}).name || '—'}</td>
                 <td class="mono">${li.qty}</td>
                 <td class="mono ${Number(li.qtyReceived)!==Number(li.qty)?'text-alert':''}">${li.qtyReceived}</td>
+                ${hideFin ? '' : `
                 <td class="mono">${li.price!=null?Number(li.price).toFixed(2)+' €':'—'}</td>
-                <td class="mono ${Number(li.priceReceived)!==Number(li.price)?'text-alert':''}">${li.priceReceived!=null?Number(li.priceReceived).toFixed(2)+' €':'—'}</td>
+                <td class="mono ${Number(li.priceReceived)!==Number(li.price)?'text-alert':''}">${li.priceReceived!=null?Number(li.priceReceived).toFixed(2)+' €':'—'}</td>`}
               </tr>
             `).join('')}
           </table>
@@ -1978,12 +1990,12 @@ function viewCommandes(role){
     </div>
     <div class="card">
       ${rows.length ? `<table>
-        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Montant</th><th>Statut</th><th>Date</th><th></th></tr>
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th><th>Date</th><th></th></tr>
         ${rows.map(o=>`<tr class="tr-hover">
           <td class="mono">${o.id}</td>
           <td style="font-weight:600;">${supplierName(o.supplier)}</td>
           <td class="muted small">${o.items}</td>
-          <td class="mono">${fmtEUR(o.amount)}</td>
+          ${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}
           <td>${orderStatusTag(o)}</td>
           <td class="muted small">${o.date}</td>
           <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document">${iconXs(I.doc)}</button><button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
@@ -2014,7 +2026,7 @@ function renderBasketCard(supplierId, role){
         }).join('')}
       </table>
       <div class="flex between center" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-        <div class="mono" style="font-weight:700;font-size:15px;">${fmtEUR(total)}</div>
+        ${financialsHidden() ? '<div></div>' : `<div class="mono" style="font-weight:700;font-size:15px;">${fmtEUR(total)}</div>`}
         <div class="flex gap8 center">
           <button class="btn btn-ghost btn-sm" onclick="openNewOrderModal('${supplierId}')">Ajouter</button>
           ${canSend
@@ -2114,7 +2126,7 @@ function viewFournisseurs(){
           <div class="muted small" style="margin:4px 0 12px 0;">${s.cat}</div>
           <div class="flex between small muted" style="margin-bottom:5px;"><span>Délai moyen</span><span class="mono" style="color:var(--text);">${s.delay}</span></div>
           <div class="flex between small muted" style="margin-bottom:5px;"><span>Dernière commande</span><span class="mono" style="color:var(--text);">${supplierLastOrderDate(s.id)}</span></div>
-          <div class="flex between small muted" style="margin-bottom:12px;"><span>Achats</span><span class="mono" style="color:var(--text);">${fmtEUR(supplierSpend(s.id))}</span></div>
+          ${financialsHidden() ? '' : `<div class="flex between small muted" style="margin-bottom:12px;"><span>Achats</span><span class="mono" style="color:var(--text);">${fmtEUR(supplierSpend(s.id))}</span></div>`}
           <div class="flex gap8">
             <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="openSupplierDetail('${s.id}')">Voir la fiche</button>
             <button class="btn btn-primary btn-sm" style="flex:1;" onclick="openNewOrderModal('${s.id}')">Commander</button>
@@ -2421,6 +2433,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.postalCode = data.restaurant.postal_code;
     resto.city = data.restaurant.city;
     resto.currency = data.restaurant.currency;
+    resto.hideFinancials = data.restaurant.hide_financials;
     render();
   } catch(err){}
 }
@@ -2534,6 +2547,14 @@ function viewParametres(){
         </div>
         <div class="field"><label>Devise</label><select id="set-currency"><option ${resto.currency==='EUR'?'selected':''}>EUR</option><option ${resto.currency==='CHF'?'selected':''}>CHF</option><option ${resto.currency==='USD'?'selected':''}>USD</option></select></div>
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Suivi financier</div>
+        <div class="small muted" style="margin-bottom:14px;">Certains restaurateurs préfèrent un outil purement opérationnel, sans prix ni montants affichés nulle part.</div>
+        <label class="flex center gap8" style="cursor:pointer;">
+          <input type="checkbox" id="hide-financials-toggle" ${resto.hideFinancials?'checked':''} onchange="toggleHideFinancials(this.checked)">
+          <span>Masquer entièrement les prix, montants et statistiques de dépenses</span>
+        </label>
       </div>
       <div class="card">
         <div class="card-title">Catégories et lieux du catalogue</div>
@@ -2754,6 +2775,17 @@ async function deleteZone(id){
     toast(err.message, 'alert');
   }
 }
+async function toggleHideFinancials(checked){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ hideFinancials: checked } });
+    resto.hideFinancials = data.restaurant.hide_financials;
+    toast(checked ? 'Volet financier masqué' : 'Volet financier réactivé');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
 async function saveRestoInfo(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   const name = document.getElementById('set-name').value.trim();
@@ -2913,16 +2945,16 @@ function viewLivraisons(){
     <div class="card">
       <div class="card-title">En attente de réception</div>
       <table>
-        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Montant</th><th></th></tr>
-        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td><td class="mono">${fmtEUR(o.amount)}</td><td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th></th></tr>
+        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
         ${awaiting.length===0?`<tr><td colspan="5"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
     <div class="section-head"><div><h2>Réceptionnées récemment</h2></div></div>
     <div class="card">
       <table>
-        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Montant</th></tr>
-        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td><td class="mono">${fmtEUR(o.amount)}</td></tr>`).join('')}
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}</tr>
+        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}</tr>`).join('')}
         ${recent.length===0?`<tr><td colspan="4"><div class="empty">Aucune réception récente</div></td></tr>`:''}
       </table>
     </div>
@@ -3092,6 +3124,7 @@ function openReceiveOrderModal(id){
   if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
   if(o.status!=='validee'){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
+  const hideFin = financialsHidden();
   const lines = (o.lineItems||[]).map((li,idx)=>{
     const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
     const name = p ? p.name : (li.name || 'Article');
@@ -3103,10 +3136,11 @@ function openReceiveOrderModal(id){
           <div class="field"><label>Quantité commandée</label><input value="${li.qty}" disabled style="opacity:0.6;"></div>
           <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${li.qty}" oninput="updateReceiveSummary('${id}')"></div>
         </div>
+        ${hideFin ? '' : `
         <div class="field-row">
           <div class="field"><label>Prix attendu (€)</label><input value="${li.price!=null?Number(li.price).toFixed(2):'—'}" disabled style="opacity:0.6;"></div>
           <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}" oninput="updateReceiveSummary('${id}')"></div>
-        </div>
+        </div>`}
       </div>
     `;
   }).join('');
@@ -3114,19 +3148,20 @@ function openReceiveOrderModal(id){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Réceptionner la commande ${o.id}</h3>
-    <div class="modal-sub">Vérifiez ce qui a vraiment été livré et facturé — les écarts éventuels seront signalés automatiquement.</div>
+    <div class="modal-sub">Vérifiez ce qui a vraiment été livré${hideFin?'':' et facturé'} — les écarts éventuels seront signalés automatiquement.</div>
     <div style="max-height:320px;overflow-y:auto;">${lines || emptyState('Aucun article détaillé sur cette commande')}</div>
+    ${hideFin ? '' : `
     <div id="rcv-summary" style="margin:14px 0;padding:12px 14px;border-radius:8px;background:var(--surface-subtle,rgba(0,0,0,0.03));">
       <div class="flex between"><span class="small muted">Total commandé</span><span class="mono" id="rcv-total-expected">${expectedTotal.toFixed(2)} €</span></div>
       <div class="flex between" style="margin-top:4px;"><span class="small muted">Total facturé (en direct)</span><span class="mono" id="rcv-total-received">${expectedTotal.toFixed(2)} €</span></div>
       <div class="flex between" style="margin-top:4px;" id="rcv-diff-row"></div>
-    </div>
+    </div>`}
     <div class="field">
       <label>Photo du bon de livraison / facture (facultatif)</label>
       <div id="rcv-photo-preview"></div>
       <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'rcv')">
     </div>
-    <label class="flex center gap8" style="margin:10px 0 16px 0;"><input type="checkbox" id="rcv-update-catalog" checked> Mettre à jour le prix au catalogue si un prix facturé diffère</label>
+    ${hideFin ? '' : `<label class="flex center gap8" style="margin:10px 0 16px 0;"><input type="checkbox" id="rcv-update-catalog" checked> Mettre à jour le prix au catalogue si un prix facturé diffère</label>`}
     <button class="btn btn-primary btn-block" onclick="confirmReceiveOrder('${id}')">Confirmer la réception</button>
   `);
 }
@@ -3142,7 +3177,8 @@ async function confirmReceiveOrder(id){
       priceOrdered: li.price, priceReceived: priceInput ? parseFloat(priceInput.value)||0 : li.price,
     };
   });
-  const updateCatalogPrices = document.getElementById('rcv-update-catalog').checked;
+  const updateCatalogEl = document.getElementById('rcv-update-catalog');
+  const updateCatalogPrices = updateCatalogEl ? updateCatalogEl.checked : false;
   const photoPreview = document.getElementById('rcv-photo-preview');
   const deliveryNotePhotoUrl = (photoPreview && photoPreview.dataset.value) || null;
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -3641,7 +3677,7 @@ function openNewProductModal(){
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
     <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
     <div class="field"><label>Contenance en litres (facultatif — pour les liquides, ex : une bouteille de 0.75L)</label><input id="np-volume" type="number" step="0.01" placeholder="0.75"></div>
-    <div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div>
+    ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div>`}
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234"></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="np-department"><option value="both" selected>Cuisine &amp; salle</option><option value="cuisine">Cuisine</option><option value="salle">Salle</option></select></div>
@@ -3748,7 +3784,8 @@ async function addProduct(){
   const volumeInput = document.getElementById('np-volume').value;
   const volumeLiters = volumeInput ? parseNum(volumeInput) : null;
   const supplierReference = document.getElementById('np-reference').value.trim();
-  const price = parseNum(document.getElementById('np-price').value)||0;
+  const priceEl = document.getElementById('np-price');
+  const price = priceEl ? (parseNum(priceEl.value)||0) : 0;
   const supplier = document.getElementById('np-supplier').value;
   const department = document.getElementById('np-department').value;
   const zoneIds = Array.from(document.querySelectorAll('.np-zone-chk:checked')).map(el=>el.value);
@@ -3783,7 +3820,7 @@ function editProduct(id){
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
     <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
     <div class="field"><label>Contenance en litres (facultatif — pour les liquides, ex : une bouteille de 0.75L)</label><input id="ep-volume" type="number" step="0.01" value="${p.volumeLiters!=null?p.volumeLiters:''}" placeholder="0.75"></div>
-    <div class="field"><label>Prix d'achat (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>
+    ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>`}
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${p.supplierReference||''}"></div>
     <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="ep-department">
@@ -3810,7 +3847,8 @@ async function saveProduct(id){
   const volumeInput = document.getElementById('ep-volume').value;
   const volumeLiters = volumeInput ? parseNum(volumeInput) : null;
   const supplierReference = document.getElementById('ep-reference').value.trim();
-  const price = parseNum(document.getElementById('ep-price').value) || p.price;
+  const priceEl = document.getElementById('ep-price');
+  const price = priceEl ? (parseNum(priceEl.value) || p.price) : p.price;
   const supplier = document.getElementById('ep-supplier').value;
   const department = document.getElementById('ep-department').value;
   const zoneIds = Array.from(document.querySelectorAll('.ep-zone-chk:checked')).map(el=>el.value);
@@ -3876,7 +3914,7 @@ function orderProductRows(supplierId){
       <input type="checkbox" id="ord-chk-${p.id}">
       <div style="flex:1;">
         <div style="font-weight:600;font-size:13.5px;">${p.name}</div>
-        <div class="small muted">${p.cat?p.cat+' · ':''}Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}</div>
+        <div class="small muted">${p.cat?p.cat+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}`}</div>
       </div>
       <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
     </div>
@@ -4006,15 +4044,16 @@ function buildOrderDocumentHTML(o){
         </div>
       </div>
       <table class="invoice-table">
-        <thead><tr><th>Article</th><th>Qté</th><th>Prix unit.</th><th>Total</th></tr></thead>
+        <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit.</th><th>Total</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${l.name}</td><td>${l.qty} ${l.unit}</td><td>${l.price.toFixed(2)} €</td><td>${l.total.toFixed(2)} €</td></tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${l.name}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${l.price.toFixed(2)} €</td><td>${l.total.toFixed(2)} €</td>`}</tr>`).join('')}
         </tbody>
       </table>
+      ${financialsHidden() ? '' : `
       <div class="invoice-total-row">
         <div class="invoice-total-label">Total ${isDelivered?'facturé':'commandé'}</div>
         <div class="invoice-total-value">${fmtEUR(total)}</div>
-      </div>
+      </div>`}
       <div class="invoice-foot">
         <div>${resto.name} — ${resto.city}</div>
         <div>Document généré automatiquement par Mise &amp; Sûre</div>
@@ -4102,15 +4141,16 @@ function buildHistoryDocumentHTML(period){
         </div>
       </div>
       <table class="invoice-table history">
-        <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th><th>Montant</th></tr></thead>
+        <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th>${financialsHidden()?"":"<th>Montant</th>"}</tr></thead>
         <tbody>
-          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td><td>${o.amount.toFixed(2)} €</td></tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
+          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${o.amount.toFixed(2)} €</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
         </tbody>
       </table>
+      ${financialsHidden() ? '' : `
       <div class="invoice-total-row">
         <div class="invoice-total-label">Total des achats — ${periodLabel}</div>
         <div class="invoice-total-value">${fmtEUR(total)}</div>
-      </div>
+      </div>`}
       <div class="invoice-foot">
         <div>${resto.name} — ${resto.city}</div>
         <div>Document généré automatiquement par Mise &amp; Sûre</div>
@@ -4391,7 +4431,7 @@ function renderContent(){
     if(view==='stocks') return viewStocks();
     if(view==='commandes') return viewCommandes('patron');
     if(view==='ecarts') return viewEcarts();
-    if(view==='stats') return viewStats();
+    if(view==='stats') return financialsHidden() ? viewPatronDashboard() : viewStats();
     if(view==='fournisseurs') return viewFournisseurs();
     if(view==='equipe') return viewEquipe();
     if(view==='multi') return viewMulti();
@@ -4454,25 +4494,30 @@ function buildOrderPdf(o){
   if(supplier && supplier.email){ doc.text(supplier.email, marginX, y); y += 5; }
 
   y += 8;
+  const hideFin = financialsHidden();
   const rows = (o.lineItems||[]).map(li=>{
     const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
     const name = p ? p.name : (li.name || 'Article');
     const unit = p ? p.unit : '';
     const price = li.priceReceived != null ? li.priceReceived : (li.price != null ? li.price : (p?p.price:0));
     const qty = li.qtyReceived != null ? li.qtyReceived : li.qty;
-    return [name, `${qty} ${unit}`.trim(), `${Number(price).toFixed(2)} €`, `${(Number(qty)*Number(price)).toFixed(2)} €`];
+    return hideFin
+      ? [name, `${qty} ${unit}`.trim()]
+      : [name, `${qty} ${unit}`.trim(), `${Number(price).toFixed(2)} €`, `${(Number(qty)*Number(price)).toFixed(2)} €`];
   });
   doc.autoTable ? doc.autoTable({
     startY: y, margin:{left:marginX,right:15},
-    head:[['Article','Quantité','Prix unitaire','Total']],
+    head: hideFin ? [['Article','Quantité']] : [['Article','Quantité','Prix unitaire','Total']],
     body: rows,
     styles:{ font:'helvetica', fontSize:10, textColor:[30,30,30] },
     headStyles:{ fillColor:[20,20,20], textColor:255 },
     theme:'grid',
   }) : null;
-  const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : y + 10 + rows.length*8;
-  doc.setFont('helvetica','bold'); doc.setFontSize(12);
-  doc.text(`Total : ${fmtEUR(o.amount)}`, 195, finalY, { align:'right' });
+  if(!hideFin){
+    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : y + 10 + rows.length*8;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.text(`Total : ${fmtEUR(o.amount)}`, 195, finalY, { align:'right' });
+  }
 
   return doc;
 }
