@@ -5214,7 +5214,7 @@ async function loadTeamInvite(token){
     });
     const d = ensureRestoData(localId);
     d.team = data.team.map(m => ({
-      id: 't'+nextId(), remoteId: m.id, name: m.name, role: m.role,
+      id: 't'+m.id, remoteId: m.id, name: m.name, role: m.role,
       shift:'', status:'actif', username:null, photoDataUrl: m.photo_url,
     }));
     state.resto = localId;
@@ -5331,7 +5331,7 @@ async function checkExistingSession(){
           city: data.restaurant.city, currency:'EUR', remoteId: data.restaurant.id,
         });
         const d = ensureRestoData(localId);
-        const localEmployeeId = 't'+nextId();
+        const localEmployeeId = 't'+data.member.id;
         d.team = [{
           id: localEmployeeId, remoteId: data.member.id, name: data.member.name,
           role: data.member.role, photoDataUrl: data.member.photo_url,
