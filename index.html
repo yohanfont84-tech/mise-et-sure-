@@ -1911,7 +1911,12 @@ function viewStocks(){
             <td class="muted small">${p.packaging||'—'}</td>
             <td class="mono">${p.qtyCommande} ${p.unit}</td>
             ${financialsHidden()?'':`<td class="mono">${p.price.toFixed(2)} € / ${p.unit}</td>`}
-            <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button><button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)} Dupliquer</button><button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button><button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
+            <td><div class="flex gap8">
+              <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
+              <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
+              <button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button>
+            </div></td>
           </tr>`;
         }).join('')}
       </table>` : emptyState(PRODUCTS.length ? 'Aucun produit ne correspond à ces critères' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
