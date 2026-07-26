@@ -607,10 +607,6 @@ function slugifyFirstName(name){
 function generateDefaultPassword(name){
   return slugifyFirstName(name) + '2026';
 }
-function generateUsername(name){
-  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(' ').filter(Boolean).map(w=>w.replace(/[^a-z]/g,'')).join('.');
-}
-
 function deptLabel(d){ return d==='cuisine'?'Cuisine':d==='salle'?'Salle':'Cuisine & salle'; }
 function deptTag(d){ return d==='cuisine'?'tag-neutral':d==='salle'?'tag-subtle':'tag-strong'; }
 
@@ -622,7 +618,6 @@ function supplierLastOrderDate(id){
   const latest = withDates.reduce((a,b)=> new Date(a.createdAt) > new Date(b.createdAt) ? a : b);
   return fmtDateShort(new Date(latest.createdAt));
 }
-function productName(id){ return (PRODUCTS.find(p=>p.id===id)||{}).name || '—'; }
 function fmtEUR(n){ if(financialsHidden()) return ''; return n.toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
 function fullAddress(resto){
   const line2 = [resto.postalCode, resto.city].filter(Boolean).join(' ');
@@ -5037,7 +5032,6 @@ async function completeSetupRestaurant(){
 /* ============================================================
    ÉCRAN DE CONNEXION
 ============================================================ */
-function roleIcon(r){ return {patron:I.building, manager:I.dash, cuisine:I.chef, salle:I.tray}[r]; }
 function renderLoginScreen(){
   const step = state.loginStep;
   const employeeId = state.loginSelectedEmployeeId;
