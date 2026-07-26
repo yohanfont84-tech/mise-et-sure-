@@ -257,11 +257,11 @@ tr.tr-hover:hover{background:var(--paper);}
 }
 .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--black);outline-offset:1px;border-color:var(--black);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.zone-checklist{max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.zone-checklist{max-height:160px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
 .product-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center;}
 .product-filter-bar input[type="text"]{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
 .product-filter-bar select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
-.product-picker-row{padding:8px 6px;border-radius:6px;cursor:pointer;font-size:13.5px;}
+.product-picker-row{padding:8px 6px;border-radius:6px;cursor:pointer;font-size:13.5px;overflow-wrap:break-word;max-width:100%;}
 .product-picker-row:hover{background:var(--surface-hover, rgba(0,0,0,0.04));}
 .product-picker-row.selected{background:var(--accent, #111);color:#fff;}
 .text-alert{color:#b91c1c;font-weight:700;}
@@ -1912,7 +1912,7 @@ function viewStocks(){
             <td class="muted small">${p.packaging||'—'}</td>
             <td class="mono">${p.qtyCommande} ${p.unit}</td>
             ${financialsHidden()?'':`<td class="mono">${p.price.toFixed(2)} €</td>`}
-            <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button><button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
+            <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button><button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)} Dupliquer</button><button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button><button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
           </tr>`;
         }).join('')}
       </table>` : emptyState(PRODUCTS.length ? 'Aucun produit ne correspond à ces critères' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
@@ -2374,6 +2374,8 @@ async function syncSuppliersFromServer(localId){
     d.suppliers = data.suppliers.map(s => ({
       id: 'f'+s.id, remoteId: s.id, name: s.name, cat: s.category, delay: s.delay,
       address: s.address, email: s.email, reliability: 90, spend: 0,
+      contactFirstName: s.contact_first_name, contactLastName: s.contact_last_name,
+      contactEmail: s.contact_email, contactPhone: s.contact_phone,
     }));
     if(state.resto === localId) SUPPLIERS = d.suppliers;
     render();
@@ -3717,7 +3719,7 @@ async function refuseCustomRequest(id){
 /* ============================================================
    PRODUITS — création / édition
 ============================================================ */
-function openNewProductModal(){
+function openNewProductModal(prefill){
   if(SUPPLIERS.length===0){
     openModal(`
       <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
@@ -3727,29 +3729,40 @@ function openNewProductModal(){
     `);
     return;
   }
+  const p = prefill || null;
+  const prefillZoneIds = p ? (p.zoneIds||[]) : [];
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Nouveau produit</h3>
-    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive"></div>
-    <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
+    <h3>${p ? 'Dupliquer le produit' : 'Nouveau produit'}</h3>
+    ${p ? `<div class="modal-sub">Pré-rempli à partir de « ${p.name} » — ajustez ce qui change puis créez le nouveau produit.</div>` : ''}
+    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${p ? p.name+' (copie)' : ''}"></div>
+    <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${p && p.cat===c.name?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field-row">
-      <div class="field"><label>Unité</label><input id="np-unit" placeholder="Kg" list="unit-suggestions" oninput="updateVolumeLabel('np')"></div>
-      <div class="field"><label>Conditionnement (facultatif)</label><input id="np-packaging" placeholder="Carton de 6" list="packaging-suggestions"></div>
+      <div class="field"><label>Unité</label><input id="np-unit" placeholder="Kg" list="unit-suggestions" oninput="updateVolumeLabel('np')" value="${p ? p.unit : ''}"></div>
+      <div class="field"><label>Conditionnement (facultatif)</label><input id="np-packaging" placeholder="Carton de 6" list="packaging-suggestions" value="${p ? (p.packaging||'') : ''}"></div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
     <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
-    <div class="field"><label id="np-volume-label">Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)</label><input id="np-volume" type="number" step="0.01" placeholder="0.75"></div>
-    ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div>`}
-    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234"></div>
-    <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
-    <div class="field"><label>Utilisé en</label><select id="np-department"><option value="both" selected>Cuisine &amp; salle</option><option value="cuisine">Cuisine</option><option value="salle">Salle</option></select></div>
+    <div class="field"><label id="np-volume-label">Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)</label><input id="np-volume" type="number" step="0.01" placeholder="0.75" value="${p && p.volumeLiters!=null ? p.volumeLiters : ''}"></div>
+    ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="${p ? p.price : '5.00'}"></div>`}
+    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${p ? (p.supplierReference||'') : ''}"></div>
+    <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${p && p.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
+    <div class="field"><label>Utilisé en</label><select id="np-department">
+      <option value="both" ${!p || p.department==='both'?'selected':''}>Cuisine &amp; salle</option>
+      <option value="cuisine" ${p && p.department==='cuisine'?'selected':''}>Cuisine</option>
+      <option value="salle" ${p && p.department==='salle'?'selected':''}>Salle</option>
+    </select></div>
     <div class="field">
       <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
-      <div class="zone-checklist" id="np-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk"> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
+      <div class="zone-checklist" id="np-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk" ${prefillZoneIds.includes(z.id)?'checked':''}> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
       <div class="flex gap8" style="margin-top:8px;"><input id="np-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('np')">Ajouter</button></div>
     </div>
     <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
   `);
+}
+function duplicateProduct(id){
+  const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
+  openNewProductModal(p);
 }
 function addZoneInline(prefix){
   return (async()=>{
@@ -3986,13 +3999,13 @@ function orderProductRows(supplierId){
   const list = supplierId ? PRODUCTS.filter(p=>p.supplier===supplierId) : PRODUCTS;
   if(list.length===0) return `<div class="empty small">Aucun produit pour ce fournisseur</div>`;
   return list.map(p=>`
-    <div class="ord-row" data-pid="${p.id}" data-search="${(p.name+' '+(p.cat||'')+' '+(p.supplierReference||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase()}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
-      <input type="checkbox" id="ord-chk-${p.id}">
-      <div style="flex:1;">
+    <div class="ord-row" data-pid="${p.id}" data-search="${(p.name+' '+(p.cat||'')+' '+(p.supplierReference||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase()}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);max-width:100%;">
+      <input type="checkbox" id="ord-chk-${p.id}" style="flex-shrink:0;">
+      <div style="flex:1;min-width:0;overflow-wrap:break-word;">
         <div style="font-weight:600;font-size:13.5px;">${p.name}</div>
         <div class="small muted">${p.cat?p.cat+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}`}</div>
       </div>
-      <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:60px;flex-shrink:0;padding:6px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
     </div>
   `).join('');
 }
@@ -4028,7 +4041,7 @@ function openNewOrderModal(prefillSupplierId){
     </div>
     <div class="field"><label>Produits</label>
       <input type="text" id="ord-search" placeholder="🔎 Nom, catégorie, lieu, référence…" oninput="filterOrderProductSearch()" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
-      <div id="ord-products" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:0 10px;">${orderProductRows(supplierId)}</div>
+      <div id="ord-products" style="max-height:220px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--border);border-radius:8px;padding:0 10px;">${orderProductRows(supplierId)}</div>
     </div>
     <button class="btn btn-primary btn-block" onclick="createOrder()">Ajouter au panier</button>
   `);
@@ -4256,6 +4269,10 @@ function openNewSupplierModal(){
     <div class="field-row"><div class="field"><label>Catégorie</label><input id="ns-cat" placeholder="Crémerie"></div><div class="field"><label>Délai moyen</label><input id="ns-delay" placeholder="24h"></div></div>
     <div class="field"><label>Adresse</label><input id="ns-address" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
     <div class="field"><label>Email</label><input id="ns-email" type="email" placeholder="contact@fournisseur.fr"></div>
+    <div class="divider"></div>
+    <div class="card-title">Contact commercial (facultatif)</div>
+    <div class="field-row"><div class="field"><label>Prénom</label><input id="ns-contact-firstname" placeholder="Jean"></div><div class="field"><label>Nom</label><input id="ns-contact-lastname" placeholder="Martin"></div></div>
+    <div class="field-row"><div class="field"><label>Email</label><input id="ns-contact-email" type="email" placeholder="j.martin@fournisseur.fr"></div><div class="field"><label>Téléphone</label><input id="ns-contact-phone" placeholder="06 12 34 56 78"></div></div>
     <button class="btn btn-primary btn-block" onclick="addSupplier()">Ajouter</button>
   `);
 }
@@ -4266,12 +4283,17 @@ async function addSupplier(){
   const delay = document.getElementById('ns-delay').value.trim() || '48h';
   const address = document.getElementById('ns-address').value.trim();
   const email = document.getElementById('ns-email').value.trim();
+  const contactFirstName = document.getElementById('ns-contact-firstname').value.trim();
+  const contactLastName = document.getElementById('ns-contact-lastname').value.trim();
+  const contactEmail = document.getElementById('ns-contact-email').value.trim();
+  const contactPhone = document.getElementById('ns-contact-phone').value.trim();
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers`, {
-      method:'POST', body:{ name, category:cat, delay, email, address },
+      method:'POST', body:{ name, category:cat, delay, email, address, contactFirstName, contactLastName, contactEmail, contactPhone },
     });
-    SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0});
+    SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0,
+      contactFirstName:data.supplier.contact_first_name, contactLastName:data.supplier.contact_last_name, contactEmail:data.supplier.contact_email, contactPhone:data.supplier.contact_phone});
     closeModal();
     toast('Fournisseur « '+name+' » ajouté');
     render();
@@ -4291,6 +4313,10 @@ function openSupplierDetail(id){
     <div class="field"><label>Adresse</label><input id="sf-address" value="${s.address||''}" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
     <div class="field-row"><div class="field"><label>Email</label><input id="sf-email" type="email" value="${s.email||''}" placeholder="contact@fournisseur.fr"></div><div class="field"><label>Délai moyen</label><input id="sf-delay" value="${s.delay}"></div></div>
     <div class="field"><label>Fiabilité (%)</label><input id="sf-reliability" type="number" value="${s.reliability}"></div>
+    <div class="divider"></div>
+    <div class="card-title">Contact commercial (facultatif)</div>
+    <div class="field-row"><div class="field"><label>Prénom</label><input id="sf-contact-firstname" value="${s.contactFirstName||''}" placeholder="Jean"></div><div class="field"><label>Nom</label><input id="sf-contact-lastname" value="${s.contactLastName||''}" placeholder="Martin"></div></div>
+    <div class="field-row"><div class="field"><label>Email</label><input id="sf-contact-email" type="email" value="${s.contactEmail||''}" placeholder="j.martin@fournisseur.fr"></div><div class="field"><label>Téléphone</label><input id="sf-contact-phone" value="${s.contactPhone||''}" placeholder="06 12 34 56 78"></div></div>
     <div class="flex gap8">
       <button class="btn btn-primary" style="flex:1;" onclick="saveSupplier('${id}')">Enregistrer</button>
       <button class="btn btn-danger" onclick="deleteSupplier('${id}')" title="Supprimer ce fournisseur">${iconSm(I.trash)}</button>
@@ -4310,13 +4336,19 @@ async function saveSupplier(id){
   const email = document.getElementById('sf-email').value.trim();
   const delay = document.getElementById('sf-delay').value.trim() || s.delay;
   const reliability = parseFloat(document.getElementById('sf-reliability').value) || s.reliability;
+  const contactFirstName = document.getElementById('sf-contact-firstname').value.trim();
+  const contactLastName = document.getElementById('sf-contact-lastname').value.trim();
+  const contactEmail = document.getElementById('sf-contact-email').value.trim();
+  const contactPhone = document.getElementById('sf-contact-phone').value.trim();
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers/${s.remoteId}`, {
-      method:'PATCH', body:{ name, category:cat, delay, email, address },
+      method:'PATCH', body:{ name, category:cat, delay, email, address, contactFirstName, contactLastName, contactEmail, contactPhone },
     });
     s.name = data.supplier.name; s.cat = data.supplier.category; s.address = data.supplier.address;
     s.email = data.supplier.email; s.delay = data.supplier.delay; s.reliability = reliability;
+    s.contactFirstName = data.supplier.contact_first_name; s.contactLastName = data.supplier.contact_last_name;
+    s.contactEmail = data.supplier.contact_email; s.contactPhone = data.supplier.contact_phone;
     closeModal();
     toast('Fournisseur mis à jour');
     render();
