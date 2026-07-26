@@ -815,11 +815,11 @@ const state = {
 let ACCOUNT = null; // { email, plan, billing, via } une fois le compte connecté pendant la session (vient du vrai serveur)
 const PLANS = [
   { id:'solo', name:'Solo', monthly:19, tagline:"Pour un restaurateur qui travaille seul",
-    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Factures et historique d’achats','Notifications par email'] },
+    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Factures et historique d’achats','Notifications par email'] },
   { id:'essentiel', name:'Essentiel', monthly:39, tagline:"Pour un restaurant qui démarre",
-    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Factures et historique d’achats','Notifications par email'] },
+    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Factures et historique d’achats','Notifications par email'] },
   { id:'pro', name:'Pro', monthly:79, tagline:"Pour les groupes multi-établissements",
-    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export comptable','Support prioritaire'] },
+    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Support prioritaire'] },
 ];
 function planAnnualPrice(monthly){ return monthly*10; }
 const SITE_FEATURES = [
@@ -1475,7 +1475,7 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
    SHELL
 ============================================================ */
 function renderShell(){
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats') && !(soloModeEnabled() && ['equipe','demandes'].includes(n.id)));
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats') && !(soloModeEnabled() && ['equipe','demandes','multi'].includes(n.id)));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -2074,7 +2074,7 @@ function renderBasketCard(supplierId, role){
 function orderRowActions(o, role){
   const canDuplicate = role==='patron' && !o.custom && (o.lineItems||[]).some(li=>li.productId);
   const dupBtn = canDuplicate ? `<button class="btn btn-ghost btn-sm" onclick="duplicateOrder('${o.id}')" title="Réutiliser cette commande">${iconXs(I.copy)} Dupliquer</button>` : '';
-  const pdfBtn = (o.supplier && ['patron','manager'].includes(role)) ? `<button class="btn btn-ghost btn-sm" onclick="openOrderPdfOptions('${o.id}')" title="Bon de commande PDF">${iconXs(I.doc)} PDF</button>` : '';
+  const pdfBtn = (o.supplier && ['patron','manager'].includes(role) && !soloModeEnabled()) ? `<button class="btn btn-ghost btn-sm" onclick="openOrderPdfOptions('${o.id}')" title="Bon de commande PDF">${iconXs(I.doc)} PDF</button>` : '';
   if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
   if((role==='manager' || role==='cuisine' || role==='patron') && o.status==='validee') return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></div>`;
   return `<div class="flex gap8">${pdfBtn}${dupBtn}</div>`;
@@ -2788,7 +2788,7 @@ async function addCategoryFromSettings(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
-    CATEGORIES.push({id:'cat'+nextId(), remoteId:data.category.id, name:data.category.name});
+    CATEGORIES.push({id:'cat'+data.category.id, remoteId:data.category.id, name:data.category.name});
     toast('Catégorie « '+name+' » ajoutée');
     render();
   } catch(err){
@@ -2815,7 +2815,7 @@ async function addZoneFromSettings(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`, { method:'POST', body:{ name } });
-    ZONES.push({id:'zone'+nextId(), remoteId:data.zone.id, name:data.zone.name});
+    ZONES.push({id:'zone'+data.zone.id, remoteId:data.zone.id, name:data.zone.name});
     toast('Lieu « '+name+' » ajouté');
     render();
   } catch(err){
@@ -3759,7 +3759,7 @@ function addZoneInline(prefix){
     const resto = RESTOS.find(r=>r.id===state.resto);
     try{
       const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`, { method:'POST', body:{ name } });
-      const newZone = {id:'zone'+nextId(), remoteId:data.zone.id, name:data.zone.name};
+      const newZone = {id:'zone'+data.zone.id, remoteId:data.zone.id, name:data.zone.name};
       ZONES.push(newZone);
       const checklist = document.getElementById(prefix+'-zone-checklist');
       const emptyMsg = checklist.querySelector('.small.muted');
@@ -3840,7 +3840,7 @@ async function createCategoryIfNeeded(selectEl){
     const resto = RESTOS.find(r=>r.id===state.resto);
     try{
       const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
-      CATEGORIES.push({id:'cat'+nextId(), remoteId:data.category.id, name:data.category.name});
+      CATEGORIES.push({id:'cat'+data.category.id, remoteId:data.category.id, name:data.category.name});
       return data.category.name;
     } catch(err){
       toast(err.message, 'alert');
@@ -3873,7 +3873,7 @@ async function addProduct(){
       method:'POST',
       body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
     });
-    PRODUCTS.push({id:'p'+nextId(), remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, volumeLiters, zoneIds});
+    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, volumeLiters, zoneIds});
     closeModal();
     toast('Produit « '+name+' » créé');
     render();
@@ -4271,7 +4271,7 @@ async function addSupplier(){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers`, {
       method:'POST', body:{ name, category:cat, delay, email, address },
     });
-    SUPPLIERS.push({id:'f'+nextId(), remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0});
+    SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0});
     closeModal();
     toast('Fournisseur « '+name+' » ajouté');
     render();
@@ -4379,7 +4379,7 @@ async function addEmployee(){
       body:{ name, role, shift },
     });
     TEAM.push({
-      id: 't'+nextId(), remoteId: data.member.id, name: data.member.name, role: data.member.role,
+      id: 't'+data.member.id, remoteId: data.member.id, name: data.member.name, role: data.member.role,
       shift: data.member.shift, status: data.member.status, username: data.member.username,
       inviteToken: data.member.invite_token,
     });
@@ -4510,7 +4510,7 @@ function renderContent(){
     if(view==='stats') return financialsHidden() ? viewPatronDashboard() : viewStats();
     if(view==='fournisseurs') return viewFournisseurs();
     if(view==='equipe') return soloModeEnabled() ? viewPatronDashboard() : viewEquipe();
-    if(view==='multi') return viewMulti();
+    if(view==='multi') return soloModeEnabled() ? viewPatronDashboard() : viewMulti();
     if(view==='parametres') return viewParametres();
   }
   if(role==='manager'){
