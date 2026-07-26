@@ -1584,6 +1584,19 @@ function monthlyTrendData(monthsBack){
     return { label: m.label, value: Math.round(total*100)/100 };
   });
 }
+function yearlyTrendData(yearsBack){
+  yearsBack = yearsBack || 5;
+  const now = new Date();
+  const years = [];
+  for(let i=yearsBack-1;i>=0;i--){ years.push(now.getFullYear()-i); }
+  return years.map(y=>{
+    const total = ORDERS.filter(o=>o.status!=='refusee' && o.createdAt).filter(o=>{
+      const d = new Date(o.createdAt);
+      return d.getFullYear()===y;
+    }).reduce((sum,o)=>sum+(o.amount||0),0);
+    return { label: String(y), value: Math.round(total*100)/100 };
+  });
+}
 function totalSpendThisMonth(){
   const now = new Date();
   return ORDERS.filter(o=>o.status!=='refusee' && o.createdAt).filter(o=>{
@@ -1591,10 +1604,19 @@ function totalSpendThisMonth(){
     return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
   }).reduce((sum,o)=>sum+(o.amount||0),0);
 }
+function ensureStatsTrendPeriod(){
+  if(!state.statsTrendPeriod) state.statsTrendPeriod = 'mois';
+  return state.statsTrendPeriod;
+}
+function setStatsTrendPeriod(period){
+  state.statsTrendPeriod = period;
+  render();
+}
 function viewStats(){
   const spendSupplier = achatsBySupplier();
   const spendCategory = spendByCategoryData();
   const thisMonth = totalSpendThisMonth();
+  const trendPeriod = ensureStatsTrendPeriod();
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Statistiques</h2><div class="sub">Dépenses par fournisseur, par catégorie, et évolution dans le temps</div></div>
@@ -1605,7 +1627,13 @@ function viewStats(){
       <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy).length}</div></div>
     </div>
     <div class="card">
-      <div class="card-title">Évolution des dépenses (6 derniers mois)</div>
+      <div class="flex between center" style="margin-bottom:10px;">
+        <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${trendPeriod==='mois' ? '(6 derniers mois)' : '(5 dernières années)'}</div>
+        <div class="pill-nav" style="margin:0;">
+          <button class="${trendPeriod==='mois'?'active':''}" onclick="setStatsTrendPeriod('mois')">Par mois</button>
+          <button class="${trendPeriod==='annee'?'active':''}" onclick="setStatsTrendPeriod('annee')">Par année</button>
+        </div>
+      </div>
       <div style="height:220px;"><canvas id="chartMonthlyTrend"></canvas></div>
     </div>
     <div class="grid grid-2b">
@@ -3710,12 +3738,12 @@ function openNewProductModal(){
     <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive"></div>
     <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field-row">
-      <div class="field"><label>Unité</label><input id="np-unit" placeholder="Kg" list="unit-suggestions"></div>
+      <div class="field"><label>Unité</label><input id="np-unit" placeholder="Kg" list="unit-suggestions" oninput="updateVolumeLabel('np')"></div>
       <div class="field"><label>Conditionnement (facultatif)</label><input id="np-packaging" placeholder="Carton de 6" list="packaging-suggestions"></div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
     <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
-    <div class="field"><label>Contenance en litres (facultatif — pour les liquides, ex : une bouteille de 0.75L)</label><input id="np-volume" type="number" step="0.01" placeholder="0.75"></div>
+    <div class="field"><label id="np-volume-label">Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)</label><input id="np-volume" type="number" step="0.01" placeholder="0.75"></div>
     ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="5.00"></div>`}
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234"></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div>
@@ -3787,6 +3815,17 @@ function handleProductPhotoUpload(input, prefix){
     }
   });
 }
+function updateVolumeLabel(prefix){
+  const unitInput = document.getElementById(prefix+'-unit');
+  const label = document.getElementById(prefix+'-volume-label');
+  if(!unitInput || !label) return;
+  const unit = unitInput.value.trim();
+  if(!unit){
+    label.textContent = "Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)";
+    return;
+  }
+  label.textContent = `Contenance en ${unit} (facultatif — combien de ${unit} représente réellement une unité commandée)`;
+}
 function onNewProductCategoryChange(select){
   if(select.value==='__new__'){
     const name = prompt('Nom de la nouvelle catégorie ?');
@@ -3856,12 +3895,12 @@ function editProduct(id){
     <div class="field"><label>Nom du produit</label><input id="ep-name" value="${p.name}"></div>
     <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${c.name===p.cat?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field-row">
-      <div class="field"><label>Unité</label><input id="ep-unit" value="${p.unit}" list="unit-suggestions"></div>
+      <div class="field"><label>Unité</label><input id="ep-unit" value="${p.unit}" list="unit-suggestions" oninput="updateVolumeLabel('ep')"></div>
       <div class="field"><label>Conditionnement (facultatif)</label><input id="ep-packaging" value="${p.packaging||''}" list="packaging-suggestions"></div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
     <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
-    <div class="field"><label>Contenance en litres (facultatif — pour les liquides, ex : une bouteille de 0.75L)</label><input id="ep-volume" type="number" step="0.01" value="${p.volumeLiters!=null?p.volumeLiters:''}" placeholder="0.75"></div>
+    <div class="field"><label id="ep-volume-label">Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)</label><input id="ep-volume" type="number" step="0.01" value="${p.volumeLiters!=null?p.volumeLiters:''}" placeholder="0.75"></div>
     ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>`}
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${p.supplierReference||''}"></div>
     <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${s.name}</option>`).join('')}</select></div>
@@ -4639,7 +4678,7 @@ function drawCharts(){
   }
   const trendCanvas = document.getElementById('chartMonthlyTrend');
   if(trendCanvas){
-    const data = monthlyTrendData(6);
+    const data = ensureStatsTrendPeriod()==='annee' ? yearlyTrendData(5) : monthlyTrendData(6);
     charts.trend = new Chart(trendCanvas, {
       type:'line',
       data:{
