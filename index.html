@@ -1911,7 +1911,7 @@ function viewStocks(){
             <td class="muted">${supplierName(p.supplier)}</td>
             <td class="muted small">${p.packaging||'—'}</td>
             <td class="mono">${p.qtyCommande} ${p.unit}</td>
-            ${financialsHidden()?'':`<td class="mono">${p.price.toFixed(2)} €</td>`}
+            ${financialsHidden()?'':`<td class="mono">${p.price.toFixed(2)} € / ${p.unit}</td>`}
             <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button><button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)} Dupliquer</button><button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button><button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
           </tr>`;
         }).join('')}
@@ -2397,7 +2397,7 @@ async function syncProductsFromServer(localId){
         qtyCommande: parseFloat(p.qty_commande), supplier: localSupplier ? localSupplier.id : null,
         cat: p.category, department: p.department,
         packaging: p.packaging, supplierReference: p.supplier_reference,
-        volumeLiters: p.volume_liters!=null ? parseFloat(p.volume_liters) : null, zoneIds: localZoneIds,
+        zoneIds: localZoneIds,
       };
     });
     if(state.resto === localId) PRODUCTS = d.products;
@@ -3731,20 +3731,25 @@ function openNewProductModal(prefill){
   }
   const p = prefill || null;
   const prefillZoneIds = p ? (p.zoneIds||[]) : [];
+  const initialUnit = p ? p.unit : 'Kg';
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>${p ? 'Dupliquer le produit' : 'Nouveau produit'}</h3>
     ${p ? `<div class="modal-sub">Pré-rempli à partir de « ${p.name} » — ajustez ce qui change puis créez le nouveau produit.</div>` : ''}
     <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${p ? p.name+' (copie)' : ''}"></div>
     <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${p && p.cat===c.name?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
-    <div class="field-row">
-      <div class="field"><label>Unité</label><input id="np-unit" placeholder="Kg" list="unit-suggestions" oninput="updateVolumeLabel('np')" value="${p ? p.unit : ''}"></div>
-      <div class="field"><label>Conditionnement (facultatif)</label><input id="np-packaging" placeholder="Carton de 6" list="packaging-suggestions" value="${p ? (p.packaging||'') : ''}"></div>
+    <div class="field">
+      <label>Unité de commande</label>
+      <input id="np-unit" placeholder="Kg" list="unit-suggestions" oninput="updatePriceLabel('np')" value="${initialUnit}">
+      <div class="small muted" style="margin-top:4px;">Comment vous commandez ce produit : au kilo, au litre, à la pièce, au carton, à la caisse…</div>
     </div>
-    <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
-    <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
-    <div class="field"><label id="np-volume-label">Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)</label><input id="np-volume" type="number" step="0.01" placeholder="0.75" value="${p && p.volumeLiters!=null ? p.volumeLiters : ''}"></div>
-    ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="np-price" type="number" step="0.01" value="${p ? p.price : '5.00'}"></div>`}
+    <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
+    ${financialsHidden() ? '' : `<div class="field"><label id="np-price-label">Prix par ${initialUnit || 'unité'} (€)</label><input id="np-price" type="number" step="0.01" value="${p ? p.price : '5.00'}"></div>`}
+    <div class="field">
+      <label>Contenu du conditionnement (facultatif)</label>
+      <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${p ? (p.packaging||'') : ''}">
+      <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
+    </div>
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${p ? (p.supplierReference||'') : ''}"></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${p && p.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="np-department">
@@ -3823,16 +3828,12 @@ function handleProductPhotoUpload(input, prefix){
     }
   });
 }
-function updateVolumeLabel(prefix){
+function updatePriceLabel(prefix){
   const unitInput = document.getElementById(prefix+'-unit');
-  const label = document.getElementById(prefix+'-volume-label');
+  const label = document.getElementById(prefix+'-price-label');
   if(!unitInput || !label) return;
   const unit = unitInput.value.trim();
-  if(!unit){
-    label.textContent = "Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)";
-    return;
-  }
-  label.textContent = `Contenance en ${unit} (facultatif — combien de ${unit} représente réellement une unité commandée)`;
+  label.textContent = `Prix par ${unit || 'unité'} (€)`;
 }
 function onNewProductCategoryChange(select){
   if(select.value==='__new__'){
@@ -3870,8 +3871,6 @@ async function addProduct(){
   if(cat===null) return;
   const unit = document.getElementById('np-unit').value.trim() || 'unité';
   const packaging = document.getElementById('np-packaging').value.trim();
-  const volumeInput = document.getElementById('np-volume').value;
-  const volumeLiters = volumeInput ? parseNum(volumeInput) : null;
   const supplierReference = document.getElementById('np-reference').value.trim();
   const priceEl = document.getElementById('np-price');
   const price = priceEl ? (parseNum(priceEl.value)||0) : 0;
@@ -3884,9 +3883,9 @@ async function addProduct(){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
-      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds },
     });
-    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, volumeLiters, zoneIds});
+    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds});
     closeModal();
     toast('Produit « '+name+' » créé');
     render();
@@ -3902,14 +3901,18 @@ function editProduct(id){
     <h3>Modifier le produit</h3>
     <div class="field"><label>Nom du produit</label><input id="ep-name" value="${p.name}"></div>
     <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${c.name===p.cat?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
-    <div class="field-row">
-      <div class="field"><label>Unité</label><input id="ep-unit" value="${p.unit}" list="unit-suggestions" oninput="updateVolumeLabel('ep')"></div>
-      <div class="field"><label>Conditionnement (facultatif)</label><input id="ep-packaging" value="${p.packaging||''}" list="packaging-suggestions"></div>
+    <div class="field">
+      <label>Unité de commande</label>
+      <input id="ep-unit" value="${p.unit}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
+      <div class="small muted" style="margin-top:4px;">Comment vous commandez ce produit : au kilo, au litre, à la pièce, au carton, à la caisse…</div>
     </div>
-    <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Carton"><option value="Pièce"><option value="Botte"></datalist>
-    <datalist id="packaging-suggestions"><option value="Carton de 6"><option value="Caisse de 12"><option value="Sachet"><option value="Bouteille"></datalist>
-    <div class="field"><label id="ep-volume-label">Contenance (facultatif — combien une unité contient réellement, ex : une bouteille de 0.75L)</label><input id="ep-volume" type="number" step="0.01" value="${p.volumeLiters!=null?p.volumeLiters:''}" placeholder="0.75"></div>
-    ${financialsHidden() ? '' : `<div class="field"><label>Prix d'achat (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>`}
+    <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
+    ${financialsHidden() ? '' : `<div class="field"><label id="ep-price-label">Prix par ${p.unit || 'unité'} (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>`}
+    <div class="field">
+      <label>Contenu du conditionnement (facultatif)</label>
+      <input id="ep-packaging" value="${p.packaging||''}" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg">
+      <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
+    </div>
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${p.supplierReference||''}"></div>
     <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${s.name}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="ep-department">
@@ -3933,8 +3936,6 @@ async function saveProduct(id){
   if(cat===null) return;
   const unit = document.getElementById('ep-unit').value.trim() || p.unit;
   const packaging = document.getElementById('ep-packaging').value.trim();
-  const volumeInput = document.getElementById('ep-volume').value;
-  const volumeLiters = volumeInput ? parseNum(volumeInput) : null;
   const supplierReference = document.getElementById('ep-reference').value.trim();
   const priceEl = document.getElementById('ep-price');
   const price = priceEl ? (parseNum(priceEl.value) || p.price) : p.price;
@@ -3947,12 +3948,12 @@ async function saveProduct(id){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
       method:'PATCH',
-      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, volumeLiters, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds },
     });
     p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
     p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
     p.supplier = supplier; p.department = data.product.department;
-    p.packaging = packaging; p.supplierReference = supplierReference; p.volumeLiters = volumeLiters; p.zoneIds = zoneIds;
+    p.packaging = packaging; p.supplierReference = supplierReference; p.zoneIds = zoneIds;
     closeModal();
     toast('Produit mis à jour');
     render();
