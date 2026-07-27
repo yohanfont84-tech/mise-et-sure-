@@ -882,6 +882,8 @@ const state = {
   aideOpenItem: null,
   geocodingResto: false,
   geocodingSuppliers: false,
+  mapRadiusKm: 20,
+  mapProducersOnly: false,
 };
 
 let ACCOUNT = null; // { email, plan, billing, via } une fois le compte connecté pendant la session (vient du vrai serveur)
@@ -2251,7 +2253,11 @@ let NEARBY_SUPPLIERS = [];
 let NEARBY_SUPPLIERS_LOADING = false;
 let NEARBY_SUPPLIERS_ERROR = null;
 let NEARBY_SUPPLIERS_LOADED_FOR = null;
+let NEARBY_SUPPLIERS_LOADED_RADIUS = null;
 let SUPPLIER_MAP_INSTANCE = null;
+let SUPPLIER_MAP_VIEW = null; // {center:[lat,lng], zoom} — retenu pour ne pas perdre la position lors d'un nouveau rendu
+let SUPPLIER_MAP_MOVE_TIMEOUT = null;
+let SUPPLIER_MAP_SEARCHING_AREA = false;
 
 function viewSupplierMap(){
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -2272,16 +2278,30 @@ function viewSupplierMap(){
         <button class="btn btn-primary" onclick="geocodeRestaurantNow()" ${state.geocodingResto?'disabled':''}>${state.geocodingResto?'Localisation en cours…':'Localiser mon établissement maintenant'}</button>
       </div>
     ` : `
+      <div class="flex gap8" style="align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+        <label class="small muted" style="display:flex;align-items:center;gap:8px;">Rechercher dans un rayon de
+          <select onchange="changeMapRadius(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+            <option value="10" ${state.mapRadiusKm===10?'selected':''}>10 km</option>
+            <option value="20" ${state.mapRadiusKm===20?'selected':''}>20 km</option>
+            <option value="35" ${state.mapRadiusKm===35?'selected':''}>35 km</option>
+            <option value="50" ${state.mapRadiusKm===50?'selected':''}>50 km (recommandé pour les fermes)</option>
+          </select>
+        </label>
+        <label class="small" style="display:flex;align-items:center;gap:7px;cursor:pointer;margin-left:auto;">
+          <input type="checkbox" ${state.mapProducersOnly?'checked':''} onchange="toggleProducersOnly()"> N'afficher que les petits producteurs
+        </label>
+      </div>
       <div class="map-legend">
         <span><span class="map-dot map-dot-resto"></span> Votre établissement</span>
-        <span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length})</span>
+        ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length})</span>` : ''}
         <span><span class="map-dot map-dot-producer"></span> Petits producteurs détectés (${NEARBY_SUPPLIERS.filter(s=>s.isProducer).length})</span>
-        <span><span class="map-dot map-dot-new"></span> Autres fournisseurs détectés (${NEARBY_SUPPLIERS.filter(s=>!s.isProducer).length})</span>
+        ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-new"></span> Autres fournisseurs détectés (${NEARBY_SUPPLIERS.filter(s=>!s.isProducer).length})</span>` : ''}
       </div>
       <div class="card" style="padding:0;overflow:hidden;">
         <div id="supplier-map" style="height:520px;width:100%;"></div>
       </div>
-      ${NEARBY_SUPPLIERS_LOADING ? `<div class="small muted" style="margin-top:10px;">Recherche des fournisseurs à proximité…</div>` : ''}
+      ${NEARBY_SUPPLIERS_LOADING ? `<div class="small muted" style="margin-top:10px;">Recherche des fournisseurs à proximité (rayon ${state.mapRadiusKm} km)…</div>` : ''}
+      ${SUPPLIER_MAP_SEARCHING_AREA ? `<div class="small muted" style="margin-top:10px;">Recherche de fournisseurs dans cette zone…</div>` : ''}
       ${NEARBY_SUPPLIERS_ERROR ? `<div class="small" style="margin-top:10px;color:var(--urgent);">${escapeHtml(NEARBY_SUPPLIERS_ERROR)}</div>` : ''}
       ${suppliersMissingCoords.length > 0 ? `
         <div class="small muted" style="margin-top:14px;">${suppliersMissingCoords.length} fournisseur(s) avec une adresse mais pas encore localisé(s) sur la carte (probablement ajoutés avant cette fonctionnalité).
@@ -2298,9 +2318,10 @@ async function loadNearbySuppliers(){
   NEARBY_SUPPLIERS_ERROR = null;
   render();
   try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/nearby-suppliers`);
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/nearby-suppliers?radiusKm=${state.mapRadiusKm}`);
     NEARBY_SUPPLIERS = data.nearby || [];
     NEARBY_SUPPLIERS_LOADED_FOR = state.resto;
+    NEARBY_SUPPLIERS_LOADED_RADIUS = state.mapRadiusKm;
     if(data.reason) NEARBY_SUPPLIERS_ERROR = data.reason;
   } catch(err){
     NEARBY_SUPPLIERS_ERROR = "Impossible de charger les fournisseurs à proximité pour le moment.";
@@ -2308,6 +2329,21 @@ async function loadNearbySuppliers(){
     NEARBY_SUPPLIERS_LOADING = false;
     render();
   }
+}
+function changeMapRadius(value){
+  state.mapRadiusKm = parseInt(value, 10);
+  if(SUPPLIER_MAP_VIEW){
+    // On était déjà en train d'explorer un endroit précis — on relance la recherche ici, avec
+    // le nouveau rayon, plutôt que de recentrer sur l'établissement sans prévenir.
+    searchSuppliersAtMapCenter(SUPPLIER_MAP_VIEW.center[0], SUPPLIER_MAP_VIEW.center[1]);
+  } else {
+    NEARBY_SUPPLIERS_LOADED_FOR = null; // force une nouvelle recherche initiale, autour de l'établissement
+    render();
+  }
+}
+function toggleProducersOnly(){
+  state.mapProducersOnly = !state.mapProducersOnly;
+  render();
 }
 
 function initSupplierMap(){
@@ -2320,7 +2356,13 @@ function initSupplierMap(){
   // toujours l'instance précédente avant d'en recréer une, plutôt que de la mettre à jour.
   if(SUPPLIER_MAP_INSTANCE){ SUPPLIER_MAP_INSTANCE.remove(); SUPPLIER_MAP_INSTANCE = null; }
 
-  const map = L.map('supplier-map').setView([resto.latitude, resto.longitude], 12);
+  // On repart de la dernière position connue (si la carte a déjà été déplacée) plutôt que de
+  // toujours recentrer sur l'établissement — sinon, chaque nouveau rendu (recherche, filtre...)
+  // ferait perdre l'endroit que la personne est en train d'explorer.
+  const initialCenter = SUPPLIER_MAP_VIEW ? SUPPLIER_MAP_VIEW.center : [resto.latitude, resto.longitude];
+  const initialZoom = SUPPLIER_MAP_VIEW ? SUPPLIER_MAP_VIEW.zoom : (state.mapRadiusKm >= 50 ? 9 : state.mapRadiusKm >= 35 ? 10 : 12);
+
+  const map = L.map('supplier-map').setView(initialCenter, initialZoom);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
@@ -2329,14 +2371,17 @@ function initSupplierMap(){
   const restoIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-resto"></div>', iconSize:[22,22] });
   L.marker([resto.latitude, resto.longitude], {icon:restoIcon}).addTo(map).bindPopup(`<b>${escapeHtml(resto.name)}</b><br>Votre établissement`);
 
-  const knownIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-known"></div>', iconSize:[18,18] });
-  SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null).forEach(s=>{
-    L.marker([s.latitude, s.longitude], {icon:knownIcon}).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br>Déjà dans vos fournisseurs`);
-  });
+  if(!state.mapProducersOnly){
+    const knownIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-known"></div>', iconSize:[18,18] });
+    SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null).forEach(s=>{
+      L.marker([s.latitude, s.longitude], {icon:knownIcon}).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br>Déjà dans vos fournisseurs`);
+    });
+  }
 
   const newIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-new"></div>', iconSize:[14,14] });
   const producerIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-producer"></div>', iconSize:[16,16] });
   NEARBY_SUPPLIERS.forEach(s=>{
+    if(state.mapProducersOnly && !s.isProducer) return; // filtre "producteurs uniquement" actif
     const alreadyKnown = SUPPLIERS.some(k=>k.name.toLowerCase().trim() === s.name.toLowerCase().trim());
     if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
     const badge = s.isProducer ? '<span style="background:#7A9B5C;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
@@ -2344,7 +2389,35 @@ function initSupplierMap(){
       .bindPopup(`${badge}<b>${escapeHtml(s.name)}</b><br>${escapeHtml(s.category)}${s.address?'<br>'+escapeHtml(s.address):''}<br><button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`);
   });
 
+  // Quand on arrête de déplacer/zoomer la carte, on retient la nouvelle position puis on relance
+  // une recherche de fournisseurs autour de ce nouvel endroit (après une courte pause, pour ne
+  // pas déclencher une recherche à chaque pixel de déplacement).
+  map.on('moveend', () => {
+    const center = map.getCenter();
+    SUPPLIER_MAP_VIEW = { center: [center.lat, center.lng], zoom: map.getZoom() };
+    if(SUPPLIER_MAP_MOVE_TIMEOUT) clearTimeout(SUPPLIER_MAP_MOVE_TIMEOUT);
+    SUPPLIER_MAP_MOVE_TIMEOUT = setTimeout(() => {
+      searchSuppliersAtMapCenter(center.lat, center.lng);
+    }, 900);
+  });
+
   SUPPLIER_MAP_INSTANCE = map;
+}
+async function searchSuppliersAtMapCenter(lat, lng){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto || !resto.remoteId) return;
+  SUPPLIER_MAP_SEARCHING_AREA = true;
+  render();
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/nearby-suppliers?radiusKm=${state.mapRadiusKm}&lat=${lat}&lng=${lng}`);
+    NEARBY_SUPPLIERS = data.nearby || [];
+  } catch(err){
+    // Silencieux : une recherche liée à un déplacement de carte ne doit pas interrompre
+    // l'exploration avec un message d'erreur intrusif — les résultats précédents restent affichés.
+  } finally {
+    SUPPLIER_MAP_SEARCHING_AREA = false;
+    render();
+  }
 }
 function prefillSupplierFromMap(name, address){
   closeModal();
@@ -2366,6 +2439,7 @@ async function geocodeRestaurantNow(){
     resto.latitude = data.restaurant.latitude;
     resto.longitude = data.restaurant.longitude;
     NEARBY_SUPPLIERS_LOADED_FOR = null; // force une nouvelle recherche de fournisseurs à proximité
+    SUPPLIER_MAP_VIEW = null; // repart centré sur la nouvelle position de l'établissement
     toast('Établissement localisé avec succès');
   } catch(err){
     toast(err.message, 'alert');
