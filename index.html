@@ -355,7 +355,19 @@ tr.tr-hover:hover{background:var(--paper);}
 .site-cta{text-align:center;padding:70px 24px;background:var(--black);color:#EDEDE8;}
 .site-cta h2{font-family:'Fraunces',serif;font-size:26px;margin:0 0 8px 0;color:#fff;}
 .site-cta .muted{color:#B8B8B1 !important;}
-.site-footer{text-align:center;padding:26px;font-size:11.5px;color:var(--muted-2);}
+.site-footer{text-align:center;padding:26px;font-size:11.5px;color:var(--muted-2);display:flex;flex-direction:column;gap:8px;align-items:center;}
+.site-footer-links{display:flex;gap:16px;}
+.site-footer-links a{cursor:pointer;color:var(--muted-2);text-decoration:underline;text-underline-offset:2px;}
+.site-footer-links a:hover{color:var(--text);}
+.legal-page{max-width:680px;margin:0 auto;padding:40px 24px 20px 24px;}
+.legal-page h1{font-size:26px;margin-bottom:20px;}
+.legal-page h3{font-size:15px;margin:22px 0 8px 0;}
+.legal-page p{font-size:14px;line-height:1.6;color:var(--text);margin:0 0 4px 0;}
+.legal-placeholder{background:#FFF4E5;border:1px solid #F0C36D;border-radius:8px;padding:12px 14px;color:#7A4E00;font-weight:600;}
+.cookie-banner{position:fixed;bottom:0;left:0;right:0;z-index:998;background:var(--text);color:var(--surface);padding:16px 24px;display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,0.15);}
+.cookie-banner-text{font-size:13px;max-width:640px;line-height:1.5;}
+.cookie-banner-text a{color:inherit;text-decoration:underline;cursor:pointer;}
+.cookie-banner .btn-primary{background:var(--surface);color:var(--text);flex-shrink:0;}
 .site-pricing-head{max-width:640px;margin:0 auto;padding:70px 24px 40px 24px;text-align:center;}
 .site-pricing-head h1{font-family:'Fraunces',serif;font-size:32px;margin:0 0 10px 0;}
 .site-plans-grid{max-width:1080px;margin:0 auto;padding:0 24px 90px 24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
@@ -468,6 +480,7 @@ tr.tr-hover:hover{background:var(--paper);}
 </head>
 <body>
 <div id="app"></div>
+<div id="cookie-banner-zone"></div>
 <div id="toast-zone"></div>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modalContent"></div></div>
 
@@ -592,7 +605,7 @@ function initialsFor(name){
   return name.split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
 }
 function avatarInner(photoUrl, name){
-  return photoUrl ? `<img src="${photoUrl}" alt="${name}">` : initialsFor(name);
+  return photoUrl ? `<img src="${photoUrl}" alt="${escapeHtml(name)}">` : initialsFor(name);
 }
 function photoFor(role, employeeId){
   if(employeeId){
@@ -625,7 +638,7 @@ function generateDefaultPassword(name){
 function deptLabel(d){ return d==='cuisine'?'Cuisine':d==='salle'?'Salle':'Cuisine & salle'; }
 function deptTag(d){ return d==='cuisine'?'tag-neutral':d==='salle'?'tag-subtle':'tag-strong'; }
 
-function supplierName(id){ return (SUPPLIERS.find(s=>s.id===id)||{}).name || '—'; }
+function supplierName(id){ return escapeHtml((SUPPLIERS.find(s=>s.id===id)||{}).name || '—'); }
 function supplierSpend(id){ return ORDERS.filter(o=>o.supplier===id && o.status!=='refusee').reduce((a,o)=>a+o.amount,0); }
 function supplierLastOrderDate(id){
   const withDates = ORDERS.filter(o=>o.supplier===id && o.createdAt);
@@ -721,7 +734,7 @@ async function sendBasket(supplierId){
   items.forEach(li=>{
     const p = PRODUCTS.find(x=>x.id===li.productId);
     if(p){
-      parts.push(`${p.name} × ${li.qty} ${p.unit}`);
+      parts.push(`${escapeHtml(p.name)} × ${li.qty} ${p.unit}`);
       amount += li.qty*p.price;
       enrichedItems.push({ productId: li.productId, remoteProductId: p.remoteId, name: p.name, qty: li.qty, price: p.price });
     }
@@ -977,7 +990,7 @@ async function notifyByEmail(roleKey, message, eventKey){
       method:'POST',
       body:{ role: roleKey, message },
     });
-    if(data.sent) toast(`<b>Email envoyé</b> à ${maskEmail(cfg.email)} — ${message}`, 'mail');
+    if(data.sent) toast(`<b>Email envoyé</b> à ${escapeHtml(maskEmail(cfg.email))} — ${message}`, 'mail');
   } catch(err){
     // Une notification manquée ne doit jamais bloquer l'action en cours (approbation d'une
     // demande, envoi d'une commande...) — on l'indique discrètement, sans interrompre.
@@ -1387,7 +1400,7 @@ function openMyProfileModal(){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Mon profil</h3>
-    <div class="modal-sub">${name} — ${roleLabel}</div>
+    <div class="modal-sub">${escapeHtml(name)} — ${escapeHtml(roleLabel)}</div>
     <div class="flex center gap12" style="margin-bottom:18px;">
       <div class="avatar" style="width:60px;height:60px;font-size:20px;">${photo?`<img src="${photo}" alt="${name}">`:initialsFor(name)}</div>
       ${photo ? `<button class="btn btn-ghost btn-sm" onclick="removeMyPhoto()">Retirer la photo</button>` : ''}
@@ -1470,21 +1483,21 @@ function getNotificationsForRole(role){
   const items = [];
   if(role==='patron'){
     ORDERS.filter(o=>o.status==='en_attente_validation').forEach(o=>items.push({icon:I.cart, text:`Commande ${o.id} en attente de validation`, view:'commandes'}));
-    REQUESTS.filter(r=>r.from==='Cuisine' && r.status==='attente').forEach(r=>items.push({icon:I.chef, text:`Demande cuisine : ${r.item} (${r.by})`, view:'dashboard'}));
-    REQUESTS.filter(r=>r.urgent && r.status==='attente' && r.from==='Salle').forEach(r=>items.push({icon:I.warn, text:`Rupture urgente en salle : ${r.item} (${r.by})`, view:'dashboard'}));
-    CUSTOM_REQUESTS.filter(cr=>cr.status==='attente').forEach(cr=>items.push({icon:I.spark, text:`Proposition d'achat : ${cr.itemName} (${cr.by})`, view:'dashboard'}));
+    REQUESTS.filter(r=>r.from==='Cuisine' && r.status==='attente').forEach(r=>items.push({icon:I.chef, text:`Demande cuisine : ${escapeHtml(r.item)} (${escapeHtml(r.by)})`, view:'dashboard'}));
+    REQUESTS.filter(r=>r.urgent && r.status==='attente' && r.from==='Salle').forEach(r=>items.push({icon:I.warn, text:`Rupture urgente en salle : ${escapeHtml(r.item)} (${escapeHtml(r.by)})`, view:'dashboard'}));
+    CUSTOM_REQUESTS.filter(cr=>cr.status==='attente').forEach(cr=>items.push({icon:I.spark, text:`Proposition d'achat : ${escapeHtml(cr.itemName)} (${escapeHtml(cr.by)})`, view:'dashboard'}));
   } else if(role==='manager'){
-    REQUESTS.filter(r=>r.status==='attente' && r.from==='Salle').forEach(r=>items.push({icon:I.bell, text:`Nouvelle demande : ${r.item} (Salle)`, view:'demandes'}));
+    REQUESTS.filter(r=>r.status==='attente' && r.from==='Salle').forEach(r=>items.push({icon:I.bell, text:`Nouvelle demande : ${escapeHtml(r.item)} (Salle)`, view:'demandes'}));
     ORDERS.filter(o=>o.status==='validee').forEach(o=>items.push({icon:I.truck, text:`Commande ${o.id} validée — à réceptionner`, view:'livraisons'}));
   } else if(role==='cuisine'){
     ORDERS.filter(o=>o.status==='validee').forEach(o=>items.push({icon:I.truck, text:`Commande ${o.id} validée — à réceptionner`, view:'livraisons'}));
     REQUESTS.filter(r=>r.from==='Cuisine' && r.status!=='attente').slice(0,4).forEach(r=>{
-      items.push({icon: r.status==='approuvee'?I.check:I.x, text:`Votre demande "${r.item}" a été ${r.status==='approuvee'?'approuvée':'refusée'}`, view:'demandes'});
+      items.push({icon: r.status==='approuvee'?I.check:I.x, text:`Votre demande "${escapeHtml(r.item)}" a été ${r.status==='approuvee'?'approuvée':'refusée'}`, view:'demandes'});
     });
   } else {
     const from = 'Salle';
     REQUESTS.filter(r=>r.from===from && r.status!=='attente').slice(0,6).forEach(r=>{
-      items.push({icon: r.status==='approuvee'?I.check:I.x, text:`Votre demande "${r.item}" a été ${r.status==='approuvee'?'approuvée':'refusée'}`, view:'demandes'});
+      items.push({icon: r.status==='approuvee'?I.check:I.x, text:`Votre demande "${escapeHtml(r.item)}" a été ${r.status==='approuvee'?'approuvée':'refusée'}`, view:'demandes'});
     });
   }
   return items.slice(0,8);
@@ -1517,7 +1530,7 @@ function renderShell(){
   const fallbackAccent = state.theme==='dark' ? '#EDEDE6' : '#111111';
   document.documentElement.style.setProperty('--accent', resto.accentColor || fallbackAccent);
   const brandMarkContent = resto.logoDataUrl
-    ? `<img src="${resto.logoDataUrl}" alt="${resto.name}">`
+    ? `<img src="${resto.logoDataUrl}" alt="${escapeHtml(resto.name)}">`
     : (resto.name||'?').charAt(0).toUpperCase();
 
   const sidebarHtml = `
@@ -1525,8 +1538,8 @@ function renderShell(){
       <div class="brand">
         <div class="brand-mark">${brandMarkContent}</div>
         <div>
-          <div class="brand-name">${resto.name}</div>
-          <div class="brand-sub">${resto.city}</div>
+          <div class="brand-name">${escapeHtml(resto.name)}</div>
+          <div class="brand-sub">${escapeHtml(resto.city)}</div>
         </div>
       </div>
       <div class="role-tag">Espace ${meta.label}${state.identity==='patron' && state.role!=='patron' ? ' · aperçu' : ''}</div>
@@ -1567,7 +1580,7 @@ function renderShell(){
           ${state.notifOpen ? renderNotifPanel() : ''}
         </div>
         <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="${state.theme==='dark'?'Passer en mode clair':'Passer en mode sombre'}">${state.theme==='dark'?iconSm(I.sun):iconSm(I.moon)}</button>
-        <button class="avatar avatar-btn" title="${meta.name} — modifier ma photo" onclick="openMyProfileModal()">${photoFor(state.identity, state.loggedInEmployeeId) ? `<img src="${photoFor(state.identity, state.loggedInEmployeeId)}" alt="${meta.name}">` : meta.initials}</button>
+        <button class="avatar avatar-btn" title="${escapeHtml(meta.name)} — modifier ma photo" onclick="openMyProfileModal()">${photoFor(state.identity, state.loggedInEmployeeId) ? `<img src="${photoFor(state.identity, state.loggedInEmployeeId)}" alt="${escapeHtml(meta.name)}">` : meta.initials}</button>
         <button class="btn btn-ghost btn-sm" onclick="logout()" title="Se déconnecter">${iconSm(I.logout)}</button>
       </div>
     </div>
@@ -1700,14 +1713,14 @@ function buildAIInsights(){
   const topId = Object.keys(freq).sort((a,b)=>freq[b]-freq[a])[0];
   if(topId){
     const p = PRODUCTS.find(x=>x.id===topId);
-    if(p) insights.push(`<b>${p.name}</b> est le produit le plus commandé, avec ${freq[topId]} ${p.unit} au total sur votre historique.`);
+    if(p) insights.push(`<b>${escapeHtml(p.name)}</b> est le produit le plus commandé, avec ${freq[topId]} ${p.unit} au total sur votre historique.`);
   }
   if(SUPPLIERS.length){
     const bySpend = SUPPLIERS.map(s=>({s, spend:supplierSpend(s.id)})).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend)[0];
     if(bySpend){
       insights.push(financialsHidden()
-        ? `<b>${bySpend.s.name}</b> est votre fournisseur le plus sollicité.`
-        : `<b>${bySpend.s.name}</b> est votre fournisseur le plus sollicité, avec ${fmtEUR(bySpend.spend)} d'achats au total.`);
+        ? `<b>${escapeHtml(bySpend.s.name)}</b> est votre fournisseur le plus sollicité.`
+        : `<b>${escapeHtml(bySpend.s.name)}</b> est votre fournisseur le plus sollicité, avec ${fmtEUR(bySpend.spend)} d'achats au total.`);
     } else {
       insights.push(`${SUPPLIERS.length} fournisseur${SUPPLIERS.length>1?'s':''} référencé${SUPPLIERS.length>1?'s':''} — aucun achat enregistré pour le moment.`);
     }
@@ -1810,7 +1823,7 @@ function ticketOrder(o){
         <div><span class="ticket-id">${o.id}</span><div class="ticket-item">${supplierName(o.supplier)}</div></div>
         ${financialsHidden() ? '' : `<div class="mono" style="font-weight:700;">${fmtEUR(o.amount)}</div>`}
       </div>
-      <div class="ticket-meta">${o.items}</div>
+      <div class="ticket-meta">${escapeHtml(o.items)}</div>
       ${canAct ? `<div class="ticket-actions">
         <button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">${iconXs(I.doc)} Modifier</button>
         <button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">${iconXs(I.check)} Valider</button>
@@ -1830,11 +1843,11 @@ function ticketDemande(r, viewerRole){
   return `
     <div class="ticket ${r.status==='attente' && r.urgent ? 'urgent' : (r.status==='attente' ? 'normal' : 'done')}">
       <div class="ticket-top">
-        <div><span class="ticket-id">${r.id}</span> <span class="ticket-from">${r.from}</span>${r.status==='attente' && r.urgent ? '<span class="ticket-flag">URGENT</span>' : ''}</div>
+        <div><span class="ticket-id">${r.id}</span> <span class="ticket-from">${escapeHtml(r.from)}</span>${r.status==='attente' && r.urgent ? '<span class="ticket-flag">URGENT</span>' : ''}</div>
         <span class="mini-label">${r.time}</span>
       </div>
-      <div class="ticket-item">${r.item}</div>
-      <div class="ticket-meta">${r.by}${r.note?' · '+r.note:''}</div>
+      <div class="ticket-item">${escapeHtml(r.item)}</div>
+      <div class="ticket-meta">${escapeHtml(r.by)}${r.note?' · '+escapeHtml(r.note):''}</div>
       ${canAct ? `<div class="ticket-actions">
         <button class="btn btn-primary btn-sm" onclick="openApproveDemandeModal('${r.id}')">${iconXs(I.check)} Approuver</button>
         <button class="btn btn-danger btn-sm" onclick="refuseDemande('${r.id}')">${iconXs(I.x)} Refuser</button>
@@ -1879,15 +1892,15 @@ function productFilterBar(f){
       <input type="text" id="product-search-input" placeholder="🔎 Nom, catégorie, lieu, fournisseur, référence…" value="${f.search||''}" oninput="updateProductFilter('search',this.value)">
       <select onchange="updateProductFilter('category',this.value)">
         <option value="tous">Toutes catégories</option>
-        ${CATEGORIES.map(c=>`<option value="${c.name}" ${f.category===c.name?'selected':''}>${c.name}</option>`).join('')}
+        ${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${f.category===c.name?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
       </select>
       <select onchange="updateProductFilter('zone',this.value)">
         <option value="tous">Tous les lieux</option>
-        ${ZONES.map(z=>`<option value="${z.id}" ${f.zone===z.id?'selected':''}>${z.name}</option>`).join('')}
+        ${ZONES.map(z=>`<option value="${z.id}" ${f.zone===z.id?'selected':''}>${escapeHtml(z.name)}</option>`).join('')}
       </select>
       <select onchange="updateProductFilter('supplier',this.value)">
         <option value="tous">Tous fournisseurs</option>
-        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
       </select>
       ${(f.search||f.category!=='tous'||f.zone!=='tous'||f.supplier!=='tous') ? `<button class="btn btn-ghost btn-sm" onclick="resetProductFilters()">Réinitialiser</button>` : ''}
     </div>
@@ -1911,7 +1924,7 @@ function resetProductFilters(){
   render();
 }
 function zoneTagsFor(p){
-  return (p.zoneIds||[]).map(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z ? `<span class="tag tag-neutral" style="margin:2px;">${z.name}</span>` : ''; }).join('');
+  return (p.zoneIds||[]).map(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z ? `<span class="tag tag-neutral" style="margin:2px;">${escapeHtml(z.name)}</span>` : ''; }).join('');
 }
 function viewStocks(){
   const filter = state.stockFilter || 'tous';
@@ -1934,12 +1947,12 @@ function viewStocks(){
         <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th>${financialsHidden()?'':`<th>Prix d'achat</th>`}<th></th></tr>
         ${filtered.map(p=>{
           return `<tr class="tr-hover">
-            <td style="font-weight:600;">${p.name}${p.supplierReference?`<div class="small muted mono">${p.supplierReference}</div>`:''}</td>
-            <td class="muted small">${p.cat||'—'}</td>
+            <td style="font-weight:600;">${escapeHtml(p.name)}${p.supplierReference?`<div class="small muted mono">${escapeHtml(p.supplierReference)}</div>`:''}</td>
+            <td class="muted small">${escapeHtml(p.cat||'—')}</td>
             <td>${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
             <td><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
             <td class="muted">${supplierName(p.supplier)}</td>
-            <td class="muted small">${p.packaging||'—'}</td>
+            <td class="muted small">${escapeHtml(p.packaging||'—')}</td>
             <td class="mono">${p.qtyCommande} ${p.unit}</td>
             ${financialsHidden()?'':`<td class="mono">${p.price.toFixed(2)} € / ${p.unit}</td>`}
             <td><div class="flex gap8">
@@ -1981,7 +1994,7 @@ function viewEcarts(){
     <div class="product-filter-bar">
       <select onchange="state.ecartsFilters.supplier=this.value;render();">
         <option value="tous">Tous fournisseurs</option>
-        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
       </select>
       <select onchange="state.ecartsFilters.period=this.value;render();">
         <option value="tous" ${f.period==='tous'?'selected':''}>Toutes périodes</option>
@@ -2001,7 +2014,7 @@ function viewEcarts(){
             <tr><th class="small muted">Article</th><th class="small muted">Qté commandée</th><th class="small muted">Qté reçue</th>${hideFin?'':'<th class="small muted">Prix attendu</th><th class="small muted">Prix facturé</th>'}</tr>
             ${(o.lineItems||[]).filter(li=>li.discrepancy).map(li=>`
               <tr>
-                <td>${li.name || (PRODUCTS.find(p=>p.id===li.productId)||{}).name || '—'}</td>
+                <td>${escapeHtml(li.name || (PRODUCTS.find(p=>p.id===li.productId)||{}).name || '—')}</td>
                 <td class="mono">${li.qty}</td>
                 <td class="mono ${Number(li.qtyReceived)!==Number(li.qty)?'text-alert':''}">${li.qtyReceived}</td>
                 ${hideFin ? '' : `
@@ -2045,7 +2058,7 @@ function viewCommandes(role){
       </select>
       <select onchange="setOrderFilter('supplier', this.value)" style="padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
         <option value="tous" ${f.supplier==='tous'?'selected':''}>Tous les fournisseurs</option>
-        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
       </select>
       <select onchange="setOrderFilter('month', this.value)" style="padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
         <option value="tous" ${f.month==='tous'?'selected':''}>Tous les mois</option>
@@ -2063,7 +2076,7 @@ function viewCommandes(role){
         ${rows.map(o=>`<tr class="tr-hover">
           <td class="mono">${o.id}</td>
           <td style="font-weight:600;">${supplierName(o.supplier)}</td>
-          <td class="muted small">${o.items}</td>
+          <td class="muted small">${escapeHtml(o.items)}</td>
           ${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}
           <td>${orderStatusTag(o)}</td>
           <td class="muted small">${o.date}</td>
@@ -2088,7 +2101,7 @@ function renderBasketCard(supplierId, role){
         ${items.map(li=>{
           const p = PRODUCTS.find(x=>x.id===li.productId);
           return `<tr class="tr-hover">
-            <td>${p?p.name:'—'}</td>
+            <td>${escapeHtml(p?p.name:'—')}</td>
             <td><div class="flex center gap8"><input type="number" min="1" step="1" value="${Math.round(li.qty)}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;" onchange="updateBasketLineQty('${supplierId}','${li.productId}', this.value)"><span class="small muted">${p?p.unit:''}</span></div></td>
             <td><button class="btn btn-ghost btn-sm" onclick="removeBasketLine('${supplierId}','${li.productId}')" title="Retirer">${iconXs(I.x)}</button></td>
           </tr>`;
@@ -2189,11 +2202,11 @@ function viewFournisseurs(){
       ${SUPPLIERS.length ? SUPPLIERS.map(s=>`
         <div class="card">
           <div class="flex between center">
-            <div style="font-weight:700;font-size:15px;">${s.name}</div>
+            <div style="font-weight:700;font-size:15px;">${escapeHtml(s.name)}</div>
             <span class="tag ${s.reliability>=95?'tag-subtle':s.reliability>=90?'tag-neutral':'tag-red'}">${s.reliability}% fiabilité</span>
           </div>
-          <div class="muted small" style="margin:4px 0 12px 0;">${s.cat}</div>
-          <div class="flex between small muted" style="margin-bottom:5px;"><span>Délai moyen</span><span class="mono" style="color:var(--text);">${s.delay}</span></div>
+          <div class="muted small" style="margin:4px 0 12px 0;">${escapeHtml(s.cat)}</div>
+          <div class="flex between small muted" style="margin-bottom:5px;"><span>Délai moyen</span><span class="mono" style="color:var(--text);">${escapeHtml(s.delay)}</span></div>
           <div class="flex between small muted" style="margin-bottom:5px;"><span>Dernière commande</span><span class="mono" style="color:var(--text);">${supplierLastOrderDate(s.id)}</span></div>
           ${financialsHidden() ? '' : `<div class="flex between small muted" style="margin-bottom:12px;"><span>Achats</span><span class="mono" style="color:var(--text);">${fmtEUR(supplierSpend(s.id))}</span></div>`}
           <div class="flex gap8">
@@ -2216,12 +2229,12 @@ function viewEquipe(){
       ${TEAM.length ? `<table>
         <tr><th>Nom</th><th>Rôle</th><th>Horaires</th><th>Statut</th><th>Permissions</th><th></th></tr>
         ${TEAM.map(t=>`<tr class="tr-hover">
-          <td style="font-weight:600;"><div class="flex center gap8"><div class="avatar" style="width:28px;height:28px;font-size:11px;">${avatarInner(t.photoDataUrl, t.name)}</div>${t.name}</div></td>
-          <td class="muted">${t.role}</td>
+          <td style="font-weight:600;"><div class="flex center gap8"><div class="avatar" style="width:28px;height:28px;font-size:11px;">${avatarInner(t.photoDataUrl, t.name)}</div>${escapeHtml(t.name)}</div></td>
+          <td class="muted">${escapeHtml(t.role)}</td>
           <td class="muted small">${t.shift}</td>
           <td><span class="tag ${t.status==='actif'?'tag-subtle':'tag-neutral'}">${t.status==='actif'?'En service':'Repos'}</span></td>
           <td class="muted small">${permsForRole(t.role)}</td>
-          <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button>${t.inviteToken?`<button class="btn btn-ghost btn-sm" onclick="showEmployeeCredentialsModal('${t.name}','${t.username||''}','—',  '${t.inviteToken}')" title="Retrouver le lien de connexion">${iconSm(I.mail)}</button>`:''}<button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
+          <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button>${t.inviteToken?`<button class="btn btn-ghost btn-sm" onclick="showEmployeeCredentialsModal('${escapeHtml(t.name)}','${escapeHtml(t.username||'')}','—',  '${t.inviteToken}')" title="Retrouver le lien de connexion">${iconSm(I.mail)}</button>`:''}<button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
@@ -2230,8 +2243,8 @@ function viewEquipe(){
       ${TEAM.length ? `<table>
         <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th></tr>
         ${TEAM.map(t=>`<tr class="tr-hover">
-          <td style="font-weight:600;">${t.name}</td>
-          <td class="muted">${t.role}</td>
+          <td style="font-weight:600;">${escapeHtml(t.name)}</td>
+          <td class="muted">${escapeHtml(t.role)}</td>
           <td><label class="flex center gap8" style="cursor:pointer;"><input type="checkbox" ${t.canOrderDirectly?'checked':''} onchange="toggleCanOrderDirectly('${t.id}', this.checked)"> ${t.canOrderDirectly?'Autorisé':'Non autorisé'}</label></td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
@@ -2252,7 +2265,7 @@ async function toggleCanOrderDirectly(id, checked){
       method:'PATCH', body:{ canOrderDirectly: checked },
     });
     t.canOrderDirectly = !!data.member.can_order_directly;
-    toast(checked ? `${t.name} peut désormais commander directement` : `${t.name} ne peut plus commander directement`);
+    toast(checked ? `${escapeHtml(t.name)} peut désormais commander directement` : `${escapeHtml(t.name)} ne peut plus commander directement`);
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2267,7 +2280,7 @@ function deleteEmployee(id){
   const t = TEAM.find(x=>x.id===id); if(!t) return;
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Retirer « ${t.name} » de l'équipe ?</h3>
+    <h3>Retirer « ${escapeHtml(t.name)} » de l'équipe ?</h3>
     <div class="modal-sub">Cette action est irréversible.</div>
     <div class="flex gap8">
       <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
@@ -2319,10 +2332,10 @@ function viewMulti(){
         return `
         <div class="card">
           <div class="flex between center">
-            <div style="font-weight:700;font-size:15.5px;">${r.name}</div>
+            <div style="font-weight:700;font-size:15.5px;">${escapeHtml(r.name)}</div>
             <span class="tag ${state.resto===r.id?'tag-strong':'tag-neutral'}">${state.resto===r.id?'Actif':'Disponible'}</span>
           </div>
-          <div class="muted small" style="margin:4px 0 14px 0;">${r.city} · devise ${r.currency||'EUR'}</div>
+          <div class="muted small" style="margin:4px 0 14px 0;">${escapeHtml(r.city)} · devise ${r.currency||'EUR'}</div>
           <div class="flex gap8">
             <button class="btn ${state.resto===r.id?'btn-ghost':'btn-primary'} btn-block" onclick="switchResto('${r.id}')" ${state.resto===r.id?'disabled':''}>${state.resto===r.id?'Établissement actif':'Basculer sur cet établissement'}</button>
             <button class="btn btn-danger btn-sm" onclick="deleteResto('${r.id}')" title="Supprimer cet établissement">${iconSm(I.trash)}</button>
@@ -2568,7 +2581,7 @@ function switchResto(id){
   state.stockFilter = 'tous';
   state.orderFilter = {dept:'tous', supplier:'tous', month:'tous', year:'tous'};
   render();
-  toast('Établissement changé : ' + RESTOS.find(r=>r.id===id).name);
+  toast('Établissement changé : ' + escapeHtml(RESTOS.find(r=>r.id===id).name));
   syncRestoOperationalData(id);
 }
 function deleteResto(id){
@@ -2576,7 +2589,7 @@ function deleteResto(id){
   const r = RESTOS.find(x=>x.id===id); if(!r) return;
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Supprimer « ${r.name} » ?</h3>
+    <h3>Supprimer « ${escapeHtml(r.name)} » ?</h3>
     <div class="modal-sub">Cette action est irréversible.</div>
     <div class="flex gap8">
       <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
@@ -2602,19 +2615,19 @@ function confirmDeleteResto(id){
 
 function viewParametres(){
   const resto = RESTOS.find(r=>r.id===state.resto);
-  const patronDisplayName = ACCOUNT ? `${ACCOUNT.firstName} ${ACCOUNT.lastName}`.trim() : 'Patron';
+  const patronDisplayName = ACCOUNT ? escapeHtml(`${escapeHtml(ACCOUNT.firstName)} ${escapeHtml(ACCOUNT.lastName)}`.trim()) : 'Patron';
   return `
     <div class="section-head" style="margin-top:0;"><div><h2>Paramètres</h2><div class="sub">Personnalisation et accès</div></div></div>
     <div class="card" style="margin-bottom:18px;">
       <div class="card-title">${iconSm(I.lock)} Accès &amp; identifiants</div>
       <div class="small muted" style="margin-bottom:14px;">Chaque personne a son identifiant et son mot de passe personnels. Seul le patron peut les modifier.</div>
       <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
-        <div><div style="font-weight:600;font-size:13.5px;">${patronDisplayName}</div><div class="small muted mono">${CREDENTIALS.patron.username}</div></div>
+        <div><div style="font-weight:600;font-size:13.5px;">${patronDisplayName}</div><div class="small muted mono">${escapeHtml(CREDENTIALS.patron.username)}</div></div>
         <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal(null)">Modifier les identifiants</button>
       </div>
       ${TEAM.map(t=>`
         <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
-          <div><div style="font-weight:600;font-size:13.5px;">${t.name}</div><div class="small muted mono">${t.username}</div></div>
+          <div><div style="font-weight:600;font-size:13.5px;">${escapeHtml(t.name)}</div><div class="small muted mono">${escapeHtml(t.username)}</div></div>
           <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal('${t.id}')">Modifier les identifiants</button>
         </div>
       `).join('')}
@@ -2625,21 +2638,21 @@ function viewParametres(){
         <div class="card-title">Informations du compte</div>
         <div class="small muted" style="margin-bottom:14px;">Vos informations personnelles, associées à votre abonnement.</div>
         <div class="field-row">
-          <div class="field"><label>Prénom</label><input id="acct-firstname" value="${ACCOUNT.firstName||''}"></div>
-          <div class="field"><label>Nom</label><input id="acct-lastname" value="${ACCOUNT.lastName||''}"></div>
+          <div class="field"><label>Prénom</label><input id="acct-firstname" value="${escapeHtml(ACCOUNT.firstName||'')}"></div>
+          <div class="field"><label>Nom</label><input id="acct-lastname" value="${escapeHtml(ACCOUNT.lastName||'')}"></div>
         </div>
-        <div class="field"><label>Téléphone</label><input id="acct-phone" type="tel" value="${ACCOUNT.phone||''}"></div>
-        <div class="field"><label>Email du compte</label><input id="acct-email" type="email" value="${ACCOUNT.email||''}"></div>
+        <div class="field"><label>Téléphone</label><input id="acct-phone" type="tel" value="${escapeHtml(ACCOUNT.phone||'')}"></div>
+        <div class="field"><label>Email du compte</label><input id="acct-email" type="email" value="${escapeHtml(ACCOUNT.email||'')}"></div>
         <button class="btn btn-primary" onclick="saveAccountInfo()">Enregistrer</button>
       </div>
       ` : ''}
       <div class="card">
         <div class="card-title">Informations établissement</div>
-        <div class="field"><label>Nom du restaurant</label><input id="set-name" value="${resto.name}"></div>
-        <div class="field"><label>Adresse</label><input id="set-address" value="${resto.address||''}" placeholder="12 rue de la République" list="set-address-list" oninput="wireAddressAutocomplete('set-address','set-address-list')"><datalist id="set-address-list"></datalist></div>
+        <div class="field"><label>Nom du restaurant</label><input id="set-name" value="${escapeHtml(resto.name)}"></div>
+        <div class="field"><label>Adresse</label><input id="set-address" value="${escapeHtml(resto.address||'')}" placeholder="12 rue de la République" list="set-address-list" oninput="wireAddressAutocomplete('set-address','set-address-list')"><datalist id="set-address-list"></datalist></div>
         <div class="field-row">
-          <div class="field"><label>Code postal</label><input id="set-postal" value="${resto.postalCode||''}" placeholder="69001" oninput="autofillCityFromPostal('set-postal','set-city')"></div>
-          <div class="field"><label>Ville</label><input id="set-city" value="${resto.city}"></div>
+          <div class="field"><label>Code postal</label><input id="set-postal" value="${escapeHtml(resto.postalCode||'')}" placeholder="69001" oninput="autofillCityFromPostal('set-postal','set-city')"></div>
+          <div class="field"><label>Ville</label><input id="set-city" value="${escapeHtml(resto.city)}"></div>
         </div>
         <div class="field"><label>Devise</label><select id="set-currency"><option ${resto.currency==='EUR'?'selected':''}>EUR</option><option ${resto.currency==='CHF'?'selected':''}>CHF</option><option ${resto.currency==='USD'?'selected':''}>USD</option></select></div>
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
@@ -2665,7 +2678,7 @@ function viewParametres(){
           <label>Catégories de produits</label>
           <div class="small muted" style="margin:-2px 0 8px 0;">Cliquez sur le nom pour le renommer.</div>
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
-            ${CATEGORIES.map(c=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameCategory('${c.id}')" title="Renommer">${c.name}</button><button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
+            ${CATEGORIES.map(c=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameCategory('${c.id}')" title="Renommer">${escapeHtml(c.name)}</button><button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
           </div>
           <div class="flex gap8"><input id="new-category-name" placeholder="Ex : Fromages" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addCategoryFromSettings()">Ajouter</button></div>
         </div>
@@ -2673,14 +2686,14 @@ function viewParametres(){
           <label>Lieux / zones</label>
           <div class="small muted" style="margin:-2px 0 8px 0;">Cliquez sur le nom pour le renommer.</div>
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
-            ${ZONES.map(z=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameZone('${z.id}')" title="Renommer">${z.name}</button><button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
+            ${ZONES.map(z=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameZone('${z.id}')" title="Renommer">${escapeHtml(z.name)}</button><button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
           </div>
           <div class="flex gap8"><input id="new-zone-name" placeholder="Ex : Terrasse" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addZoneFromSettings()">Ajouter</button></div>
         </div>
       </div>
       <div class="card">
         <div class="card-title">Apparence de cet établissement</div>
-        <div class="small muted" style="margin-bottom:14px;">Couleur et logo propres à ${resto.name} — chaque établissement peut avoir les siens.</div>
+        <div class="small muted" style="margin-bottom:14px;">Couleur et logo propres à ${escapeHtml(resto.name)} — chaque établissement peut avoir les siens.</div>
         <div class="field"><label>Couleur d'accent</label><input id="set-accent" type="color" value="${resto.accentColor || (state.theme==='dark' ? '#EDEDE6' : '#111111')}" style="height:42px;padding:4px;cursor:pointer;"></div>
         <div class="field">
           <label>Logo (image)</label>
@@ -2722,7 +2735,7 @@ async function saveAccountInfo(){
 function saveAppearance(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   resto.accentColor = document.getElementById('set-accent').value;
-  toast('Couleur mise à jour pour ' + resto.name);
+  toast('Couleur mise à jour pour ' + escapeHtml(resto.name));
   render();
 }
 function handleLogoUpload(input){
@@ -2731,7 +2744,7 @@ function handleLogoUpload(input){
   const resto = RESTOS.find(r=>r.id===state.resto);
   compressImageFile(file, 500, 0.8, (compressed) => {
     resto.logoDataUrl = compressed;
-    toast('Logo mis à jour pour ' + resto.name);
+    toast('Logo mis à jour pour ' + escapeHtml(resto.name));
     render();
   });
 }
@@ -2783,7 +2796,7 @@ async function saveNewPassword(employeeId){
       if(p1) CREDENTIALS.patron.password = p1;
     }
     closeModal();
-    toast('Identifiants mis à jour pour ' + name);
+    toast('Identifiants mis à jour pour ' + escapeHtml(name));
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2826,7 +2839,7 @@ async function addCategoryFromSettings(){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
     CATEGORIES.push({id:'cat'+data.category.id, remoteId:data.category.id, name:data.category.name});
-    toast('Catégorie « '+name+' » ajoutée');
+    toast('Catégorie « '+escapeHtml(name)+' » ajoutée');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2853,7 +2866,7 @@ async function addZoneFromSettings(){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`, { method:'POST', body:{ name } });
     ZONES.push({id:'zone'+data.zone.id, remoteId:data.zone.id, name:data.zone.name});
-    toast('Lieu « '+name+' » ajouté');
+    toast('Lieu « '+escapeHtml(name)+' » ajouté');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -2977,7 +2990,7 @@ function viewAide(){
       <div class="aide-messages" id="aide-messages">
         ${AIDE_MESSAGES.length===0 ? `<div class="aide-bubble assistant">Bonjour ! Je peux vous expliquer comment utiliser le site — comment créer un produit, passer une commande, inviter un employé, et bien plus. Décrivez ce qui vous bloque, ou joignez une capture d'écran.</div>` : ''}
         ${AIDE_MESSAGES.map(m=>`
-          <div class="aide-bubble ${m.role}">${renderAideMessageContent(m)}</div>
+          <div class="aide-bubble ${escapeHtml(m.role)}">${renderAideMessageContent(m)}</div>
         `).join('')}
         ${AIDE_LOADING ? `<div class="aide-typing"><span></span><span></span><span></span></div>` : ''}
       </div>
@@ -3006,9 +3019,13 @@ function renderAideMessageContent(m){
   return html;
 }
 function escapeHtml(str){
+  // Échappe aussi les guillemets (en plus de < > &), pour être sûr même quand le texte est
+  // inséré dans un attribut HTML (ex : value="...") et pas seulement dans du contenu visible —
+  // sinon un texte contenant un guillemet pourrait sortir de l'attribut et injecter du code.
+  if(str==null) return '';
   const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  div.textContent = String(str);
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 function handleAideImageUpload(input){
   const file = input.files && input.files[0];
@@ -3083,7 +3100,7 @@ function viewNotifications(role){
     <div class="grid grid-2b">
       <div class="card">
         <div class="card-title">${iconSm(I.mail)} Adresse de notification</div>
-        <div class="field"><label>Adresse email</label><input id="notif-email" type="email" value="${cfg.email}" placeholder="vous@restaurant.fr"></div>
+        <div class="field"><label>Adresse email</label><input id="notif-email" type="email" value="${escapeHtml(cfg.email)}" placeholder="vous@restaurant.fr"></div>
         <div class="flex between center" style="padding:6px 0 16px 0;">
           <span class="small" style="font-weight:600;">Activer les notifications par email</span>
           <input type="checkbox" id="notif-enabled" ${cfg.enabled?'checked':''} style="width:18px;height:18px;">
@@ -3107,7 +3124,7 @@ function viewNotifications(role){
         </div>
         <div class="divider"></div>
         <div class="small muted">Adresse actuelle</div>
-        <div class="mono" style="font-weight:600;margin-top:4px;">${maskEmail(cfg.email)}</div>
+        <div class="mono" style="font-weight:600;margin-top:4px;">${escapeHtml(maskEmail(cfg.email))}</div>
       </div>
     </div>
   `;
@@ -3173,7 +3190,7 @@ function viewPatronDemandes(){
     <div class="card">
       <table>
         <tr><th>Réf.</th><th>Origine</th><th>Employé</th><th>Article</th><th>Statut</th><th>Quand</th></tr>
-        ${REQUESTS.filter(r=>r.status!=='attente').map(r=>`<tr class="tr-hover"><td class="mono">${r.id}</td><td class="muted small">${r.from}</td><td class="muted">${r.by}</td><td>${r.item}${r.qty?' <span class="mono muted">×'+r.qty+'</span>':''}</td><td>${r.status==='approuvee'?'<span class="tag tag-subtle">Approuvée</span>':'<span class="tag tag-red">Refusée</span>'}</td><td class="muted small">${r.time}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty">Aucun historique pour l'instant</div></td></tr>`}
+        ${REQUESTS.filter(r=>r.status!=='attente').map(r=>`<tr class="tr-hover"><td class="mono">${r.id}</td><td class="muted small">${escapeHtml(r.from)}</td><td class="muted">${escapeHtml(r.by)}</td><td>${escapeHtml(r.item)}${r.qty?' <span class="mono muted">×'+r.qty+'</span>':''}</td><td>${r.status==='approuvee'?'<span class="tag tag-subtle">Approuvée</span>':'<span class="tag tag-red">Refusée</span>'}</td><td class="muted small">${r.time}</td></tr>`).join('') || `<tr><td colspan="6"><div class="empty">Aucun historique pour l'instant</div></td></tr>`}
       </table>
     </div>
   `;
@@ -3189,7 +3206,7 @@ function viewManagerDemandes(){
     <div class="card">
       <table>
         <tr><th>Réf.</th><th>Employé</th><th>Article</th><th>Statut</th><th>Quand</th></tr>
-        ${REQUESTS.filter(r=>r.status!=='attente' && r.from==='Salle').map(r=>`<tr class="tr-hover"><td class="mono">${r.id}</td><td class="muted">${r.by}</td><td>${r.item}${r.qty?' <span class="mono muted">×'+r.qty+'</span>':''}</td><td>${r.status==='approuvee'?'<span class="tag tag-subtle">Approuvée</span>':'<span class="tag tag-red">Refusée</span>'}</td><td class="muted small">${r.time}</td></tr>`).join('')}
+        ${REQUESTS.filter(r=>r.status!=='attente' && r.from==='Salle').map(r=>`<tr class="tr-hover"><td class="mono">${r.id}</td><td class="muted">${escapeHtml(r.by)}</td><td>${escapeHtml(r.item)}${r.qty?' <span class="mono muted">×'+r.qty+'</span>':''}</td><td>${r.status==='approuvee'?'<span class="tag tag-subtle">Approuvée</span>':'<span class="tag tag-red">Refusée</span>'}</td><td class="muted small">${r.time}</td></tr>`).join('')}
       </table>
     </div>
   `;
@@ -3203,7 +3220,7 @@ function viewLivraisons(){
       <div class="card-title">En attente de réception</div>
       <table>
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th></th></tr>
-        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
+        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
         ${awaiting.length===0?`<tr><td colspan="5"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
@@ -3211,7 +3228,7 @@ function viewLivraisons(){
     <div class="card">
       <table>
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}</tr>
-        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${o.items}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}</tr>`).join('')}
+        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}</tr>`).join('')}
         ${recent.length===0?`<tr><td colspan="4"><div class="empty">Aucune réception récente</div></td></tr>`:''}
       </table>
     </div>
@@ -3254,7 +3271,7 @@ function viewCuisineAccueil(){
 }
 function catalogCard(p){
   return `<div class="card">
-    <div style="font-weight:700;">${p.name}</div>
+    <div style="font-weight:700;">${escapeHtml(p.name)}</div>
     <div class="small muted" style="margin-top:4px;">Unité : ${p.unit} · commande standard ${p.qtyCommande} ${p.unit}</div>
   </div>`;
 }
@@ -3533,7 +3550,7 @@ function openEditOrderModal(orderId){
       <div class="field"><label>Ajouter un produit de ce fournisseur</label>
         <select id="eo-add-product">
           <option value="">Sélectionner…</option>
-          ${addable.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+          ${addable.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}
         </select>
       </div>
       <button class="btn btn-ghost btn-block" style="margin-bottom:14px;" onclick="addLineToOrder('${o.id}')">${iconSm(I.plus)} Ajouter à la commande</button>
@@ -3594,7 +3611,7 @@ function openApproveDemandeModal(id){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Approuver la demande</h3>
-    <div class="modal-sub">${r.item} — demandé par ${r.by}${r.note?' · '+r.note:''}</div>
+    <div class="modal-sub">${escapeHtml(r.item)} — demandé par ${escapeHtml(r.by)}${r.note?' · '+escapeHtml(r.note):''}</div>
     <div class="field"><label>Quantité à commander (${unit})</label><input id="app-qty" type="number" min="1" step="1" value="${Math.round(defaultQty)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmValidateDemande('${id}')">${iconXs(I.check)} Approuver et commander</button>
   `);
@@ -3628,7 +3645,7 @@ async function confirmValidateDemande(id){
       ORDERS.unshift({id:'CMD-'+nextId(), remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
       toast('Demande approuvée — commande fournisseur créée');
     }
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`, 'decision');
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${escapeHtml(r.item)}) a été approuvée.`, 'decision');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -3642,7 +3659,7 @@ async function refuseDemande(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
     r.status = 'refusee';
     toast('Demande refusée', 'alert');
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`, 'decision');
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${escapeHtml(r.item)}) a été refusée.`, 'decision');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -3654,8 +3671,8 @@ function openEditMyRequestModal(id){
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Modifier votre demande</h3>
     <div class="modal-sub">Vous pouvez corriger votre demande tant qu'elle n'a pas encore été traitée.</div>
-    <div class="field"><label>Produit</label><input id="emr-item" value="${r.item}"></div>
-    <div class="field"><label>Note (facultatif)</label><input id="emr-note" value="${r.note||''}"></div>
+    <div class="field"><label>Produit</label><input id="emr-item" value="${escapeHtml(r.item)}"></div>
+    <div class="field"><label>Note (facultatif)</label><input id="emr-note" value="${escapeHtml(r.note||'')}"></div>
     <label class="flex center gap8" style="margin:4px 0 16px 0;"><input type="checkbox" id="emr-urgent" ${r.urgent?'checked':''}> Urgent</label>
     <button class="btn btn-primary btn-block" onclick="saveMyRequestEdit('${id}')">Enregistrer</button>
   `);
@@ -3697,7 +3714,7 @@ function quickOrder(productId){
   const p = PRODUCTS.find(x=>x.id===productId); if(!p) return;
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Commander « ${p.name} »</h3>
+    <h3>Commander « ${escapeHtml(p.name)} »</h3>
     <div class="modal-sub">${supplierName(p.supplier)} · ${p.price.toFixed(2)} € / ${p.unit}</div>
     <div class="field"><label>Quantité (${p.unit})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
@@ -3768,7 +3785,7 @@ function openSignalModal(from, urgent){
       <input type="text" id="sig-search" placeholder="🔎 Nom, catégorie, lieu…" oninput="filterProductPicker('sig-picker')" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
       <input type="hidden" id="sig-item" value="">
       <div id="sig-picker" class="zone-checklist" style="max-height:200px;">
-        ${list.map(p=>`<div class="product-picker-row" data-name="${p.name}" data-search="${(p.name+' '+(p.cat||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase()}" onclick="selectProductPickerRow(this,'sig-item','sig-picker')">${p.name}${p.cat?` <span class="muted small">· ${p.cat}</span>`:''}</div>`).join('')}
+        ${list.map(p=>`<div class="product-picker-row" data-name="${escapeHtml(p.name)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase())}" onclick="selectProductPickerRow(this,'sig-item','sig-picker')">${escapeHtml(p.name)}${p.cat?` <span class="muted small">· ${escapeHtml(p.cat)}</span>`:''}</div>`).join('')}
       </div>
     </div>
     <div class="field"><label>Note (optionnel)</label><textarea id="sig-note" rows="2" placeholder="Ex : besoin avant le coup de feu de ce soir"></textarea></div>
@@ -3830,11 +3847,11 @@ function ticketCustomRequest(cr, viewerRole){
   return `
     <div class="ticket ${cr.status==='attente' ? 'normal' : 'done'}">
       <div class="ticket-top">
-        <div><span class="ticket-id">${cr.id}</span> <span class="ticket-from">${cr.from}</span></div>
+        <div><span class="ticket-id">${cr.id}</span> <span class="ticket-from">${escapeHtml(cr.from)}</span></div>
         <span class="mini-label">${cr.time}</span>
       </div>
-      <div class="ticket-item">${cr.itemName}</div>
-      <div class="ticket-meta">${cr.by}${cr.note?' · '+cr.note:''}</div>
+      <div class="ticket-item">${escapeHtml(cr.itemName)}</div>
+      <div class="ticket-meta">${escapeHtml(cr.by)}${cr.note?' · '+escapeHtml(cr.note):''}</div>
       ${canAct ? `<div class="ticket-actions">
         <button class="btn btn-primary btn-sm" onclick="openApproveCustomRequestModal('${cr.id}')">${iconXs(I.check)} Approuver</button>
         <button class="btn btn-danger btn-sm" onclick="refuseCustomRequest('${cr.id}')">${iconXs(I.x)} Refuser</button>
@@ -3848,11 +3865,11 @@ function openApproveCustomRequestModal(id){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Approuver l'achat</h3>
-    <div class="modal-sub">${cr.itemName} — proposé par ${cr.by}${cr.note?' · '+cr.note:''}</div>
+    <div class="modal-sub">${escapeHtml(cr.itemName)} — proposé par ${escapeHtml(cr.by)}${cr.note?' · '+escapeHtml(cr.note):''}</div>
     <div class="field"><label>Fournisseur (optionnel)</label>
       <select id="cr-supplier">
         <option value="">— À définir plus tard —</option>
-        ${SUPPLIERS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}
+        ${SUPPLIERS.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
       </select>
     </div>
     <div class="field-row">
@@ -3876,7 +3893,7 @@ async function confirmApproveCustomRequest(id){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
       method:'POST',
       body:{
-        supplierId: supplierObj?supplierObj.remoteId:null, items: `${cr.itemName} × ${qty} (achat personnalisé)`,
+        supplierId: supplierObj?supplierObj.remoteId:null, items: `${escapeHtml(cr.itemName)} × ${qty} (achat personnalisé)`,
         lineItems: [{name: cr.itemName, qty, price}], amount: Math.round(qty*price*100)/100, status:'validee',
         orderDate: fmtDateShort(now), isCustom: true,
       },
@@ -3884,7 +3901,7 @@ async function confirmApproveCustomRequest(id){
     cr.status = 'approuvee';
     ORDERS.unshift({
       id:'CMD-'+nextId(), remoteId: data.order.id, supplier: supplierId,
-      items: `${cr.itemName} × ${qty} (achat personnalisé)`,
+      items: `${escapeHtml(cr.itemName)} × ${qty} (achat personnalisé)`,
       lineItems: [{name: cr.itemName, qty, price}],
       amount: Math.round(qty*price*100)/100, status:'validee', date: fmtDateShort(now), createdAt: now, custom:true
     });
@@ -3928,9 +3945,9 @@ function openNewProductModal(prefill){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>${p ? 'Dupliquer le produit' : 'Nouveau produit'}</h3>
-    ${p ? `<div class="modal-sub">Pré-rempli à partir de « ${p.name} » — ajustez ce qui change puis créez le nouveau produit.</div>` : ''}
-    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${p ? p.name+' (copie)' : ''}"></div>
-    <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${p && p.cat===c.name?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
+    ${p ? `<div class="modal-sub">Pré-rempli à partir de « ${escapeHtml(p.name)} » — ajustez ce qui change puis créez le nouveau produit.</div>` : ''}
+    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${escapeHtml(p ? p.name+' (copie)' : '')}"></div>
+    <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${p && p.cat===c.name?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field">
       <label>Unité de commande</label>
       <input id="np-unit" placeholder="Kg" list="unit-suggestions" oninput="updatePriceLabel('np')" value="${initialUnit}">
@@ -3940,11 +3957,11 @@ function openNewProductModal(prefill){
     ${financialsHidden() ? '' : `<div class="field"><label id="np-price-label">Prix par ${initialUnit || 'unité'} (€)</label><input id="np-price" type="number" step="0.01" value="${p ? p.price : '5.00'}"></div>`}
     <div class="field">
       <label>Contenu du conditionnement (facultatif)</label>
-      <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${p ? (p.packaging||'') : ''}">
+      <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${escapeHtml(p ? (p.packaging||'') : '')}">
       <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
     </div>
-    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${p ? (p.supplierReference||'') : ''}"></div>
-    <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${p && p.supplier===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
+    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${escapeHtml(p ? (p.supplierReference||'') : '')}"></div>
+    <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${p && p.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="np-department">
       <option value="both" ${!p || p.department==='both'?'selected':''}>Cuisine &amp; salle</option>
       <option value="cuisine" ${p && p.department==='cuisine'?'selected':''}>Cuisine</option>
@@ -3952,7 +3969,7 @@ function openNewProductModal(prefill){
     </select></div>
     <div class="field">
       <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
-      <div class="zone-checklist" id="np-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk" ${prefillZoneIds.includes(z.id)?'checked':''}> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
+      <div class="zone-checklist" id="np-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk" ${prefillZoneIds.includes(z.id)?'checked':''}> ${escapeHtml(z.name)}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
       <div class="flex gap8" style="margin-top:8px;"><input id="np-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('np')">Ajouter</button></div>
     </div>
     <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
@@ -3978,10 +3995,10 @@ function addZoneInline(prefix){
       const label = document.createElement('label');
       label.className = 'flex center gap8';
       label.style.marginBottom = '6px';
-      label.innerHTML = `<input type="checkbox" value="${newZone.id}" class="${prefix}-zone-chk" checked> ${newZone.name}`;
+      label.innerHTML = `<input type="checkbox" value="${newZone.id}" class="${prefix}-zone-chk" checked> ${escapeHtml(newZone.name)}`;
       checklist.appendChild(label);
       input.value = '';
-      toast('Lieu « '+name+' » ajouté');
+      toast('Lieu « '+escapeHtml(name)+' » ajouté');
     } catch(err){
       toast(err.message, 'alert');
     }
@@ -4080,7 +4097,7 @@ async function addProduct(){
     });
     PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds});
     closeModal();
-    toast('Produit « '+name+' » créé');
+    toast('Produit « '+escapeHtml(name)+' » créé');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -4092,8 +4109,8 @@ function editProduct(id){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Modifier le produit</h3>
-    <div class="field"><label>Nom du produit</label><input id="ep-name" value="${p.name}"></div>
-    <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${c.name}" ${c.name===p.cat?'selected':''}>${c.name}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
+    <div class="field"><label>Nom du produit</label><input id="ep-name" value="${escapeHtml(p.name)}"></div>
+    <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===p.cat?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field">
       <label>Unité de commande</label>
       <input id="ep-unit" value="${p.unit}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
@@ -4103,11 +4120,11 @@ function editProduct(id){
     ${financialsHidden() ? '' : `<div class="field"><label id="ep-price-label">Prix par ${p.unit || 'unité'} (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>`}
     <div class="field">
       <label>Contenu du conditionnement (facultatif)</label>
-      <input id="ep-packaging" value="${p.packaging||''}" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg">
+      <input id="ep-packaging" value="${escapeHtml(p.packaging||'')}" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg">
       <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
     </div>
-    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${p.supplierReference||''}"></div>
-    <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${s.name}</option>`).join('')}</select></div>
+    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${escapeHtml(p.supplierReference||'')}"></div>
+    <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="ep-department">
       <option value="cuisine" ${p.department==='cuisine'?'selected':''}>Cuisine</option>
       <option value="salle" ${p.department==='salle'?'selected':''}>Salle</option>
@@ -4115,7 +4132,7 @@ function editProduct(id){
     </select></div>
     <div class="field">
       <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
-      <div class="zone-checklist" id="ep-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="ep-zone-chk" ${zoneIds.includes(z.id)?'checked':''}> ${z.name}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
+      <div class="zone-checklist" id="ep-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="ep-zone-chk" ${zoneIds.includes(z.id)?'checked':''}> ${escapeHtml(z.name)}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
       <div class="flex gap8" style="margin-top:8px;"><input id="ep-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('ep')">Ajouter</button></div>
     </div>
     <button class="btn btn-primary btn-block" onclick="saveProduct('${id}')">Enregistrer</button>
@@ -4158,7 +4175,7 @@ function deleteProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Supprimer « ${p.name} » ?</h3>
+    <h3>Supprimer « ${escapeHtml(p.name)} » ?</h3>
     <div class="modal-sub">Cette action est irréversible.</div>
     <div class="flex gap8">
       <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
@@ -4193,11 +4210,11 @@ function orderProductRows(supplierId){
   const list = supplierId ? PRODUCTS.filter(p=>p.supplier===supplierId) : PRODUCTS;
   if(list.length===0) return `<div class="empty small">Aucun produit pour ce fournisseur</div>`;
   return list.map(p=>`
-    <div class="ord-row" data-pid="${p.id}" data-search="${(p.name+' '+(p.cat||'')+' '+(p.supplierReference||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase()}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);max-width:100%;">
+    <div class="ord-row" data-pid="${p.id}" data-search="${escapeHtml((p.name+' '+(p.cat||'')+' '+(p.supplierReference||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase())}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);max-width:100%;">
       <input type="checkbox" id="ord-chk-${p.id}" style="flex-shrink:0;">
       <div style="flex:1;min-width:0;overflow-wrap:break-word;">
-        <div style="font-weight:600;font-size:13.5px;">${p.name}</div>
-        <div class="small muted">${p.cat?p.cat+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}`}</div>
+        <div style="font-weight:600;font-size:13.5px;">${escapeHtml(p.name)}</div>
+        <div class="small muted">${p.cat?escapeHtml(p.cat)+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}`}</div>
       </div>
       <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:60px;flex-shrink:0;padding:6px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
     </div>
@@ -4230,7 +4247,7 @@ function openNewOrderModal(prefillSupplierId){
     <div class="modal-sub">Sélectionnez un fournisseur puis les produits et quantités à ajouter au panier</div>
     <div class="field"><label>Fournisseur</label>
       <select id="ord-supplier" onchange="filterOrderProducts()">
-        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===supplierId?'selected':''}>${s.name}</option>`).join('')}
+        ${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===supplierId?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label>Produits</label>
@@ -4302,7 +4319,7 @@ function buildOrderDocumentHTML(o){
     <div class="invoice-doc">
       <div class="invoice-head">
         <div>
-          <div class="invoice-resto-name">${resto.name}</div>
+          <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
           <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
         </div>
         <div class="invoice-doctype">
@@ -4313,9 +4330,9 @@ function buildOrderDocumentHTML(o){
       <div class="invoice-meta-row">
         <div>
           <div class="invoice-meta-label">Fournisseur</div>
-          <div class="invoice-meta-value">${supplier.name}</div>
-          ${supplier.address ? `<div class="invoice-meta-sub">${supplier.address}</div>` : ''}
-          ${supplier.email ? `<div class="invoice-meta-sub">${supplier.email}</div>` : ''}
+          <div class="invoice-meta-value">${escapeHtml(supplier.name)}</div>
+          ${supplier.address ? `<div class="invoice-meta-sub">${escapeHtml(supplier.address)}</div>` : ''}
+          ${supplier.email ? `<div class="invoice-meta-sub">${escapeHtml(supplier.email)}</div>` : ''}
         </div>
         <div>
           <div class="invoice-meta-label">Date</div>
@@ -4329,7 +4346,7 @@ function buildOrderDocumentHTML(o){
       <table class="invoice-table">
         <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit.</th><th>Total</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${l.name}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${l.price.toFixed(2)} €</td><td>${l.total.toFixed(2)} €</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${l.price.toFixed(2)} €</td><td>${l.total.toFixed(2)} €</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -4338,7 +4355,7 @@ function buildOrderDocumentHTML(o){
         <div class="invoice-total-value">${fmtEUR(total)}</div>
       </div>`}
       <div class="invoice-foot">
-        <div>${resto.name} — ${resto.city}</div>
+        <div>${escapeHtml(resto.name)} — ${escapeHtml(resto.city)}</div>
         <div>Document généré automatiquement par Mise &amp; Sûre</div>
       </div>
     </div>
@@ -4415,7 +4432,7 @@ function buildHistoryDocumentHTML(period){
     <div class="invoice-doc">
       <div class="invoice-head">
         <div>
-          <div class="invoice-resto-name">${resto.name}</div>
+          <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
           <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
         </div>
         <div class="invoice-doctype">
@@ -4435,7 +4452,7 @@ function buildHistoryDocumentHTML(period){
         <div class="invoice-total-value">${fmtEUR(total)}</div>
       </div>`}
       <div class="invoice-foot">
-        <div>${resto.name} — ${resto.city}</div>
+        <div>${escapeHtml(resto.name)} — ${escapeHtml(resto.city)}</div>
         <div>Document généré automatiquement par Mise &amp; Sûre</div>
       </div>
     </div>
@@ -4489,7 +4506,7 @@ async function addSupplier(){
     SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0,
       contactFirstName:data.supplier.contact_first_name, contactLastName:data.supplier.contact_last_name, contactEmail:data.supplier.contact_email, contactPhone:data.supplier.contact_phone});
     closeModal();
-    toast('Fournisseur « '+name+' » ajouté');
+    toast('Fournisseur « '+escapeHtml(name)+' » ajouté');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -4501,23 +4518,23 @@ function openSupplierDetail(id){
   const linkedOrders = ORDERS.filter(o=>o.supplier===id).slice(0,4);
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>${s.name}</h3>
-    <div class="modal-sub">${s.cat}</div>
-    <div class="field-row"><div class="field"><label>Nom</label><input id="sf-name" value="${s.name}"></div><div class="field"><label>Catégorie</label><input id="sf-cat" value="${s.cat}"></div></div>
-    <div class="field"><label>Adresse</label><input id="sf-address" value="${s.address||''}" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
-    <div class="field-row"><div class="field"><label>Email</label><input id="sf-email" type="email" value="${s.email||''}" placeholder="contact@fournisseur.fr"></div><div class="field"><label>Délai moyen</label><input id="sf-delay" value="${s.delay}"></div></div>
+    <h3>${escapeHtml(s.name)}</h3>
+    <div class="modal-sub">${escapeHtml(s.cat)}</div>
+    <div class="field-row"><div class="field"><label>Nom</label><input id="sf-name" value="${escapeHtml(s.name)}"></div><div class="field"><label>Catégorie</label><input id="sf-cat" value="${escapeHtml(s.cat)}"></div></div>
+    <div class="field"><label>Adresse</label><input id="sf-address" value="${escapeHtml(s.address||'')}" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
+    <div class="field-row"><div class="field"><label>Email</label><input id="sf-email" type="email" value="${escapeHtml(s.email||'')}" placeholder="contact@fournisseur.fr"></div><div class="field"><label>Délai moyen</label><input id="sf-delay" value="${escapeHtml(s.delay)}"></div></div>
     <div class="field"><label>Fiabilité (%)</label><input id="sf-reliability" type="number" value="${s.reliability}"></div>
     <div class="divider"></div>
     <div class="card-title">Contact commercial (facultatif)</div>
-    <div class="field-row"><div class="field"><label>Prénom</label><input id="sf-contact-firstname" value="${s.contactFirstName||''}" placeholder="Jean"></div><div class="field"><label>Nom</label><input id="sf-contact-lastname" value="${s.contactLastName||''}" placeholder="Martin"></div></div>
-    <div class="field-row"><div class="field"><label>Email</label><input id="sf-contact-email" type="email" value="${s.contactEmail||''}" placeholder="j.martin@fournisseur.fr"></div><div class="field"><label>Téléphone</label><input id="sf-contact-phone" value="${s.contactPhone||''}" placeholder="06 12 34 56 78"></div></div>
+    <div class="field-row"><div class="field"><label>Prénom</label><input id="sf-contact-firstname" value="${escapeHtml(s.contactFirstName||'')}" placeholder="Jean"></div><div class="field"><label>Nom</label><input id="sf-contact-lastname" value="${escapeHtml(s.contactLastName||'')}" placeholder="Martin"></div></div>
+    <div class="field-row"><div class="field"><label>Email</label><input id="sf-contact-email" type="email" value="${escapeHtml(s.contactEmail||'')}" placeholder="j.martin@fournisseur.fr"></div><div class="field"><label>Téléphone</label><input id="sf-contact-phone" value="${escapeHtml(s.contactPhone||'')}" placeholder="06 12 34 56 78"></div></div>
     <div class="flex gap8">
       <button class="btn btn-primary" style="flex:1;" onclick="saveSupplier('${id}')">Enregistrer</button>
       <button class="btn btn-danger" onclick="deleteSupplier('${id}')" title="Supprimer ce fournisseur">${iconSm(I.trash)}</button>
     </div>
     <div class="divider"></div>
     <div class="card-title">Produits fournis (${linkedProducts.length})</div>
-    <div class="small muted" style="margin-bottom:14px;">${linkedProducts.map(p=>p.name).join(', ') || 'Aucun produit lié'}</div>
+    <div class="small muted" style="margin-bottom:14px;">${linkedProducts.map(p=>escapeHtml(p.name)).join(', ') || 'Aucun produit lié'}</div>
     <div class="card-title">Dernières commandes</div>
     ${linkedOrders.map(o=>`<div class="flex between small" style="padding:5px 0;"><span class="mono">${o.id}</span>${orderStatusTag(o)}</div>`).join('') || '<div class="small muted">Aucune commande</div>'}
   `);
@@ -4555,7 +4572,7 @@ function deleteSupplier(id){
   const linkedCount = PRODUCTS.filter(p=>p.supplier===id).length;
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
-    <h3>Supprimer « ${s.name} » ?</h3>
+    <h3>Supprimer « ${escapeHtml(s.name)} » ?</h3>
     <div class="modal-sub">${linkedCount>0 ? linkedCount+' produit'+(linkedCount>1?'s':'')+' de votre catalogue lui sont associés et resteront à réassigner.' : 'Cette action est irréversible.'}</div>
     <div class="flex gap8">
       <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
@@ -4647,13 +4664,13 @@ function editEmployee(id){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Modifier l'employé</h3>
-    <div class="field"><label>Nom complet</label><input id="ee-name" value="${t.name}"></div>
+    <div class="field"><label>Nom complet</label><input id="ee-name" value="${escapeHtml(t.name)}"></div>
     <div class="field-row">
       <div class="field"><label>Rôle</label><select id="ee-role">${roles.map(r=>`<option ${t.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
       <div class="field"><label>Horaires</label><input id="ee-shift" value="${t.shift}"></div>
     </div>
     <div class="field"><label>Statut</label><select id="ee-status"><option value="actif" ${t.status==='actif'?'selected':''}>En service</option><option value="repos" ${t.status==='repos'?'selected':''}>Repos</option></select></div>
-    <div class="field"><label>Identifiant</label><input id="ee-username" value="${t.username||''}"></div>
+    <div class="field"><label>Identifiant</label><input id="ee-username" value="${escapeHtml(t.username||'')}"></div>
     <div class="login-hint" style="margin:-4px 0 14px 0;">Seul vous pouvez modifier l'identifiant ou le mot de passe — la personne ne peut pas le faire elle-même.</div>
     <div class="field"><label>Nouveau mot de passe (laisser vide pour ne pas changer)</label>${passwordFieldWithToggle('ee-newpassword')}</div>
     <button class="btn btn-primary btn-block" onclick="saveEmployee('${id}')">Enregistrer</button>
@@ -4779,7 +4796,7 @@ function buildOrderPdf(o){
   doc.setFont('helvetica','normal'); doc.setFontSize(10);
   y += 7;
   if(resto && resto.address){ doc.text(resto.address, marginX, y); y += 5; }
-  if(resto && (resto.postalCode || resto.city)){ doc.text(`${resto.postalCode||''} ${resto.city||''}`.trim(), marginX, y); y += 5; }
+  if(resto && (resto.postalCode || resto.city)){ doc.text(`${escapeHtml(resto.postalCode||'')} ${escapeHtml(resto.city||'')}`.trim(), marginX, y); y += 5; }
 
   doc.setFont('helvetica','bold'); doc.setFontSize(14);
   doc.text('BON DE COMMANDE', 195, 20, { align:'right' });
@@ -4830,10 +4847,10 @@ function openOrderPdfOptions(id){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Bon de commande ${o.id}</h3>
-    <div class="modal-sub">${supplier?supplier.name:''}</div>
+    <div class="modal-sub">${escapeHtml(supplier?supplier.name:'')}</div>
     <button class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="downloadOrderPdf('${id}')">${iconSm(I.doc)} Télécharger le PDF</button>
     ${supplier && supplier.email
-      ? `<button class="btn btn-ghost btn-block" onclick="emailOrderPdf('${id}')">${iconSm(I.mail)} Envoyer par email à ${supplier.email}</button>`
+      ? `<button class="btn btn-ghost btn-block" onclick="emailOrderPdf('${id}')">${iconSm(I.mail)} Envoyer par email à ${escapeHtml(supplier.email)}</button>`
       : `<div class="small muted">Ajoutez un email à ce fournisseur pour pouvoir le lui envoyer directement.</div>`}
   `);
 }
@@ -4987,8 +5004,88 @@ function renderMarketingPage(){
         <p class="muted small" style="margin-bottom:18px;">Deux forfaits simples, sans engagement, mensuel ou annuel.</p>
         <button class="btn btn-primary" onclick="goToSite('pricing')">Choisir un forfait</button>
       </section>
-      <footer class="site-footer">Mise &amp; Sûre — plateforme de gestion pour restaurants</footer>
+      ${renderSiteFooter()}
     </div>
+  `;
+}
+function renderLegalPage(page){
+  const content = {
+    'mentions-legales': `
+      <h1>Mentions légales</h1>
+      <p class="legal-placeholder">⚠️ À compléter avant mise en ligne définitive — remplacez les crochets ci-dessous par vos vraies informations.</p>
+      <h3>Éditeur du site</h3>
+      <p>[Nom de l'entreprise ou nom et prénom si entreprise individuelle]<br>
+      [Forme juridique — ex : SASU, EURL, auto-entreprise]<br>
+      [Adresse complète du siège]<br>
+      [Numéro SIRET]<br>
+      [Numéro de TVA intracommunautaire, le cas échéant]<br>
+      Email : [email de contact]<br>
+      Téléphone : [numéro de téléphone]</p>
+      <h3>Directeur de la publication</h3>
+      <p>[Nom et prénom]</p>
+      <h3>Hébergement</h3>
+      <p>Le site (partie visible) est hébergé par GitHub Pages — GitHub, Inc., 88 Colin P Kelly Jr St, San Francisco, CA 94107, États-Unis.</p>
+      <p>Le serveur applicatif est hébergé par Railway — Railway Corp., San Francisco, États-Unis.</p>
+      <h3>Propriété intellectuelle</h3>
+      <p>L'ensemble des éléments de ce site (textes, structure, logo) est protégé. Toute reproduction sans autorisation est interdite.</p>
+    `,
+    'confidentialite': `
+      <h1>Politique de confidentialité</h1>
+      <p class="legal-placeholder">⚠️ À compléter avant mise en ligne définitive — remplacez les crochets ci-dessous par vos vraies informations.</p>
+      <h3>Qui sommes-nous</h3>
+      <p>Ce site est édité par [nom de l'entreprise], responsable du traitement des données décrites ci-dessous. Pour toute question, contactez [email de contact].</p>
+      <h3>Données collectées</h3>
+      <p>Nous collectons : nom, prénom, email, téléphone (compte utilisateur) ; informations sur votre établissement (nom, adresse) ; données liées à votre activité sur le site (produits, fournisseurs, commandes que vous créez) ; informations de paiement, traitées directement par notre prestataire Stripe (nous ne stockons jamais vos coordonnées bancaires).</p>
+      <h3>Pourquoi nous les collectons</h3>
+      <p>Pour créer et faire fonctionner votre compte, gérer votre abonnement, vous envoyer les notifications que vous avez activées, et assurer le support technique.</p>
+      <h3>Combien de temps nous les gardons</h3>
+      <p>Vos données sont conservées tant que votre compte est actif, puis supprimées dans un délai de [durée à définir, ex : 12 mois] après la clôture du compte, sauf obligation légale de conservation plus longue (comptabilité notamment).</p>
+      <h3>Vos droits</h3>
+      <p>Conformément au RGPD, vous disposez d'un droit d'accès, de rectification, d'effacement, de limitation et de portabilité de vos données. Pour l'exercer, contactez [email de contact]. Vous pouvez également introduire une réclamation auprès de la CNIL (cnil.fr).</p>
+      <h3>Partage des données</h3>
+      <p>Vos données ne sont jamais vendues. Elles sont partagées uniquement avec les prestataires nécessaires au fonctionnement du service : Stripe (paiement), Brevo (envoi d'emails), Railway (hébergement du serveur).</p>
+      <h3>Cookies</h3>
+      <p>Ce site utilise uniquement des cookies strictement nécessaires à son fonctionnement (maintenir votre connexion). Aucun cookie publicitaire ou de suivi tiers n'est utilisé.</p>
+    `,
+    'cgu': `
+      <h1>Conditions générales d'utilisation et de vente</h1>
+      <p class="legal-placeholder">⚠️ À compléter/faire relire par un professionnel avant mise en ligne définitive — ce texte est un point de départ, pas un document juridique validé.</p>
+      <h3>Objet</h3>
+      <p>Les présentes conditions régissent l'utilisation du service Mise &amp; Sûre, un outil de gestion des commandes fournisseurs pour restaurants, édité par [nom de l'entreprise].</p>
+      <h3>Forfaits et paiement</h3>
+      <p>Le service est proposé sous forme d'abonnement mensuel ou annuel (forfaits Solo, Essentiel, Pro — détails et tarifs sur la page Tarifs). Le paiement est traité par Stripe. L'abonnement se renouvelle automatiquement à chaque échéance sauf résiliation.</p>
+      <h3>Résiliation</h3>
+      <p>Vous pouvez résilier votre abonnement à tout moment depuis votre espace compte. La résiliation prend effet à la fin de la période déjà payée.</p>
+      <h3>Responsabilité</h3>
+      <p>Mise &amp; Sûre est un outil d'aide à la gestion ; [nom de l'entreprise] ne saurait être tenu responsable des décisions commerciales prises à partir des informations qui y sont saisies.</p>
+      <h3>Droit applicable</h3>
+      <p>Les présentes conditions sont soumises au droit français.</p>
+    `,
+  };
+  return `
+    <div class="site-nav">
+      <div class="site-brand" onclick="goToSite('marketing')" style="cursor:pointer;">
+        <div class="logo-mark">M</div>
+        <div class="brand-text">Mise<br>&amp; Sûre</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="goToSite('marketing')">← Retour à l'accueil</button>
+    </div>
+    <div class="legal-page">
+      ${content[page] || ''}
+    </div>
+    ${renderSiteFooter()}
+  `;
+}
+function renderSiteFooter(){
+  return `
+    <footer class="site-footer">
+      <div>Mise &amp; Sûre — plateforme de gestion pour restaurants</div>
+      <div class="site-footer-links">
+        <a onclick="goToSite('mentions-legales')">Mentions légales</a>
+        <a onclick="goToSite('confidentialite')">Confidentialité</a>
+        <a onclick="goToSite('cgu')">CGU/CGV</a>
+      </div>
+    </footer>
   `;
 }
 function renderPricingPage(){
@@ -5010,17 +5107,17 @@ function renderPricingPage(){
           const per = cycle==='monthly' ? '/ mois' : '/ an';
           return `
           <div class="card site-plan-card">
-            <div class="site-plan-name">${p.name}</div>
+            <div class="site-plan-name">${escapeHtml(p.name)}</div>
             <div class="small muted" style="margin:4px 0 20px 0;">${p.tagline}</div>
             <div class="site-plan-price">${price}&nbsp;€<span class="small muted"> ${per}</span></div>
             <ul class="site-plan-features">
               ${p.features.map(f=>`<li>${iconXs(I.check)}<span>${f}</span></li>`).join('')}
             </ul>
-            <button class="btn btn-primary btn-block" onclick="choosePlan('${p.id}')">Choisir ${p.name}</button>
+            <button class="btn btn-primary btn-block" onclick="choosePlan('${p.id}')">Choisir ${escapeHtml(p.name)}</button>
           </div>`;
         }).join('')}
       </section>
-      <footer class="site-footer">Mise &amp; Sûre — plateforme de gestion pour restaurants</footer>
+      ${renderSiteFooter()}
     </div>
   `;
 }
@@ -5044,7 +5141,7 @@ function renderAdminPage(){
                 <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
                   <div style="min-width:0;">
                     <div style="font-weight:700;font-size:14px;">${u.first_name||''} ${u.last_name||''} ${u.is_admin?'· <span class="small muted">(admin)</span>':''}</div>
-                    <div class="small muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${u.email}</div>
+                    <div class="small muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(u.email)}</div>
                     <div class="small muted">${u.stripe_subscription_status==='active' ? 'Abonnement Stripe actif' : (u.free_access_granted ? 'Accès gratuit accordé' : 'Aucun accès payant actif')}</div>
                   </div>
                   ${u.is_admin ? '' : `
@@ -5077,7 +5174,7 @@ function renderAccountAuthPage(){
       <div class="login-brand">
         <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
         <h1>Mise &amp; Sûre</h1>
-        <p>${plan ? `Vous vous abonnez au forfait <b>${plan.name}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.` : "Connectez-vous pour accéder à votre espace."}</p>
+        <p>${plan ? `Vous vous abonnez au forfait <b>${escapeHtml(plan.name)}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.` : "Connectez-vous pour accéder à votre espace."}</p>
         <div class="login-feature">${I.check} Sans engagement</div>
         <div class="login-feature">${I.check} Résiliable à tout moment</div>
         <div class="login-feature">${I.check} Support par email inclus</div>
@@ -5243,7 +5340,7 @@ async function completeSetupRestaurant(){
       CREDENTIALS.patron.username = derived;
       CREDENTIALS.patron.password = generatedPassword;
       if(!NOTIF_STATE.patron.email) NOTIF_STATE.patron.email = ACCOUNT.email;
-      toast('Établissement créé — identifiant équipe : ' + CREDENTIALS.patron.username);
+      toast('Établissement créé — identifiant équipe : ' + escapeHtml(CREDENTIALS.patron.username));
       try{
         await apiRequest('/api/account/team-credentials', { method:'PATCH', body:{ username: derived, newPassword: generatedPassword } });
       } catch(e){ /* pas bloquant : les identifiants restent au moins utilisables pour cette session */ }
@@ -5281,7 +5378,7 @@ function renderLoginScreen(){
       </div>
       <div class="login-form-side">
         <div class="login-form-inner">
-          <div class="login-restaurant-tag">${iconXs(I.building)} ${activeResto.name}</div>
+          <div class="login-restaurant-tag">${iconXs(I.building)} ${escapeHtml(activeResto.name)}</div>
           ${step==='choose' ? `
             <div class="login-step-label">Étape 1 sur 2 — Qui êtes-vous ?</div>
             <div class="login-person-list">
@@ -5293,12 +5390,12 @@ function renderLoginScreen(){
               ${TEAM.map(t=>`
                 <button class="login-person-row" onclick="chooseLoginPerson('${identityForTeamRole(t.role)}','${t.id}')">
                   <div class="avatar">${avatarInner(t.photoDataUrl, t.name)}</div>
-                  <div><div class="login-person-name">${t.name}</div><div class="login-person-role">${t.role}</div></div>
+                  <div><div class="login-person-name">${escapeHtml(t.name)}</div><div class="login-person-role">${escapeHtml(t.role)}</div></div>
                 </button>
               `).join('')}
             </div>
             <div class="login-hint">Chaque personne a son identifiant et son mot de passe.</div>
-            ${ACCOUNT ? `<div class="login-hint" style="margin-top:10px;">Connecté avec le compte ${ACCOUNT.email} · <a href="#" onclick="signOutAccount();return false;" style="text-decoration:underline;color:inherit;">se déconnecter du compte</a></div>` : ''}
+            ${ACCOUNT ? `<div class="login-hint" style="margin-top:10px;">Connecté avec le compte ${escapeHtml(ACCOUNT.email)} · <a href="#" onclick="signOutAccount();return false;" style="text-decoration:underline;color:inherit;">se déconnecter du compte</a></div>` : ''}
             ${ACCOUNT && ACCOUNT.is_admin ? `<div class="login-hint" style="margin-top:6px;"><a href="#" onclick="goToAdminPage();return false;" style="text-decoration:underline;color:inherit;">Panneau administrateur</a></div>` : ''}
           ` : `
             <button class="back-link" onclick="backToChooseRole()">← Choisir un autre profil</button>
@@ -5335,8 +5432,8 @@ function openRecoverPatronCredentialsModal(){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Récupérer mes identifiants</h3>
-    <div class="modal-sub">Vous êtes déjà connecté avec votre compte (${ACCOUNT.email}) — c'est cette connexion, déjà vérifiée, qui confirme votre identité ici. Inutile d'attendre un nouvel email.</div>
-    <div class="field"><label>Nom d'utilisateur</label><input id="recover-username" value="${CREDENTIALS.patron.username}"></div>
+    <div class="modal-sub">Vous êtes déjà connecté avec votre compte (${escapeHtml(ACCOUNT.email)}) — c'est cette connexion, déjà vérifiée, qui confirme votre identité ici. Inutile d'attendre un nouvel email.</div>
+    <div class="field"><label>Nom d'utilisateur</label><input id="recover-username" value="${escapeHtml(CREDENTIALS.patron.username)}"></div>
     <div class="field"><label>Nouveau mot de passe</label>${passwordFieldWithToggle('recover-pass1', '', '4 caractères minimum')}</div>
     <div class="field"><label>Confirmer le mot de passe</label>${passwordFieldWithToggle('recover-pass2')}</div>
     <div class="small muted" style="margin-bottom:14px;">Laissez les mots de passe vides pour ne changer que le nom d'utilisateur.</div>
@@ -5374,7 +5471,27 @@ function renderBanner(){
 /* ============================================================
    RENDER PRINCIPAL
 ============================================================ */
+const COOKIE_CONSENT_KEY = 'mise_et_sure_cookie_consent';
+function renderCookieBanner(){
+  const zone = document.getElementById('cookie-banner-zone');
+  if(!zone) return;
+  if(localStorage.getItem(COOKIE_CONSENT_KEY)){ zone.innerHTML = ''; return; }
+  zone.innerHTML = `
+    <div class="cookie-banner">
+      <div class="cookie-banner-text">
+        Ce site utilise uniquement des cookies strictement nécessaires à son fonctionnement (garder votre connexion active). Aucun cookie publicitaire ou de suivi. <a onclick="goToSite('confidentialite')">En savoir plus</a>.
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="dismissCookieBanner()">J'ai compris</button>
+    </div>
+  `;
+}
+function dismissCookieBanner(){
+  localStorage.setItem(COOKIE_CONSENT_KEY, '1');
+  const zone = document.getElementById('cookie-banner-zone');
+  if(zone) zone.innerHTML = '';
+}
 function render(){
+  renderCookieBanner();
   document.documentElement.classList.toggle('theme-dark', state.theme==='dark');
   if(state.site==='marketing'){
     document.title = 'Mise & Sûre — la gestion de restaurant, sans friction';
@@ -5384,6 +5501,21 @@ function render(){
   if(state.site==='pricing'){
     document.title = 'Tarifs — Mise & Sûre';
     document.getElementById('app').innerHTML = renderPricingPage();
+    return;
+  }
+  if(state.site==='mentions-legales'){
+    document.title = 'Mentions légales — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderLegalPage('mentions-legales');
+    return;
+  }
+  if(state.site==='confidentialite'){
+    document.title = 'Politique de confidentialité — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderLegalPage('confidentialite');
+    return;
+  }
+  if(state.site==='cgu'){
+    document.title = 'Conditions générales — Mise & Sûre';
+    document.getElementById('app').innerHTML = renderLegalPage('cgu');
     return;
   }
   if(state.site==='account-auth'){
