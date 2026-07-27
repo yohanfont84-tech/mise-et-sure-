@@ -285,11 +285,6 @@ tr.tr-hover:hover{background:var(--paper);}
 .map-dot-known{background:#2E7D32;}
 .map-dot-new{background:#9E9E96;border:1px solid #7A7A72;}
 .map-dot-producer{background:#7A9B5C;}
-.color-theme-grid{display:flex;flex-wrap:wrap;gap:10px;}
-.color-theme-swatch{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;width:82px;transition:border-color .15s ease;}
-.color-theme-swatch:hover{border-color:var(--muted);}
-.color-theme-swatch.selected{border-color:var(--accent);border-width:2px;}
-.color-theme-dot{width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);}
 .font-style-grid{display:flex;gap:10px;flex-wrap:wrap;}
 .font-style-card{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 20px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
 .font-style-card:hover{border-color:var(--muted);}
@@ -3134,22 +3129,9 @@ function viewParametres(){
         <div class="small muted" style="margin-bottom:16px;">Couleur, police, photo et logo propres à ${escapeHtml(resto.name)} — chaque établissement peut avoir les siens, visibles par toute l'équipe. Rien ne s'applique tant que vous n'avez pas cliqué sur « Enregistrer l'apparence ».</div>
 
         <div class="field">
-          <label>Thème</label>
-          <div class="color-theme-grid">
-            ${Object.entries(COLOR_THEMES).filter(([k])=>k!=='custom').map(([key,t])=>`
-              <button type="button" class="color-theme-swatch ${(!draft.accentColor && draft.colorTheme===key)?'selected':''}" onclick="selectColorTheme('${key}')" title="${t.label}">
-                <span class="color-theme-dot" style="background:${t.palette?t.palette.light.paper:'#F4F1EA'};box-shadow:inset 0 0 0 9px ${t.palette?t.palette.light.accent:t.swatch};"></span>
-                <span class="small">${t.label}</span>
-              </button>
-            `).join('')}
-            <button type="button" class="color-theme-swatch ${draft.accentColor?'selected':''}" onclick="selectColorTheme('custom')" title="Personnalisée">
-              <span class="color-theme-dot" style="background:conic-gradient(from 0deg,#C1502E,#5B7B5A,#3D4F5C,#5C1A2E,#C1502E);"></span>
-              <span class="small">Personnalisée</span>
-            </button>
-          </div>
-          <div id="custom-accent-picker" style="margin-top:10px;${draft.accentColor?'':'display:none;'}">
-            <input id="set-accent" type="color" value="${draft.accentColor || (state.theme==='dark' ? '#EDEDE6' : '#111111')}" onchange="updateDraftCustomAccent(this.value)" style="height:42px;padding:4px;cursor:pointer;">
-          </div>
+          <label>Couleur d'accent</label>
+          <div class="small muted" style="margin-bottom:8px;">Utilisée pour les boutons et éléments mis en valeur dans tout le site.</div>
+          <input id="set-accent" type="color" value="${draft.accentColor || (state.theme==='dark' ? '#EDEDE6' : '#111111')}" onchange="updateDraftCustomAccent(this.value)" style="height:42px;padding:4px;cursor:pointer;">
         </div>
 
         <div class="field">
@@ -3220,19 +3202,9 @@ async function saveAccountInfo(){
     toast(err.message, 'alert');
   }
 }
-function selectColorTheme(key){
-  if(key==='custom'){
-    const accentInput = document.getElementById('set-accent');
-    state.appearanceDraft.accentColor = accentInput ? accentInput.value : (state.appearanceDraft.accentColor || '#141414');
-    state.appearanceDraft.colorTheme = 'custom';
-  } else {
-    state.appearanceDraft.accentColor = null; // laisse le thème préréglé décider
-    state.appearanceDraft.colorTheme = key;
-  }
-  render();
-}
 function updateDraftCustomAccent(value){
   state.appearanceDraft.accentColor = value;
+  state.appearanceDraft.colorTheme = 'custom';
 }
 function selectFontStyle(key){
   state.appearanceDraft.fontStyle = key;
