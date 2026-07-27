@@ -9,6 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root{
   --black:#111111;
@@ -267,6 +269,16 @@ tr.tr-hover:hover{background:var(--paper);}
 .faq-answer{padding:0 4px 18px 4px;font-size:14px;line-height:1.6;color:var(--text);}
 .faq-answer p{margin:0 0 12px 0;}
 .faq-image{display:block;max-width:340px;width:100%;border-radius:8px;border:1px solid var(--border);}
+.map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted);}
+.map-legend span{display:flex;align-items:center;gap:7px;}
+.map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.map-dot-resto{background:var(--accent);}
+.map-dot-known{background:#2E7D32;}
+.map-dot-new{background:#9E9E96;border:1px solid #7A7A72;}
+.map-marker{border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.4);}
+.map-marker-resto{width:22px;height:22px;background:var(--accent);border:2px solid #fff;}
+.map-marker-known{width:18px;height:18px;background:#2E7D32;border:2px solid #fff;}
+.map-marker-new{width:14px;height:14px;background:#9E9E96;border:2px solid #fff;}
 .product-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center;}
 .product-filter-bar input[type="text"]{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
 .product-filter-bar select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
@@ -490,6 +502,7 @@ const I = {
   chart:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/></svg>`,
   help:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2-2.4 3.7"/><path d="M12 17.2h.01"/></svg>`,
   chevronDown:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>`,
+  mapPin:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
   menu:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`,
   dash:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>`,
   box:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
@@ -904,6 +917,7 @@ const NAV = {
     {id:'ecarts', label:'Écarts de livraison', icon:I.alertTriangle},
     {id:'stats', label:'Statistiques', icon:I.chart},
     {id:'fournisseurs', label:'Fournisseurs', icon:I.truck},
+    {id:'carte-fournisseurs', label:'Carte des fournisseurs', icon:I.mapPin},
     {id:'equipe', label:'Équipe', icon:I.team},
     {id:'multi', label:'Multi-établissements', icon:I.building},
     {id:'notifications', label:'Notifications', icon:I.mail},
@@ -2224,6 +2238,106 @@ function filteredOrders(){
   });
 }
 
+/* ============================================================
+   CARTE DES FOURNISSEURS — géolocalisation gratuite via OpenStreetMap.
+   Affiche l'établissement, les fournisseurs déjà ajoutés (mis en avant), et des fournisseurs
+   potentiels détectés autour (issus des données ouvertes OpenStreetMap — pas exhaustif).
+============================================================ */
+let NEARBY_SUPPLIERS = [];
+let NEARBY_SUPPLIERS_LOADING = false;
+let NEARBY_SUPPLIERS_ERROR = null;
+let NEARBY_SUPPLIERS_LOADED_FOR = null;
+let SUPPLIER_MAP_INSTANCE = null;
+
+function viewSupplierMap(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const hasLocation = resto && resto.latitude != null && resto.longitude != null;
+  if(state.resto !== NEARBY_SUPPLIERS_LOADED_FOR && !NEARBY_SUPPLIERS_LOADING && hasLocation){
+    loadNearbySuppliers();
+  }
+  const knownWithCoords = SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null);
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Carte des fournisseurs</h2><div class="sub">Votre établissement, vos fournisseurs déjà ajoutés, et d'autres fournisseurs potentiels repérés autour de vous (source : OpenStreetMap, données ouvertes — pas un annuaire exhaustif).</div></div>
+    </div>
+    ${!hasLocation ? emptyState("Impossible de localiser votre établissement — vérifiez que son adresse est bien renseignée dans Paramètres.") : `
+      <div class="map-legend">
+        <span><span class="map-dot map-dot-resto"></span> Votre établissement</span>
+        <span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length})</span>
+        <span><span class="map-dot map-dot-new"></span> Fournisseurs potentiels détectés (${NEARBY_SUPPLIERS.length})</span>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div id="supplier-map" style="height:520px;width:100%;"></div>
+      </div>
+      ${NEARBY_SUPPLIERS_LOADING ? `<div class="small muted" style="margin-top:10px;">Recherche des fournisseurs à proximité…</div>` : ''}
+      ${NEARBY_SUPPLIERS_ERROR ? `<div class="small" style="margin-top:10px;color:var(--urgent);">${escapeHtml(NEARBY_SUPPLIERS_ERROR)}</div>` : ''}
+    `}
+  `;
+}
+
+async function loadNearbySuppliers(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto || !resto.remoteId) return;
+  NEARBY_SUPPLIERS_LOADING = true;
+  NEARBY_SUPPLIERS_ERROR = null;
+  render();
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/nearby-suppliers`);
+    NEARBY_SUPPLIERS = data.nearby || [];
+    NEARBY_SUPPLIERS_LOADED_FOR = state.resto;
+    if(data.reason) NEARBY_SUPPLIERS_ERROR = data.reason;
+  } catch(err){
+    NEARBY_SUPPLIERS_ERROR = "Impossible de charger les fournisseurs à proximité pour le moment.";
+  } finally {
+    NEARBY_SUPPLIERS_LOADING = false;
+    render();
+  }
+}
+
+function initSupplierMap(){
+  const container = document.getElementById('supplier-map');
+  if(!container || typeof L === 'undefined') return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto || resto.latitude == null || resto.longitude == null) return;
+
+  // Un conteneur réutilisé par Leaflet sans nettoyage préalable lève une erreur — on détruit
+  // toujours l'instance précédente avant d'en recréer une, plutôt que de la mettre à jour.
+  if(SUPPLIER_MAP_INSTANCE){ SUPPLIER_MAP_INSTANCE.remove(); SUPPLIER_MAP_INSTANCE = null; }
+
+  const map = L.map('supplier-map').setView([resto.latitude, resto.longitude], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19,
+  }).addTo(map);
+
+  const restoIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-resto"></div>', iconSize:[22,22] });
+  L.marker([resto.latitude, resto.longitude], {icon:restoIcon}).addTo(map).bindPopup(`<b>${escapeHtml(resto.name)}</b><br>Votre établissement`);
+
+  const knownIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-known"></div>', iconSize:[18,18] });
+  SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null).forEach(s=>{
+    L.marker([s.latitude, s.longitude], {icon:knownIcon}).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br>Déjà dans vos fournisseurs`);
+  });
+
+  const newIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-new"></div>', iconSize:[14,14] });
+  NEARBY_SUPPLIERS.forEach(s=>{
+    const alreadyKnown = SUPPLIERS.some(k=>k.name.toLowerCase().trim() === s.name.toLowerCase().trim());
+    if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
+    L.marker([s.latitude, s.longitude], {icon:newIcon}).addTo(map)
+      .bindPopup(`<b>${escapeHtml(s.name)}</b><br>${escapeHtml(s.category)}${s.address?'<br>'+escapeHtml(s.address):''}<br><button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`);
+  });
+
+  SUPPLIER_MAP_INSTANCE = map;
+}
+function prefillSupplierFromMap(name, address){
+  closeModal();
+  openNewSupplierModal();
+  setTimeout(()=>{
+    const nameInput = document.getElementById('ns-name');
+    const addressInput = document.getElementById('ns-address');
+    if(nameInput) nameInput.value = name;
+    if(addressInput) addressInput.value = address;
+  }, 50);
+}
 function viewFournisseurs(){
   return `
     <div class="section-head" style="margin-top:0;">
@@ -2456,6 +2570,7 @@ async function syncSuppliersFromServer(localId){
       address: s.address, email: s.email, reliability: 90, spend: 0,
       contactFirstName: s.contact_first_name, contactLastName: s.contact_last_name,
       contactEmail: s.contact_email, contactPhone: s.contact_phone,
+      latitude: s.latitude, longitude: s.longitude,
     }));
     if(state.resto === localId) SUPPLIERS = d.suppliers;
     render();
@@ -2575,6 +2690,8 @@ async function syncRestaurantInfoFromServer(localId){
     resto.city = data.restaurant.city;
     resto.currency = data.restaurant.currency;
     resto.hideFinancials = data.restaurant.hide_financials;
+    resto.latitude = data.restaurant.latitude;
+    resto.longitude = data.restaurant.longitude;
     render();
   } catch(err){}
 }
@@ -2946,6 +3063,8 @@ async function saveRestoInfo(){
     resto.postalCode = data.restaurant.postal_code;
     resto.city = data.restaurant.city;
     resto.currency = data.restaurant.currency;
+    resto.latitude = data.restaurant.latitude;
+    resto.longitude = data.restaurant.longitude;
     toast('Paramètres enregistrés');
     render();
   } catch(err){
@@ -4623,7 +4742,8 @@ async function addSupplier(){
       method:'POST', body:{ name, category:cat, delay, email, address, contactFirstName, contactLastName, contactEmail, contactPhone },
     });
     SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0,
-      contactFirstName:data.supplier.contact_first_name, contactLastName:data.supplier.contact_last_name, contactEmail:data.supplier.contact_email, contactPhone:data.supplier.contact_phone});
+      contactFirstName:data.supplier.contact_first_name, contactLastName:data.supplier.contact_last_name, contactEmail:data.supplier.contact_email, contactPhone:data.supplier.contact_phone,
+      latitude:data.supplier.latitude, longitude:data.supplier.longitude});
     closeModal();
     toast('Fournisseur « '+escapeHtml(name)+' » ajouté');
     render();
@@ -4679,6 +4799,7 @@ async function saveSupplier(id){
     s.email = data.supplier.email; s.delay = data.supplier.delay; s.reliability = reliability;
     s.contactFirstName = data.supplier.contact_first_name; s.contactLastName = data.supplier.contact_last_name;
     s.contactEmail = data.supplier.contact_email; s.contactPhone = data.supplier.contact_phone;
+    s.latitude = data.supplier.latitude; s.longitude = data.supplier.longitude;
     closeModal();
     toast('Fournisseur mis à jour');
     render();
@@ -4864,6 +4985,7 @@ function renderContent(){
   const {role, view} = state;
   if(view==='notifications') return viewNotifications(role);
   if(view==='aide') return viewAide();
+  if(view==='carte-fournisseurs') return viewSupplierMap();
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
     if(view==='demandes') return soloModeEnabled() ? viewPatronDashboard() : viewPatronDemandes();
@@ -5680,6 +5802,7 @@ function render(){
     </div>
   `;
   requestAnimationFrame(drawCharts);
+  requestAnimationFrame(initSupplierMap);
 }
 
 async function loadTeamInvite(token){
