@@ -6206,7 +6206,10 @@ async function checkExistingSession(){
   // l'historique — sinon, si la personne navigue (ex : clique sur "Tarifs") avant la fin de cette
   // fonction, cette première entrée resterait sans état défini, et le bouton "précédent" du
   // navigateur ne saurait pas y revenir correctement (il atterrirait sur l'accueil par défaut).
-  window.history.replaceState({ site: state.site }, '', window.location.pathname);
+  // IMPORTANT : on garde le "?..." de l'adresse tel quel ici (window.location.search) — sinon,
+  // ça efface le jeton Google/Apple ou Stripe avant même que le code un peu plus bas ait eu la
+  // chance de le lire, cassant complètement la connexion.
+  window.history.replaceState({ site: state.site }, '', window.location.pathname + window.location.search);
   // Si on revient d'une connexion Google/Apple (ou d'un paiement Stripe), les indications
   // arrivent dans l'URL — on les récupère et on nettoie l'adresse tout de suite après.
   const urlParams = new URLSearchParams(window.location.search);
