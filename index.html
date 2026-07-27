@@ -2358,7 +2358,7 @@ function prefillSupplierFromMap(name, address){
 }
 async function geocodeRestaurantNow(){
   const resto = RESTOS.find(r=>r.id===state.resto);
-  if(!resto || !resto.remoteId) return;
+  if(!resto || !resto.remoteId){ toast("Impossible d'identifier l'établissement actuel — rechargez la page et réessayez.", 'alert'); return; }
   state.geocodingResto = true;
   render();
   try{
@@ -2376,7 +2376,7 @@ async function geocodeRestaurantNow(){
 }
 async function geocodeSuppliersNow(){
   const resto = RESTOS.find(r=>r.id===state.resto);
-  if(!resto || !resto.remoteId) return;
+  if(!resto || !resto.remoteId){ toast("Impossible d'identifier l'établissement actuel — rechargez la page et réessayez.", 'alert'); return; }
   state.geocodingSuppliers = true;
   render();
   try{
