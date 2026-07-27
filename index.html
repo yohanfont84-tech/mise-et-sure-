@@ -573,12 +573,24 @@ function iconSm(svg){ return setSvgSize(svg, 14); }
 let uidSeq = 1000;
 const nextId = () => (uidSeq++).toString();
 const COLOR_THEMES = {
-  classique: { label: 'Classique', swatch: '#141414', accent: null }, // null = suit le mode clair/sombre, comme avant
-  chaleureux: { label: 'Chaleureux', swatch: '#C1502E', accent: '#C1502E' },
-  epure: { label: 'Épuré', swatch: '#3D4F5C', accent: '#3D4F5C' },
-  elegant: { label: 'Élégant', swatch: '#5C1A2E', accent: '#5C1A2E' },
-  frais: { label: 'Frais', swatch: '#5B7B5A', accent: '#5B7B5A' },
-  custom: { label: 'Personnalisée', swatch: null, accent: null },
+  classique: { label: 'Classique', swatch: '#141414', palette: null }, // null = garde les couleurs par défaut du site, inchangées
+  chaleureux: { label: 'Chaleureux', swatch: '#C1502E', palette: {
+    light: { paper:'#FBF3EC', surface:'#FFFFFF', border:'#E8D9C8', text:'#2B1D15', muted:'#7A6753', muted2:'#B0A08C', accent:'#C1502E' },
+    dark:  { paper:'#1F1611', surface:'#2A1F18', border:'#3D2E22', text:'#F5E6DA', muted:'#B8A48E', muted2:'#7A6753', accent:'#E07850' },
+  }},
+  epure: { label: 'Épuré', swatch: '#3D4F5C', palette: {
+    light: { paper:'#F4F6F7', surface:'#FFFFFF', border:'#DCE3E6', text:'#1A2226', muted:'#5C6C73', muted2:'#94A3A9', accent:'#3D4F5C' },
+    dark:  { paper:'#141A1D', surface:'#1E262A', border:'#2E3A3F', text:'#E5EAEC', muted:'#8FA0A8', muted2:'#5C6C73', accent:'#7695A8' },
+  }},
+  elegant: { label: 'Élégant', swatch: '#5C1A2E', palette: {
+    light: { paper:'#F7F2F3', surface:'#FFFFFF', border:'#E5D3D7', text:'#2B1017', muted:'#7A5560', muted2:'#B79AA2', accent:'#5C1A2E' },
+    dark:  { paper:'#180C10', surface:'#241318', border:'#3A1F27', text:'#F0E0E4', muted:'#B58A96', muted2:'#7A5560', accent:'#9A4360' },
+  }},
+  frais: { label: 'Frais', swatch: '#5B7B5A', palette: {
+    light: { paper:'#F3F6F1', surface:'#FFFFFF', border:'#DCE6D8', text:'#1D2B1C', muted:'#5D7259', muted2:'#98AB94', accent:'#5B7B5A' },
+    dark:  { paper:'#131A12', surface:'#1D281B', border:'#2C3B29', text:'#E7EFE5', muted:'#9BB097', muted2:'#5D7259', accent:'#84A882' },
+  }},
+  custom: { label: 'Personnalisée', swatch: null, palette: null },
 };
 const FONT_STYLES = {
   classique: { label: 'Classique', heading: "'Fraunces',serif", preview: 'Aa' },
@@ -592,13 +604,34 @@ function applyAppearance(resto){
   if(!resto) return;
   const themeKey = resto.colorTheme && COLOR_THEMES[resto.colorTheme] ? resto.colorTheme : 'classique';
   const theme = COLOR_THEMES[themeKey];
+  const root = document.documentElement.style;
+  const paletteVars = ['paper','surface','border','text','muted','muted2'];
+
+  if(theme.palette){
+    // Thème complet : change vraiment le fond, les cartes, les bordures, le texte — pas
+    // seulement la couleur des boutons — selon qu'on est en mode clair ou sombre.
+    const p = theme.palette[state.theme] || theme.palette.light;
+    root.setProperty('--paper', p.paper);
+    root.setProperty('--surface', p.surface);
+    root.setProperty('--border', p.border);
+    root.setProperty('--text', p.text);
+    root.setProperty('--muted', p.muted);
+    root.setProperty('--muted-2', p.muted2);
+  } else {
+    // "Classique" ou couleur personnalisée seule : on revient aux couleurs par défaut du site
+    // (celles du mode clair/sombre standard), sans les écraser.
+    root.removeProperty('--paper'); root.removeProperty('--surface'); root.removeProperty('--border');
+    root.removeProperty('--text'); root.removeProperty('--muted'); root.removeProperty('--muted-2');
+  }
+
   const fallbackAccent = state.theme==='dark' ? '#EDEDE6' : '#111111';
-  const accentColor = resto.accentColor || theme.accent || fallbackAccent;
-  document.documentElement.style.setProperty('--accent', accentColor);
-  document.documentElement.style.setProperty('--accent-text', accentTextColor(accentColor));
+  const themeAccent = theme.palette ? (theme.palette[state.theme] || theme.palette.light).accent : null;
+  const accentColor = resto.accentColor || themeAccent || fallbackAccent;
+  root.setProperty('--accent', accentColor);
+  root.setProperty('--accent-text', accentTextColor(accentColor));
 
   const fontKey = resto.fontStyle && FONT_STYLES[resto.fontStyle] ? resto.fontStyle : 'classique';
-  document.documentElement.style.setProperty('--heading-font', FONT_STYLES[fontKey].heading);
+  root.setProperty('--heading-font', FONT_STYLES[fontKey].heading);
 
   updateFavicon(resto.logoDataUrl);
 }
@@ -3003,6 +3036,23 @@ function confirmDeleteResto(id){
 
 function viewParametres(){
   const resto = RESTOS.find(r=>r.id===state.resto);
+  // Le brouillon retient les changements d'apparence en cours d'édition, séparément de ce qui
+  // est vraiment enregistré — rien ne doit s'appliquer sur le site tant que la personne n'a pas
+  // cliqué sur "Enregistrer l'apparence". On ne le réinitialise que si on arrive sur un autre
+  // établissement, pour ne pas perdre une modification en cours à chaque nouveau rendu.
+  if(resto && (!state.appearanceDraft || state.appearanceDraft.restoId !== resto.id)){
+    state.appearanceDraft = {
+      restoId: resto.id,
+      accentColor: resto.accentColor || null,
+      colorTheme: resto.colorTheme || 'classique',
+      fontStyle: resto.fontStyle || 'classique',
+      tagline: resto.tagline || '',
+      logoDataUrl: resto.logoDataUrl || null,
+      coverPhotoDataUrl: resto.coverPhotoDataUrl || null,
+      defaultDarkMode: !!resto.defaultDarkMode,
+    };
+  }
+  const draft = state.appearanceDraft || {};
   const patronDisplayName = ACCOUNT ? escapeHtml(`${escapeHtml(ACCOUNT.firstName)} ${escapeHtml(ACCOUNT.lastName)}`.trim()) : 'Patron';
   return `
     <div class="section-head" style="margin-top:0;"><div><h2>Paramètres</h2><div class="sub">Personnalisation et accès</div></div></div>
@@ -3081,24 +3131,24 @@ function viewParametres(){
       </div>
       <div class="card">
         <div class="card-title">Apparence de cet établissement</div>
-        <div class="small muted" style="margin-bottom:16px;">Couleur, police, photo et logo propres à ${escapeHtml(resto.name)} — chaque établissement peut avoir les siens, visibles par toute l'équipe.</div>
+        <div class="small muted" style="margin-bottom:16px;">Couleur, police, photo et logo propres à ${escapeHtml(resto.name)} — chaque établissement peut avoir les siens, visibles par toute l'équipe. Rien ne s'applique tant que vous n'avez pas cliqué sur « Enregistrer l'apparence ».</div>
 
         <div class="field">
-          <label>Thème de couleur</label>
+          <label>Thème</label>
           <div class="color-theme-grid">
             ${Object.entries(COLOR_THEMES).filter(([k])=>k!=='custom').map(([key,t])=>`
-              <button type="button" class="color-theme-swatch ${(!resto.accentColor && (resto.colorTheme||'classique')===key)?'selected':''}" onclick="selectColorTheme('${key}')" title="${t.label}">
-                <span class="color-theme-dot" style="background:${t.swatch};"></span>
+              <button type="button" class="color-theme-swatch ${(!draft.accentColor && draft.colorTheme===key)?'selected':''}" onclick="selectColorTheme('${key}')" title="${t.label}">
+                <span class="color-theme-dot" style="background:${t.palette?t.palette.light.paper:'#F4F1EA'};box-shadow:inset 0 0 0 9px ${t.palette?t.palette.light.accent:t.swatch};"></span>
                 <span class="small">${t.label}</span>
               </button>
             `).join('')}
-            <button type="button" class="color-theme-swatch ${resto.accentColor?'selected':''}" onclick="selectColorTheme('custom')" title="Personnalisée">
+            <button type="button" class="color-theme-swatch ${draft.accentColor?'selected':''}" onclick="selectColorTheme('custom')" title="Personnalisée">
               <span class="color-theme-dot" style="background:conic-gradient(from 0deg,#C1502E,#5B7B5A,#3D4F5C,#5C1A2E,#C1502E);"></span>
               <span class="small">Personnalisée</span>
             </button>
           </div>
-          <div id="custom-accent-picker" style="margin-top:10px;${resto.accentColor?'':'display:none;'}">
-            <input id="set-accent" type="color" value="${resto.accentColor || (state.theme==='dark' ? '#EDEDE6' : '#111111')}" style="height:42px;padding:4px;cursor:pointer;">
+          <div id="custom-accent-picker" style="margin-top:10px;${draft.accentColor?'':'display:none;'}">
+            <input id="set-accent" type="color" value="${draft.accentColor || (state.theme==='dark' ? '#EDEDE6' : '#111111')}" onchange="updateDraftCustomAccent(this.value)" style="height:42px;padding:4px;cursor:pointer;">
           </div>
         </div>
 
@@ -3106,7 +3156,7 @@ function viewParametres(){
           <label>Style de police</label>
           <div class="font-style-grid">
             ${Object.entries(FONT_STYLES).map(([key,f])=>`
-              <button type="button" class="font-style-card ${(resto.fontStyle||'classique')===key?'selected':''}" onclick="selectFontStyle('${key}')">
+              <button type="button" class="font-style-card ${draft.fontStyle===key?'selected':''}" onclick="selectFontStyle('${key}')">
                 <span style="font:${f.heading.includes('italic')?f.heading.replace('1em','26px'):`26px ${f.heading}`};">${f.preview}</span>
                 <span class="small muted">${f.label}</span>
               </button>
@@ -3114,13 +3164,13 @@ function viewParametres(){
           </div>
         </div>
 
-        <div class="field"><label>Accroche (facultatif — affichée sous le nom sur l'écran de connexion)</label><input id="set-tagline" placeholder="Ex : Bistrot de quartier depuis 1987" value="${escapeHtml(resto.tagline||'')}" maxlength="80"></div>
+        <div class="field"><label>Accroche (facultatif — affichée sous le nom sur l'écran de connexion)</label><input id="set-tagline" placeholder="Ex : Bistrot de quartier depuis 1987" value="${escapeHtml(draft.tagline||'')}" maxlength="80" oninput="state.appearanceDraft.tagline=this.value"></div>
 
         <div class="field">
           <label>Logo (image)</label>
-          ${resto.logoDataUrl ? `
+          ${draft.logoDataUrl ? `
             <div class="flex center gap8" style="margin-bottom:10px;">
-              <img src="${resto.logoDataUrl}" alt="Logo" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
+              <img src="${draft.logoDataUrl}" alt="Logo" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
               <button class="btn btn-ghost btn-sm" onclick="removeLogo()">Retirer le logo</button>
             </div>
           ` : ''}
@@ -3129,9 +3179,9 @@ function viewParametres(){
 
         <div class="field">
           <label>Photo de couverture (facultatif — affichée en fond sur l'écran de connexion)</label>
-          ${resto.coverPhotoDataUrl ? `
+          ${draft.coverPhotoDataUrl ? `
             <div style="margin-bottom:10px;">
-              <img src="${resto.coverPhotoDataUrl}" alt="Photo de couverture" style="width:100%;max-width:320px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);display:block;margin-bottom:8px;">
+              <img src="${draft.coverPhotoDataUrl}" alt="Photo de couverture" style="width:100%;max-width:320px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);display:block;margin-bottom:8px;">
               <button class="btn btn-ghost btn-sm" onclick="removeCoverPhoto()">Retirer la photo</button>
             </div>
           ` : ''}
@@ -3139,7 +3189,7 @@ function viewParametres(){
         </div>
 
         <label class="flex center gap8" style="cursor:pointer;margin-bottom:16px;">
-          <input type="checkbox" id="set-default-dark" ${resto.defaultDarkMode?'checked':''}>
+          <input type="checkbox" id="set-default-dark" ${draft.defaultDarkMode?'checked':''} onchange="state.appearanceDraft.defaultDarkMode=this.checked">
           <span class="small">Mode sombre par défaut pour les nouveaux membres de l'équipe</span>
         </label>
 
@@ -3171,45 +3221,43 @@ async function saveAccountInfo(){
   }
 }
 function selectColorTheme(key){
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  preserveUnsavedAppearanceFields(resto);
   if(key==='custom'){
-    resto.accentColor = document.getElementById('set-accent') ? document.getElementById('set-accent').value : (resto.accentColor || '#141414');
-    resto.colorTheme = 'custom';
+    const accentInput = document.getElementById('set-accent');
+    state.appearanceDraft.accentColor = accentInput ? accentInput.value : (state.appearanceDraft.accentColor || '#141414');
+    state.appearanceDraft.colorTheme = 'custom';
   } else {
-    resto.accentColor = null; // laisse le thème préréglé décider (et s'adapter clair/sombre pour "classique")
-    resto.colorTheme = key;
+    state.appearanceDraft.accentColor = null; // laisse le thème préréglé décider
+    state.appearanceDraft.colorTheme = key;
   }
   render();
 }
-function selectFontStyle(key){
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  preserveUnsavedAppearanceFields(resto);
-  resto.fontStyle = key;
-  render();
+function updateDraftCustomAccent(value){
+  state.appearanceDraft.accentColor = value;
 }
-function preserveUnsavedAppearanceFields(resto){
-  // Avant de re-générer la page (ex : après un clic sur un thème de couleur), on récupère ce qui
-  // est actuellement tapé dans les champs texte, pour ne pas le perdre au prochain rendu.
-  const taglineEl = document.getElementById('set-tagline');
-  if(taglineEl) resto.tagline = taglineEl.value;
+function selectFontStyle(key){
+  state.appearanceDraft.fontStyle = key;
+  render();
 }
 async function saveAppearance(){
   const resto = RESTOS.find(r=>r.id===state.resto);
-  const accentInput = document.getElementById('set-accent');
-  const accentColor = (resto.colorTheme==='custom' && accentInput) ? accentInput.value : (resto.accentColor || null);
-  const tagline = (document.getElementById('set-tagline').value || '').trim();
-  const defaultDarkMode = document.getElementById('set-default-dark').checked;
+  const draft = state.appearanceDraft;
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, {
       method:'PATCH',
-      body:{ accentColor, colorTheme: resto.colorTheme || 'classique', fontStyle: resto.fontStyle || 'classique', tagline, defaultDarkMode },
+      body:{
+        accentColor: draft.accentColor, colorTheme: draft.colorTheme, fontStyle: draft.fontStyle,
+        tagline: (draft.tagline||'').trim(), defaultDarkMode: draft.defaultDarkMode,
+        logoUrl: draft.logoDataUrl || '', coverPhotoDataUrl: draft.coverPhotoDataUrl || '',
+      },
     });
     resto.accentColor = data.restaurant.accent_color;
     resto.colorTheme = data.restaurant.color_theme;
     resto.fontStyle = data.restaurant.font_style;
     resto.tagline = data.restaurant.tagline;
     resto.defaultDarkMode = data.restaurant.default_dark_mode;
+    resto.logoDataUrl = data.restaurant.logo_url;
+    resto.coverPhotoDataUrl = data.restaurant.cover_photo_data_url;
+    state.appearanceDraft = null; // sera ré-initialisé depuis les nouvelles valeurs au prochain rendu
     applyAppearance(resto);
     toast('Apparence enregistrée pour ' + escapeHtml(resto.name));
     render();
@@ -3217,59 +3265,31 @@ async function saveAppearance(){
     toast(err.message, 'alert');
   }
 }
-async function handleLogoUpload(input){
+function handleLogoUpload(input){
   const file = input.files && input.files[0];
   if(!file) return;
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  compressImageFile(file, 500, 0.8, async (compressed) => {
-    try{
-      const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ logoUrl: compressed } });
-      resto.logoDataUrl = data.restaurant.logo_url;
-      applyAppearance(resto);
-      toast('Logo mis à jour pour ' + escapeHtml(resto.name));
-      render();
-    } catch(err){
-      toast(err.message, 'alert');
-    }
+  // Rien n'est envoyé au serveur ici — juste un aperçu local, en attendant que la personne
+  // clique sur "Enregistrer l'apparence" pour que ça devienne vraiment le logo du restaurant.
+  compressImageFile(file, 500, 0.8, (compressed) => {
+    state.appearanceDraft.logoDataUrl = compressed;
+    render();
   });
 }
-async function removeLogo(){
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  try{
-    await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ logoUrl: '' } });
-    resto.logoDataUrl = null;
-    applyAppearance(resto);
-    toast('Logo retiré');
-    render();
-  } catch(err){
-    toast(err.message, 'alert');
-  }
+function removeLogo(){
+  state.appearanceDraft.logoDataUrl = null;
+  render();
 }
-async function handleCoverPhotoUpload(input){
+function handleCoverPhotoUpload(input){
   const file = input.files && input.files[0];
   if(!file) return;
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  compressImageFile(file, 1200, 0.75, async (compressed) => {
-    try{
-      const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ coverPhotoDataUrl: compressed } });
-      resto.coverPhotoDataUrl = data.restaurant.cover_photo_data_url;
-      toast('Photo de couverture mise à jour');
-      render();
-    } catch(err){
-      toast(err.message, 'alert');
-    }
+  compressImageFile(file, 1200, 0.75, (compressed) => {
+    state.appearanceDraft.coverPhotoDataUrl = compressed;
+    render();
   });
 }
-async function removeCoverPhoto(){
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  try{
-    await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ coverPhotoDataUrl: '' } });
-    resto.coverPhotoDataUrl = null;
-    toast('Photo de couverture retirée');
-    render();
-  } catch(err){
-    toast(err.message, 'alert');
-  }
+function removeCoverPhoto(){
+  state.appearanceDraft.coverPhotoDataUrl = null;
+  render();
 }
 function openChangePasswordModal(employeeId){
   const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
