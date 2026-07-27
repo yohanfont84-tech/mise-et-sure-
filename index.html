@@ -135,7 +135,7 @@ a{text-decoration:none;color:inherit;}
   .main{width:100%;}
   .topbar{padding:0 16px;height:58px;}
   .content{padding:16px 16px 50px 16px;}
-  .page-title{font-size:16.5px;}
+  .page-title{font-size:16.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 }
 
 .main{flex:1;min-width:0;display:flex;flex-direction:column;}
@@ -169,6 +169,16 @@ a{text-decoration:none;color:inherit;}
      donc c'est l'ordre dans la feuille de style qui décide, pas la media query à elle seule). */
   .role-switcher{display:none;}
   .topbar-right{gap:8px;}
+}
+@media(max-width:520px){
+  /* Sur téléphone (pas seulement tablette), même sans le sélecteur de rôle, les 5 boutons de
+     droite (actualiser, notifications, thème, avatar, déconnexion) ont besoin de plus de place
+     que ce qu'il reste à côté du titre de page — on masque ce dernier (le menu latéral montre
+     déjà la page active) et on resserre les boutons, pour garantir que TOUT reste toujours
+     visible et cliquable, y compris la déconnexion. */
+  .page-title{display:none;}
+  .topbar-right{gap:4px;}
+  .topbar-right .btn-ghost.btn-sm, .topbar-right .avatar{width:32px;height:32px;padding:0;justify-content:center;}
 }
 
 .content{padding:26px 28px 60px 28px;flex:1;min-width:0;}
