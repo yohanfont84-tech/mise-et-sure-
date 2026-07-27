@@ -280,6 +280,7 @@ tr.tr-hover:hover{background:var(--paper);}
 .map-marker{border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.4);}
 .map-marker-resto{width:22px;height:22px;background:var(--accent);border:2px solid #fff;}
 .map-marker-known{width:18px;height:18px;background:#2E7D32;border:2px solid #fff;}
+.map-marker-approximate{opacity:0.55;border-style:dashed;}
 .map-marker-new{width:14px;height:14px;background:#9E9E96;border:2px solid #fff;}
 .product-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center;}
 .product-filter-bar input[type="text"]{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
@@ -2266,6 +2267,7 @@ function viewSupplierMap(){
     loadNearbySuppliers();
   }
   const knownWithCoords = SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null);
+  const knownApproxCount = knownWithCoords.filter(s=>s.isApproximate).length;
   const suppliersMissingCoords = SUPPLIERS.filter(s=>s.address && s.address.trim() && s.latitude==null);
   return `
     <div class="section-head" style="margin-top:0;">
@@ -2293,7 +2295,7 @@ function viewSupplierMap(){
       </div>
       <div class="map-legend">
         <span><span class="map-dot map-dot-resto"></span> Votre établissement</span>
-        ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length})</span>` : ''}
+        ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length}${knownApproxCount>0?`, dont ${knownApproxCount} en position approximative`:''})</span>` : ''}
         <span><span class="map-dot map-dot-producer"></span> Petits producteurs détectés (${NEARBY_SUPPLIERS.filter(s=>s.isProducer).length})</span>
         ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-new"></span> Autres fournisseurs détectés (${NEARBY_SUPPLIERS.filter(s=>!s.isProducer).length})</span>` : ''}
       </div>
@@ -2373,8 +2375,10 @@ function initSupplierMap(){
 
   if(!state.mapProducersOnly){
     const knownIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-known"></div>', iconSize:[18,18] });
+    const knownApproxIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-known map-marker-approximate"></div>', iconSize:[18,18] });
     SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null).forEach(s=>{
-      L.marker([s.latitude, s.longitude], {icon:knownIcon}).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br>Déjà dans vos fournisseurs`);
+      const approxNote = s.isApproximate ? '<br><span class="small muted">Position approximative (adresse pas assez précise)</span>' : '';
+      L.marker([s.latitude, s.longitude], {icon: s.isApproximate ? knownApproxIcon : knownIcon}).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br>Déjà dans vos fournisseurs${approxNote}`);
     });
   }
 
@@ -2457,7 +2461,7 @@ async function geocodeSuppliersNow(){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/geocode-suppliers`, { method:'POST' });
     data.suppliers.forEach(s=>{
       const local = SUPPLIERS.find(x=>x.remoteId===s.id);
-      if(local){ local.latitude = s.latitude; local.longitude = s.longitude; }
+      if(local){ local.latitude = s.latitude; local.longitude = s.longitude; local.isApproximate = s.is_approximate; }
     });
     toast(`${data.updated} fournisseur(s) localisé(s) sur ${data.attempted}`);
   } catch(err){
@@ -2699,7 +2703,7 @@ async function syncSuppliersFromServer(localId){
       address: s.address, email: s.email, reliability: 90, spend: 0,
       contactFirstName: s.contact_first_name, contactLastName: s.contact_last_name,
       contactEmail: s.contact_email, contactPhone: s.contact_phone,
-      latitude: s.latitude, longitude: s.longitude,
+      latitude: s.latitude, longitude: s.longitude, isApproximate: s.is_approximate,
     }));
     if(state.resto === localId) SUPPLIERS = d.suppliers;
     render();
@@ -4872,7 +4876,7 @@ async function addSupplier(){
     });
     SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0,
       contactFirstName:data.supplier.contact_first_name, contactLastName:data.supplier.contact_last_name, contactEmail:data.supplier.contact_email, contactPhone:data.supplier.contact_phone,
-      latitude:data.supplier.latitude, longitude:data.supplier.longitude});
+      latitude:data.supplier.latitude, longitude:data.supplier.longitude, isApproximate:data.supplier.is_approximate});
     closeModal();
     toast('Fournisseur « '+escapeHtml(name)+' » ajouté');
     render();
@@ -4928,7 +4932,7 @@ async function saveSupplier(id){
     s.email = data.supplier.email; s.delay = data.supplier.delay; s.reliability = reliability;
     s.contactFirstName = data.supplier.contact_first_name; s.contactLastName = data.supplier.contact_last_name;
     s.contactEmail = data.supplier.contact_email; s.contactPhone = data.supplier.contact_phone;
-    s.latitude = data.supplier.latitude; s.longitude = data.supplier.longitude;
+    s.latitude = data.supplier.latitude; s.longitude = data.supplier.longitude; s.isApproximate = data.supplier.is_approximate;
     closeModal();
     toast('Fournisseur mis à jour');
     render();
