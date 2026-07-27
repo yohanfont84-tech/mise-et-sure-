@@ -275,6 +275,8 @@ tr.tr-hover:hover{background:var(--paper);}
 .map-dot-resto{background:var(--accent);}
 .map-dot-known{background:#2E7D32;}
 .map-dot-new{background:#9E9E96;border:1px solid #7A7A72;}
+.map-dot-producer{background:#7A9B5C;}
+.map-marker-producer{width:16px;height:16px;background:#7A9B5C;border:2px solid #fff;}
 .map-marker{border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,0.4);}
 .map-marker-resto{width:22px;height:22px;background:var(--accent);border:2px solid #fff;}
 .map-marker-known{width:18px;height:18px;background:#2E7D32;border:2px solid #fff;}
@@ -2261,7 +2263,7 @@ function viewSupplierMap(){
   const suppliersMissingCoords = SUPPLIERS.filter(s=>s.address && s.address.trim() && s.latitude==null);
   return `
     <div class="section-head" style="margin-top:0;">
-      <div><h2>Carte des fournisseurs</h2><div class="sub">Votre établissement, vos fournisseurs déjà ajoutés, et d'autres fournisseurs potentiels repérés autour de vous (source : OpenStreetMap, données ouvertes — pas un annuaire exhaustif).</div></div>
+      <div><h2>Carte des fournisseurs</h2><div class="sub">Votre établissement, vos fournisseurs déjà ajoutés, et d'autres fournisseurs potentiels autour de vous — avec les petits producteurs locaux (fermes, vignerons, brasseurs, apiculteurs...) mis en valeur séparément des fournisseurs professionnels classiques (source : OpenStreetMap, données ouvertes — pas un annuaire exhaustif).</div></div>
     </div>
     ${!hasLocation ? `
       ${emptyState("Impossible de localiser votre établissement pour le moment.")}
@@ -2273,7 +2275,8 @@ function viewSupplierMap(){
       <div class="map-legend">
         <span><span class="map-dot map-dot-resto"></span> Votre établissement</span>
         <span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length})</span>
-        <span><span class="map-dot map-dot-new"></span> Fournisseurs potentiels détectés (${NEARBY_SUPPLIERS.length})</span>
+        <span><span class="map-dot map-dot-producer"></span> Petits producteurs détectés (${NEARBY_SUPPLIERS.filter(s=>s.isProducer).length})</span>
+        <span><span class="map-dot map-dot-new"></span> Autres fournisseurs détectés (${NEARBY_SUPPLIERS.filter(s=>!s.isProducer).length})</span>
       </div>
       <div class="card" style="padding:0;overflow:hidden;">
         <div id="supplier-map" style="height:520px;width:100%;"></div>
@@ -2332,11 +2335,13 @@ function initSupplierMap(){
   });
 
   const newIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-new"></div>', iconSize:[14,14] });
+  const producerIcon = L.divIcon({ className:'', html:'<div class="map-marker map-marker-producer"></div>', iconSize:[16,16] });
   NEARBY_SUPPLIERS.forEach(s=>{
     const alreadyKnown = SUPPLIERS.some(k=>k.name.toLowerCase().trim() === s.name.toLowerCase().trim());
     if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
-    L.marker([s.latitude, s.longitude], {icon:newIcon}).addTo(map)
-      .bindPopup(`<b>${escapeHtml(s.name)}</b><br>${escapeHtml(s.category)}${s.address?'<br>'+escapeHtml(s.address):''}<br><button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`);
+    const badge = s.isProducer ? '<span style="background:#7A9B5C;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
+    L.marker([s.latitude, s.longitude], {icon: s.isProducer ? producerIcon : newIcon}).addTo(map)
+      .bindPopup(`${badge}<b>${escapeHtml(s.name)}</b><br>${escapeHtml(s.category)}${s.address?'<br>'+escapeHtml(s.address):''}<br><button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`);
   });
 
   SUPPLIER_MAP_INSTANCE = map;
