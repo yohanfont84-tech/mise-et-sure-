@@ -2529,7 +2529,20 @@ function initSupplierMap(){
     SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null && matchesFilters(s.name, s.cat)).forEach(s=>{
       const approxNote = s.isApproximate ? '<br><span class="small muted">Position approximative (adresse pas assez précise)</span>' : '';
       const icon = createMapPin('#2563EB', s.isApproximate ? 24 : 28);
-      L.marker([s.latitude, s.longitude], {icon, opacity: s.isApproximate ? 0.7 : 1}).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br>Déjà dans vos fournisseurs${approxNote}`);
+      const contactLines = [];
+      if(s.address) contactLines.push(`📍 ${escapeHtml(s.address)}`);
+      if(s.email) contactLines.push(`✉️ <a href="mailto:${escapeHtml(s.email)}">${escapeHtml(s.email)}</a>`);
+      if(s.contactFirstName || s.contactLastName){
+        const contactName = [s.contactFirstName, s.contactLastName].filter(Boolean).join(' ');
+        contactLines.push(`👤 ${escapeHtml(contactName)}${s.contactPhone ? ' · <a href="tel:'+escapeHtml(s.contactPhone)+'">'+escapeHtml(s.contactPhone)+'</a>' : ''}`);
+        if(s.contactEmail) contactLines.push(`✉️ <a href="mailto:${escapeHtml(s.contactEmail)}">${escapeHtml(s.contactEmail)}</a> (commercial)`);
+      }
+      const googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent([s.name, s.address].filter(Boolean).join(' '));
+      L.marker([s.latitude, s.longitude], {icon, opacity: s.isApproximate ? 0.7 : 1}).addTo(map).bindPopup(
+        `<b>${escapeHtml(s.name)}</b><br><span class="small muted">Déjà dans vos fournisseurs</span>${approxNote}`
+        + (contactLines.length ? `<div class="small" style="margin-top:6px;line-height:1.6;">${contactLines.join('<br>')}</div>` : '')
+        + `<br><a href="${escapeHtml(googleUrl)}" target="_blank" rel="noopener noreferrer" class="small">🔎 Chercher sur Internet</a>`
+      );
     });
   }
 
@@ -2539,8 +2552,17 @@ function initSupplierMap(){
     if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
     const badge = s.isProducer ? '<span style="background:#2F9E44;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
     const icon = createMapPin(s.isProducer ? '#2F9E44' : '#E08A2E', s.isProducer ? 26 : 22);
+    const contactLines = [];
+    if(s.address) contactLines.push(`📍 ${escapeHtml(s.address)}`);
+    if(s.phone) contactLines.push(`📞 <a href="tel:${escapeHtml(s.phone)}">${escapeHtml(s.phone)}</a>`);
+    const linkLine = s.link ? `<a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer" class="small">${s.linkIsWebsite?'🔗 Voir le site':'🔎 Chercher sur Internet'}</a>` : '';
     L.marker([s.latitude, s.longitude], {icon}).addTo(map)
-      .bindPopup(`${badge}<b>${escapeHtml(s.name)}</b><br>${escapeHtml(s.category)}${s.address?'<br>'+escapeHtml(s.address):''}<br><button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`);
+      .bindPopup(
+        `${badge}<b>${escapeHtml(s.name)}</b><br><span class="small muted">${escapeHtml(s.category)}</span>`
+        + (contactLines.length ? `<div class="small" style="margin-top:6px;line-height:1.6;">${contactLines.join('<br>')}</div>` : '')
+        + (linkLine ? `<div style="margin-top:4px;">${linkLine}</div>` : '')
+        + `<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`
+      );
   });
 
   // On retient juste la position pour ne pas la perdre au prochain rendu — mais on NE relance
