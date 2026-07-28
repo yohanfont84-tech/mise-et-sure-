@@ -11,6 +11,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <style>
 :root{
   --black:#111111;
@@ -2449,13 +2452,19 @@ function changeMapRadius(value){
     render();
   }
 }
+let MAP_SEARCH_DEBOUNCE = null;
 function updateMapSearch(value){
   state.mapSearchQuery = value;
-  render();
-  // Remet le focus dans le champ de recherche après le nouveau rendu, pour continuer à taper
-  // sans interruption (le rendu complet recrée sinon le champ et lui fait perdre le focus).
-  const input = document.getElementById('map-search-input');
-  if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; }
+  // Un petit délai avant de vraiment filtrer la carte — évite de recréer toute la carte à
+  // chaque lettre tapée, ce qui la rendrait saccadée le temps d'écrire un nom complet.
+  if(MAP_SEARCH_DEBOUNCE) clearTimeout(MAP_SEARCH_DEBOUNCE);
+  MAP_SEARCH_DEBOUNCE = setTimeout(() => {
+    render();
+    // Remet le focus dans le champ de recherche après le nouveau rendu, pour continuer à taper
+    // sans interruption (le rendu complet recrée sinon le champ et lui fait perdre le focus).
+    const input = document.getElementById('map-search-input');
+    if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; }
+  }, 250);
 }
 function mapAvailableCategories(){
   const cats = new Set();
@@ -2517,6 +2526,11 @@ function initSupplierMap(){
 
   L.marker([resto.latitude, resto.longitude], {icon: createMapPin('#141414', 34), zIndexOffset:1000}).addTo(map).bindPopup(`<b>${escapeHtml(resto.name)}</b><br>Votre établissement`);
 
+  // Les fournisseurs sont regroupés en grappes (nombre affiché) tant qu'on n'a pas assez zoomé
+  // pour les distinguer un par un — la carte reste fluide même avec beaucoup de résultats, au
+  // lieu d'afficher des dizaines de marqueurs superposés d'un coup.
+  const supplierCluster = L.markerClusterGroup ? L.markerClusterGroup({ maxClusterRadius: 50, spiderfyOnMaxZoom: true }) : map;
+
   const q = (state.mapSearchQuery||'').toLowerCase().trim();
   const catFilter = state.mapCategoryFilter||'';
   const matchesFilters = (name, category) => {
@@ -2538,7 +2552,7 @@ function initSupplierMap(){
         if(s.contactEmail) contactLines.push(`✉️ <a href="mailto:${escapeHtml(s.contactEmail)}">${escapeHtml(s.contactEmail)}</a> (commercial)`);
       }
       const googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent([s.name, s.address].filter(Boolean).join(' '));
-      L.marker([s.latitude, s.longitude], {icon, opacity: s.isApproximate ? 0.7 : 1}).addTo(map).bindPopup(
+      L.marker([s.latitude, s.longitude], {icon, opacity: s.isApproximate ? 0.7 : 1}).addTo(supplierCluster).bindPopup(
         `<b>${escapeHtml(s.name)}</b><br><span class="small muted">Déjà dans vos fournisseurs</span>${approxNote}`
         + (contactLines.length ? `<div class="small" style="margin-top:6px;line-height:1.6;">${contactLines.join('<br>')}</div>` : '')
         + `<br><a href="${escapeHtml(googleUrl)}" target="_blank" rel="noopener noreferrer" class="small">🔎 Chercher sur Internet</a>`
@@ -2556,7 +2570,7 @@ function initSupplierMap(){
     if(s.address) contactLines.push(`📍 ${escapeHtml(s.address)}`);
     if(s.phone) contactLines.push(`📞 <a href="tel:${escapeHtml(s.phone)}">${escapeHtml(s.phone)}</a>`);
     const linkLine = s.link ? `<a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer" class="small">${s.linkIsWebsite?'🔗 Voir le site':'🔎 Chercher sur Internet'}</a>` : '';
-    L.marker([s.latitude, s.longitude], {icon}).addTo(map)
+    L.marker([s.latitude, s.longitude], {icon}).addTo(supplierCluster)
       .bindPopup(
         `${badge}<b>${escapeHtml(s.name)}</b><br><span class="small muted">${escapeHtml(s.category)}</span>`
         + (contactLines.length ? `<div class="small" style="margin-top:6px;line-height:1.6;">${contactLines.join('<br>')}</div>` : '')
@@ -2564,6 +2578,9 @@ function initSupplierMap(){
         + `<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`
       );
   });
+
+  if(supplierCluster !== map) supplierCluster.addTo(map);
+
 
   // On retient juste la position pour ne pas la perdre au prochain rendu — mais on NE relance
   // PLUS de recherche automatiquement en déplaçant la carte : la personne garde le contrôle et
