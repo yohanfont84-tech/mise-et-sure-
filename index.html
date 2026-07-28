@@ -282,9 +282,9 @@ tr.tr-hover:hover{background:var(--paper);}
 .map-legend span{display:flex;align-items:center;gap:7px;}
 .map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
 .map-dot-resto{background:var(--accent);}
-.map-dot-known{background:#2E7D32;}
-.map-dot-new{background:#9E9E96;border:1px solid #7A7A72;}
-.map-dot-producer{background:#7A9B5C;}
+.map-dot-known{background:#2563EB;}
+.map-dot-new{background:#E08A2E;}
+.map-dot-producer{background:#2F9E44;}
 .font-style-grid{display:flex;gap:10px;flex-wrap:wrap;}
 .font-style-card{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 20px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
 .font-style-card:hover{border-color:var(--muted);}
@@ -973,6 +973,8 @@ const state = {
   geocodingResto: false,
   geocodingSuppliers: false,
   mapRadiusKm: 20,
+  mapSearchQuery: '',
+  mapCategoryFilter: '',
   mapProducersOnly: false,
   mapLayerType: 'plan',
   mapShowSearchHere: false,
@@ -2370,6 +2372,13 @@ function viewSupplierMap(){
         <button class="btn btn-primary" onclick="geocodeRestaurantNow()" ${state.geocodingResto?'disabled':''}>${state.geocodingResto?'Localisation en cours…':'Localiser mon établissement maintenant'}</button>
       </div>
     ` : `
+      <div class="flex gap8" style="align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <input type="text" id="map-search-input" placeholder="🔎 Rechercher un fournisseur par nom…" value="${escapeHtml(state.mapSearchQuery)}" oninput="updateMapSearch(this.value)" style="flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+        <select onchange="state.mapCategoryFilter=this.value;render();" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+          <option value="">Toutes les catégories</option>
+          ${mapAvailableCategories().map(c=>`<option value="${escapeHtml(c)}" ${state.mapCategoryFilter===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+        </select>
+      </div>
       <div class="flex gap8" style="align-items:center;flex-wrap:wrap;margin-bottom:14px;">
         <label class="small muted" style="display:flex;align-items:center;gap:8px;">Rechercher dans un rayon de
           <select onchange="changeMapRadius(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
@@ -2387,7 +2396,7 @@ function viewSupplierMap(){
         <span><span class="map-dot map-dot-resto"></span> Votre établissement</span>
         ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length}${knownApproxCount>0?`, dont ${knownApproxCount} en position approximative`:''})</span>` : ''}
         <span><span class="map-dot map-dot-producer"></span> Petits producteurs détectés (${NEARBY_SUPPLIERS.filter(s=>s.isProducer).length})</span>
-        ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-new"></span> Autres fournisseurs détectés (${NEARBY_SUPPLIERS.filter(s=>!s.isProducer).length})</span>` : ''}
+        ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-new"></span> Grossistes détectés (${NEARBY_SUPPLIERS.filter(s=>!s.isProducer).length})</span>` : ''}
       </div>
       <div class="card" style="padding:0;overflow:hidden;position:relative;">
         <div id="supplier-map" style="height:520px;width:100%;"></div>
@@ -2439,6 +2448,20 @@ function changeMapRadius(value){
     NEARBY_SUPPLIERS_LOADED_FOR = null; // force une nouvelle recherche initiale, autour de l'établissement
     render();
   }
+}
+function updateMapSearch(value){
+  state.mapSearchQuery = value;
+  render();
+  // Remet le focus dans le champ de recherche après le nouveau rendu, pour continuer à taper
+  // sans interruption (le rendu complet recrée sinon le champ et lui fait perdre le focus).
+  const input = document.getElementById('map-search-input');
+  if(input){ input.focus(); const v = input.value; input.value=''; input.value=v; }
+}
+function mapAvailableCategories(){
+  const cats = new Set();
+  SUPPLIERS.forEach(s=>{ if(s.cat) cats.add(s.cat); });
+  NEARBY_SUPPLIERS.forEach(s=>{ if(s.category) cats.add(s.category); });
+  return [...cats].sort((a,b)=>a.localeCompare(b, 'fr'));
 }
 function toggleProducersOnly(){
   state.mapProducersOnly = !state.mapProducersOnly;
@@ -2494,20 +2517,28 @@ function initSupplierMap(){
 
   L.marker([resto.latitude, resto.longitude], {icon: createMapPin('#141414', 34), zIndexOffset:1000}).addTo(map).bindPopup(`<b>${escapeHtml(resto.name)}</b><br>Votre établissement`);
 
+  const q = (state.mapSearchQuery||'').toLowerCase().trim();
+  const catFilter = state.mapCategoryFilter||'';
+  const matchesFilters = (name, category) => {
+    if(q && !name.toLowerCase().includes(q)) return false;
+    if(catFilter && category !== catFilter) return false;
+    return true;
+  };
+
   if(!state.mapProducersOnly){
-    SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null).forEach(s=>{
+    SUPPLIERS.filter(s=>s.latitude!=null && s.longitude!=null && matchesFilters(s.name, s.cat)).forEach(s=>{
       const approxNote = s.isApproximate ? '<br><span class="small muted">Position approximative (adresse pas assez précise)</span>' : '';
-      const icon = createMapPin('#2E7D32', s.isApproximate ? 24 : 28);
+      const icon = createMapPin('#2563EB', s.isApproximate ? 24 : 28);
       L.marker([s.latitude, s.longitude], {icon, opacity: s.isApproximate ? 0.7 : 1}).addTo(map).bindPopup(`<b>${escapeHtml(s.name)}</b><br>Déjà dans vos fournisseurs${approxNote}`);
     });
   }
 
-  NEARBY_SUPPLIERS.forEach(s=>{
+  NEARBY_SUPPLIERS.filter(s=>matchesFilters(s.name, s.category)).forEach(s=>{
     if(state.mapProducersOnly && !s.isProducer) return; // filtre "producteurs uniquement" actif
     const alreadyKnown = SUPPLIERS.some(k=>k.name.toLowerCase().trim() === s.name.toLowerCase().trim());
     if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
-    const badge = s.isProducer ? '<span style="background:#7A9B5C;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
-    const icon = createMapPin(s.isProducer ? '#7A9B5C' : '#8D8D84', s.isProducer ? 26 : 22);
+    const badge = s.isProducer ? '<span style="background:#2F9E44;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
+    const icon = createMapPin(s.isProducer ? '#2F9E44' : '#E08A2E', s.isProducer ? 26 : 22);
     L.marker([s.latitude, s.longitude], {icon}).addTo(map)
       .bindPopup(`${badge}<b>${escapeHtml(s.name)}</b><br>${escapeHtml(s.category)}${s.address?'<br>'+escapeHtml(s.address):''}<br><button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`);
   });
