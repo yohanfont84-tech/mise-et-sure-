@@ -79,7 +79,7 @@ a{text-decoration:none;color:inherit;}
 .sidebar{
   width:250px;flex-shrink:0;background:var(--ink);color:#EDEDE8;
   display:flex;flex-direction:column;
-  position:sticky;top:0;height:100vh;
+  position:sticky;top:0;min-height:100vh;align-self:stretch;
 }
 .brand{
   display:flex;align-items:center;gap:10px;
@@ -773,7 +773,7 @@ function supplierLastOrderDate(id){
   const latest = withDates.reduce((a,b)=> new Date(a.createdAt) > new Date(b.createdAt) ? a : b);
   return fmtDateShort(new Date(latest.createdAt));
 }
-function fmtEUR(n){ if(financialsHidden()) return ''; return n.toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
+function fmtEUR(n){ if(financialsHidden()) return ''; const v = Number(n); return (Number.isFinite(v) ? v : 0).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
 function fullAddress(resto){
   const line2 = [resto.postalCode, resto.city].filter(Boolean).join(' ');
   return [resto.address, line2].filter(Boolean).join(', ');
@@ -2031,11 +2031,11 @@ function ensureProductFilters(){
 function matchesProductSearch(p, q){
   if(!q) return true;
   q = q.toLowerCase();
-  if(p.name.toLowerCase().includes(q)) return true;
+  if((p.name||'').toLowerCase().includes(q)) return true;
   if((p.cat||'').toLowerCase().includes(q)) return true;
   if((p.supplierReference||'').toLowerCase().includes(q)) return true;
   if(supplierName(p.supplier).toLowerCase().includes(q)) return true;
-  if((p.zoneIds||[]).some(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z && z.name.toLowerCase().includes(q); })) return true;
+  if((p.zoneIds||[]).some(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z && (z.name||'').toLowerCase().includes(q); })) return true;
   return false;
 }
 function filterProductsList(products, f){
@@ -2118,7 +2118,7 @@ function viewStocks(){
             <td class="muted">${supplierName(p.supplier)}</td>
             <td class="muted small">${escapeHtml(p.packaging||'—')}</td>
             <td class="mono">${p.qtyCommande} ${p.unit}</td>
-            ${financialsHidden()?'':`<td class="mono">${p.price.toFixed(2)} € / ${p.unit}</td>`}
+            ${financialsHidden()?'':`<td class="mono">${(p.price||0).toFixed(2)} € / ${p.unit}</td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
               <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
@@ -2582,7 +2582,7 @@ function initSupplierMap(){
 
   NEARBY_SUPPLIERS.filter(s=>matchesFilters(s.name, s.category)).forEach(s=>{
     if(state.mapProducersOnly && !s.isProducer) return; // filtre "producteurs uniquement" actif
-    const alreadyKnown = SUPPLIERS.some(k=>k.name.toLowerCase().trim() === s.name.toLowerCase().trim());
+    const alreadyKnown = SUPPLIERS.some(k=>(k.name||'').toLowerCase().trim() === (s.name||'').toLowerCase().trim());
     if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
     const badge = s.isProducer ? '<span style="background:#2F9E44;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
     const icon = createMapPin(s.isProducer ? '#2F9E44' : '#E08A2E', s.isProducer ? 26 : 22);
@@ -2694,6 +2694,7 @@ async function geocodeSuppliersNow(){
 function groupProductsForComparison(){
   const groups = {};
   PRODUCTS.forEach(p=>{
+    if(!p.name) return; // un produit sans nom ne peut pas être comparé de façon fiable
     const key = p.name.toLowerCase().trim();
     if(!groups[key]) groups[key] = [];
     groups[key].push(p);
@@ -3132,17 +3133,16 @@ async function syncRestoOperationalData(localId){
   // Les fournisseurs et les lieux/zones doivent être rechargés AVANT les produits, puisque
   // chaque produit s'y relie. Idem pour les commandes et les paniers, qui se relient eux aussi
   // à un fournisseur et des produits déjà chargés.
-  await syncRestaurantInfoFromServer(localId);
-  await syncNotificationSettingsFromServer(localId);
-  await syncCategoriesFromServer(localId);
-  await syncZonesFromServer(localId);
-  await syncSuppliersFromServer(localId);
-  await syncProductsFromServer(localId);
-  await syncOrdersFromServer(localId);
-  await syncBasketsFromServer(localId);
-  await syncRequestsFromServer(localId);
-  await syncCustomRequestsFromServer(localId);
-  await syncTeamFromServer(localId);
+  // Chaque étape est isolée : si l'une d'elles échoue (réseau, ou un imprévu à l'affichage), les
+  // suivantes s'exécutent quand même, plutôt que de laisser le reste des données périmées.
+  const steps = [
+    syncRestaurantInfoFromServer, syncNotificationSettingsFromServer, syncCategoriesFromServer,
+    syncZonesFromServer, syncSuppliersFromServer, syncProductsFromServer, syncOrdersFromServer,
+    syncBasketsFromServer, syncRequestsFromServer, syncCustomRequestsFromServer, syncTeamFromServer,
+  ];
+  for(const step of steps){
+    try{ await step(localId); } catch(err){ console.error('Erreur de synchronisation (une étape ignorée, les autres continuent) :', err); }
+  }
 }
 function switchResto(id){
   state.resto = id;
@@ -4466,7 +4466,7 @@ function quickOrder(productId){
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>Commander « ${escapeHtml(p.name)} »</h3>
-    <div class="modal-sub">${supplierName(p.supplier)} · ${p.price.toFixed(2)} € / ${p.unit}</div>
+    <div class="modal-sub">${supplierName(p.supplier)} · ${(p.price||0).toFixed(2)} € / ${p.unit}</div>
     <div class="field"><label>Quantité (${p.unit})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
   `);
@@ -4912,8 +4912,9 @@ async function loadPriceHistoryForProduct(id){
     container.innerHTML = `
       <div class="price-history-list">
         ${history.map((h, idx) => {
-          const price = parseFloat(h.price);
-          const prev = history[idx+1] ? parseFloat(history[idx+1].price) : null;
+          const price = parseFloat(h.price) || 0;
+          const prevRaw = history[idx+1] ? parseFloat(history[idx+1].price) : null;
+          const prev = (prevRaw !== null && !isNaN(prevRaw)) ? prevRaw : null;
           let trend = '';
           if(prev !== null){
             if(price > prev) trend = `<span style="color:var(--urgent);font-weight:600;">▲ +${(price-prev).toFixed(2)}€</span>`;
@@ -5005,7 +5006,7 @@ function orderProductRows(supplierId){
       <input type="checkbox" id="ord-chk-${p.id}" style="flex-shrink:0;">
       <div style="flex:1;min-width:0;overflow-wrap:break-word;">
         <div style="font-weight:600;font-size:13.5px;">${escapeHtml(p.name)}</div>
-        <div class="small muted">${p.cat?escapeHtml(p.cat)+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${p.price.toFixed(2)} € / ${p.unit}`}</div>
+        <div class="small muted">${p.cat?escapeHtml(p.cat)+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${(p.price||0).toFixed(2)} € / ${p.unit}`}</div>
       </div>
       <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:60px;flex-shrink:0;padding:6px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
     </div>
@@ -5137,7 +5138,7 @@ function buildOrderDocumentHTML(o){
       <table class="invoice-table">
         <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit.</th><th>Total</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${l.price.toFixed(2)} €</td><td>${l.total.toFixed(2)} €</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${(l.price||0).toFixed(2)} €</td><td>${(l.total||0).toFixed(2)} €</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -5234,7 +5235,7 @@ function buildHistoryDocumentHTML(period){
       <table class="invoice-table history">
         <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th>${financialsHidden()?"":"<th>Montant</th>"}</tr></thead>
         <tbody>
-          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${o.amount.toFixed(2)} €</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
+          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${(o.amount||0).toFixed(2)} €</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -5279,7 +5280,7 @@ function downloadOrdersCSV(period){
         o.createdAt ? new Date(o.createdAt).toLocaleDateString('fr-FR') : '',
         orderStatusLabel(o.status),
         o.hasDiscrepancy ? 'Oui' : 'Non',
-        o.amount.toFixed(2),
+        (o.amount||0).toFixed(2),
         products,
       ];
     }),
@@ -6332,6 +6333,29 @@ function dismissCookieBanner(){
   if(zone) zone.innerHTML = '';
 }
 function render(){
+  try{
+    renderInner();
+  } catch(err){
+    // Filet de sécurité : si un affichage plante pour une raison imprévue, on montre un message
+    // clair avec un bouton pour recharger, plutôt qu'une page blanche silencieuse qui donne
+    // l'impression que le site est cassé ou figé sans aucune explication.
+    console.error('Erreur d\'affichage :', err);
+    const appEl = document.getElementById('app');
+    if(appEl){
+      appEl.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
+          <div style="max-width:420px;text-align:center;">
+            <div style="font-size:40px;margin-bottom:16px;">⚠️</div>
+            <h2 style="margin-bottom:10px;">Un problème d'affichage est survenu</h2>
+            <p style="color:#8A8A84;margin-bottom:20px;">Vos données n'ont pas été perdues. Rechargez la page pour continuer.</p>
+            <button onclick="window.location.reload()" style="background:#141414;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-weight:600;cursor:pointer;">Recharger la page</button>
+          </div>
+        </div>
+      `;
+    }
+  }
+}
+function renderInner(){
   renderCookieBanner();
   document.documentElement.classList.toggle('theme-dark', state.theme==='dark');
   if(state.site==='marketing'){
