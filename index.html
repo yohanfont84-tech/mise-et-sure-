@@ -6684,6 +6684,7 @@ async function checkExistingSession(){
   render();
 }
 checkExistingSession();
+showIOSInstallBanner();
 if('serviceWorker' in navigator){
   // Nécessaire pour que le navigateur propose vraiment d'installer le site comme une
   // application (surtout sur Android/Chrome) — échoue silencieusement si le fichier n'est pas
@@ -6723,6 +6724,35 @@ function showInstallBanner(){
   };
   document.getElementById('install-banner-dismiss').onclick = () => {
     localStorage.setItem('mise_et_sure_install_banner_dismissed', '1');
+    banner.remove();
+  };
+}
+// Sur iPhone/iPad, Safari ne propose JAMAIS rien automatiquement, quel que soit le site — la
+// seule façon d'installer est manuelle (bouton Partager, puis "Sur l'écran d'accueil"). Comme
+// rien ne se déclenche tout seul, on affiche nous-mêmes ces instructions bien en évidence dès
+// l'ouverture de la page, plutôt que de les cacher dans les paramètres où seul le patron les
+// verrait — sinon la personne qui reçoit le lien atterrit juste sur le site, sans aucune piste.
+function isIOSDevice(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+function isRunningStandalone(){
+  return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+}
+function showIOSInstallBanner(){
+  if(!isIOSDevice() || isRunningStandalone()) return; // pas concerné, ou déjà installée
+  if(localStorage.getItem('mise_et_sure_ios_banner_dismissed') || document.getElementById('ios-install-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'ios-install-banner';
+  banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:200;background:#141414;color:#fff;padding:14px 16px;font-size:13.5px;';
+  banner.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:12px;max-width:520px;margin:0 auto;">
+      <div style="flex:1;">Pour installer cette application : appuyez sur <strong>⎋</strong> (Partager) en bas de Safari, puis choisissez « Sur l'écran d'accueil »</div>
+      <button id="ios-banner-dismiss" style="background:none;border:none;color:#B8B8B0;cursor:pointer;font-size:18px;line-height:1;padding:0 4px;flex-shrink:0;">×</button>
+    </div>
+  `;
+  document.body.appendChild(banner);
+  document.getElementById('ios-banner-dismiss').onclick = () => {
+    localStorage.setItem('mise_et_sure_ios_banner_dismissed', '1');
     banner.remove();
   };
 }
