@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <title>Mise&Sûre — plateforme de gestion pour restaurants</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#141414">
+<link rel="apple-touch-icon" href="icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Mise & Sûre">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -1567,6 +1573,7 @@ function openMyProfileModal(){
       ${photo ? `<button class="btn btn-ghost btn-sm" onclick="removeMyPhoto()">Retirer la photo</button>` : ''}
     </div>
     <div class="field"><label>${photo?'Changer de photo':'Ajouter une photo'}</label><input type="file" accept="image/*" onchange="handleMyPhotoUpload(this)"></div>
+    <button class="btn btn-ghost btn-block" onclick="openInstallAppModal()">${iconSm(I.mobile)} Installer l'application sur mon téléphone</button>
   `);
 }
 function handleMyPhotoUpload(input){
@@ -1594,6 +1601,66 @@ function removeMyPhoto(){
   toast('Photo retirée');
   render();
   openMyProfileModal();
+}
+function installLinkFor(employeeId){
+  const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  // Le patron se connecte par email/mot de passe : le lien de base suffit. Un employé a un lien
+  // personnel (avec son établissement déjà repéré) s'il en a un ; sinon, à défaut, le même lien
+  // de base, il se connectera alors avec son identifiant comme d'habitude.
+  if(member && member.inviteToken) return inviteLinkFor(member.inviteToken);
+  return window.location.origin + window.location.pathname;
+}
+function myInstallLink(){
+  return installLinkFor(state.loggedInEmployeeId);
+}
+function openInstallAppModalForSelection(){
+  const select = document.getElementById('install-target-select');
+  openInstallAppModal(select.value || null);
+}
+function openInstallAppModal(employeeId){
+  const link = employeeId !== undefined ? installLinkFor(employeeId) : myInstallLink();
+  const targetMember = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  const forSelf = employeeId === undefined;
+  const title = forSelf ? "Installer l'application sur mon téléphone" : `Lien d'installation pour ${escapeHtml(targetMember ? targetMember.name : 'le patron')}`;
+  const labelLink = forSelf ? 'Votre lien personnel' : 'Son lien personnel';
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>${title}</h3>
+    <div class="modal-sub">Une fois installée, elle s'ouvre comme une vraie application — en plein écran, avec une icône sur l'écran d'accueil, sans barre de navigateur.</div>
+    <div class="field">
+      <label>${labelLink}</label>
+      <div class="flex gap8">
+        <input id="install-link-input" value="${escapeHtml(link)}" readonly style="flex:1;" onclick="this.select()">
+        <button class="btn btn-ghost btn-sm" onclick="copyInstallLink()">Copier</button>
+      </div>
+      <div class="small muted" style="margin-top:6px;">Ouvrez ce lien directement sur le téléphone à équiper — envoyez-le vous-même par SMS ou message si besoin.</div>
+    </div>
+    <div class="field">
+      <label>📱 Sur iPhone (Safari)</label>
+      <ol class="small" style="padding-left:18px;line-height:1.8;">
+        <li>Ouvrez le lien ci-dessus dans Safari</li>
+        <li>Appuyez sur l'icône Partager (le carré avec une flèche) en bas de l'écran</li>
+        <li>Choisissez « Sur l'écran d'accueil »</li>
+      </ol>
+    </div>
+    <div class="field">
+      <label>🤖 Sur Android (Chrome)</label>
+      <ol class="small" style="padding-left:18px;line-height:1.8;">
+        <li>Ouvrez le lien ci-dessus dans Chrome</li>
+        <li>Un bandeau « Ajouter à l'écran d'accueil » apparaît généralement tout seul — sinon, menu ⋮ en haut à droite, puis « Installer l'application »</li>
+      </ol>
+    </div>
+  `);
+}
+function copyInstallLink(){
+  const input = document.getElementById('install-link-input');
+  input.select();
+  navigator.clipboard?.writeText(input.value).then(()=>{
+    toast('Lien copié — envoyez-le au téléphone concerné');
+  }).catch(()=>{
+    document.execCommand('copy');
+    toast('Lien copié');
+  });
 }
 function logout(){
   if(AUTO_REFRESH_INTERVAL){ clearInterval(AUTO_REFRESH_INTERVAL); AUTO_REFRESH_INTERVAL = null; }
@@ -3332,8 +3399,15 @@ function viewParametres(){
       </div>
       <div class="card">
         <div class="card-title">${iconSm(I.mobile)} Application mobile</div>
-        <p class="small muted">L'équipe cuisine et salle peut signaler une commande directement depuis l'application mobile, même en plein service.</p>
-        <button class="btn btn-ghost btn-block" onclick="toast('Lien de téléchargement envoyé par email')">Envoyer le lien de l'application</button>
+        <p class="small muted">L'équipe cuisine et salle peut signaler une commande directement depuis l'application mobile, même en plein service — installée sur un téléphone ou une tablette, elle s'ouvre comme une vraie application.</p>
+        <div class="field">
+          <label>Obtenir le lien d'installation pour</label>
+          <select id="install-target-select">
+            <option value="">Moi-même (Patron)</option>
+            ${TEAM.map(t=>`<option value="${t.id}">${escapeHtml(t.name)} — ${escapeHtml(t.role)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-ghost btn-block" onclick="openInstallAppModalForSelection()">Voir le lien et les instructions</button>
       </div>
     </div>
   `;
@@ -6595,6 +6669,14 @@ async function checkExistingSession(){
   render();
 }
 checkExistingSession();
+if('serviceWorker' in navigator){
+  // Nécessaire pour que le navigateur propose vraiment d'installer le site comme une
+  // application (surtout sur Android/Chrome) — échoue silencieusement si le fichier n'est pas
+  // encore présent à côté d'index.html, sans jamais bloquer le reste du site.
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
