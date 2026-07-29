@@ -273,6 +273,9 @@ tr.tr-hover:hover{background:var(--paper);}
 .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--black);outline-offset:1px;border-color:var(--black);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .zone-checklist{max-height:160px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.price-history-list{max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;}
+.price-history-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px;}
+.price-history-row:last-child{border-bottom:none;}
 .faq-item{border-bottom:1px solid var(--border);}
 .faq-item:last-child{border-bottom:none;}
 .faq-question{width:100%;text-align:left;background:none;border:none;padding:14px 4px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;font-size:14.5px;font-weight:600;color:var(--text);font-family:inherit;}
@@ -754,6 +757,16 @@ function deptTag(d){ return d==='cuisine'?'tag-neutral':d==='salle'?'tag-subtle'
 
 function supplierName(id){ return escapeHtml((SUPPLIERS.find(s=>s.id===id)||{}).name || '—'); }
 function supplierSpend(id){ return ORDERS.filter(o=>o.supplier===id && o.status!=='refusee').reduce((a,o)=>a+o.amount,0); }
+// Calcule une vraie note de fiabilité à partir de l'historique réel des écarts détectés à la
+// réception — plus une valeur figée ou modifiable à la main comme c'était le cas avant.
+// Retourne null si pas encore assez de commandes reçues pour que ce soit significatif.
+function calculateSupplierReliability(id){
+  const received = ORDERS.filter(o=>o.supplier===id && o.status==='livree');
+  if(received.length === 0) return null;
+  const withDiscrepancy = received.filter(o=>o.hasDiscrepancy).length;
+  const score = Math.round(((received.length - withDiscrepancy) / received.length) * 100);
+  return { score, totalOrders: received.length, discrepancyCount: withDiscrepancy };
+}
 function supplierLastOrderDate(id){
   const withDates = ORDERS.filter(o=>o.supplier===id && o.createdAt);
   if(withDates.length===0) return '—';
@@ -2674,11 +2687,13 @@ function viewFournisseurs(){
       <button class="btn btn-primary" onclick="openNewSupplierModal()">${iconSm(I.plus)} Ajouter un fournisseur</button>
     </div>
     <div class="grid grid-3">
-      ${SUPPLIERS.length ? SUPPLIERS.map(s=>`
+      ${SUPPLIERS.length ? SUPPLIERS.map(s=>{
+        const reliability = calculateSupplierReliability(s.id);
+        return `
         <div class="card">
           <div class="flex between center">
             <div style="font-weight:700;font-size:15px;">${escapeHtml(s.name)}</div>
-            <span class="tag ${s.reliability>=95?'tag-subtle':s.reliability>=90?'tag-neutral':'tag-red'}">${s.reliability}% fiabilité</span>
+            ${reliability ? `<span class="tag ${reliability.score>=95?'tag-subtle':reliability.score>=90?'tag-neutral':'tag-red'}" title="${reliability.discrepancyCount} écart(s) sur ${reliability.totalOrders} commande(s) reçue(s)">${reliability.score}% fiabilité</span>` : `<span class="tag tag-neutral">Pas encore d'historique</span>`}
           </div>
           <div class="muted small" style="margin:4px 0 12px 0;">${escapeHtml(s.cat)}</div>
           <div class="flex between small muted" style="margin-bottom:5px;"><span>Délai moyen</span><span class="mono" style="color:var(--text);">${escapeHtml(s.delay)}</span></div>
@@ -2689,7 +2704,7 @@ function viewFournisseurs(){
             <button class="btn btn-primary btn-sm" style="flex:1;" onclick="openNewOrderModal('${s.id}')">Commander</button>
           </div>
         </div>
-      `).join('') : `<div style="grid-column:1/-1;">${emptyState('Aucun fournisseur ajouté pour le moment — créez votre premier fournisseur')}</div>`}
+      `;}).join('') : `<div style="grid-column:1/-1;">${emptyState('Aucun fournisseur ajouté pour le moment — créez votre premier fournisseur')}</div>`}
     </div>
   `;
 }
@@ -4803,8 +4818,48 @@ function editProduct(id){
       <div class="zone-checklist" id="ep-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="ep-zone-chk" ${zoneIds.includes(z.id)?'checked':''}> ${escapeHtml(z.name)}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
       <div class="flex gap8" style="margin-top:8px;"><input id="ep-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('ep')">Ajouter</button></div>
     </div>
+    ${financialsHidden() ? '' : `
+    <div class="field">
+      <label>Historique de prix</label>
+      <div id="ep-price-history"><div class="small muted">Chargement…</div></div>
+    </div>
+    `}
     <button class="btn btn-primary btn-block" onclick="saveProduct('${id}')">Enregistrer</button>
   `);
+  if(!financialsHidden()) loadPriceHistoryForProduct(id);
+}
+async function loadPriceHistoryForProduct(id){
+  const p = PRODUCTS.find(x=>x.id===id);
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const container = document.getElementById('ep-price-history');
+  if(!p || !resto || !p.remoteId || !container) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}/price-history`);
+    const history = data.priceHistory || [];
+    if(!container) return; // la fenêtre a pu être refermée entre-temps
+    if(history.length === 0){
+      container.innerHTML = `<div class="small muted">Aucun historique pour l'instant — il se remplit à chaque réception de commande.</div>`;
+      return;
+    }
+    container.innerHTML = `
+      <div class="price-history-list">
+        ${history.map((h, idx) => {
+          const price = parseFloat(h.price);
+          const prev = history[idx+1] ? parseFloat(history[idx+1].price) : null;
+          let trend = '';
+          if(prev !== null){
+            if(price > prev) trend = `<span style="color:var(--urgent);font-weight:600;">▲ +${(price-prev).toFixed(2)}€</span>`;
+            else if(price < prev) trend = `<span style="color:#2F9E44;font-weight:600;">▼ ${(price-prev).toFixed(2)}€</span>`;
+            else trend = `<span class="small muted">stable</span>`;
+          }
+          const date = new Date(h.recorded_at).toLocaleDateString('fr-FR', { day:'numeric', month:'short', year:'numeric' });
+          return `<div class="price-history-row"><span class="small muted">${date}</span><span class="mono">${price.toFixed(2)} €</span>${trend}</div>`;
+        }).join('')}
+      </div>
+    `;
+  } catch(err){
+    if(container) container.innerHTML = `<div class="small muted">Historique indisponible pour le moment.</div>`;
+  }
 }
 async function saveProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
@@ -5192,7 +5247,13 @@ function openSupplierDetail(id){
     <div class="field-row"><div class="field"><label>Nom</label><input id="sf-name" value="${escapeHtml(s.name)}"></div><div class="field"><label>Catégorie</label><input id="sf-cat" value="${escapeHtml(s.cat)}"></div></div>
     <div class="field"><label>Adresse</label><input id="sf-address" value="${escapeHtml(s.address||'')}" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
     <div class="field-row"><div class="field"><label>Email</label><input id="sf-email" type="email" value="${escapeHtml(s.email||'')}" placeholder="contact@fournisseur.fr"></div><div class="field"><label>Délai moyen</label><input id="sf-delay" value="${escapeHtml(s.delay)}"></div></div>
-    <div class="field"><label>Fiabilité (%)</label><input id="sf-reliability" type="number" value="${s.reliability}"></div>
+    <div class="field">
+      <label>Fiabilité</label>
+      ${(() => { const r = calculateSupplierReliability(id); return r
+        ? `<div class="flex center gap8"><span class="tag ${r.score>=95?'tag-subtle':r.score>=90?'tag-neutral':'tag-red'}" style="font-size:14px;padding:6px 14px;">${r.score}%</span><span class="small muted">${r.discrepancyCount} écart(s) détecté(s) sur ${r.totalOrders} commande(s) reçue(s)</span></div>`
+        : `<div class="small muted">Pas encore assez de commandes reçues pour calculer une fiabilité.</div>`; })()}
+      <div class="small muted" style="margin-top:4px;">Calculée automatiquement à partir des écarts détectés à la réception — ne se modifie pas à la main.</div>
+    </div>
     <div class="divider"></div>
     <div class="card-title">Contact commercial (facultatif)</div>
     <div class="field-row"><div class="field"><label>Prénom</label><input id="sf-contact-firstname" value="${escapeHtml(s.contactFirstName||'')}" placeholder="Jean"></div><div class="field"><label>Nom</label><input id="sf-contact-lastname" value="${escapeHtml(s.contactLastName||'')}" placeholder="Martin"></div></div>
@@ -5215,7 +5276,6 @@ async function saveSupplier(id){
   const address = document.getElementById('sf-address').value.trim();
   const email = document.getElementById('sf-email').value.trim();
   const delay = document.getElementById('sf-delay').value.trim() || s.delay;
-  const reliability = parseFloat(document.getElementById('sf-reliability').value) || s.reliability;
   const contactFirstName = document.getElementById('sf-contact-firstname').value.trim();
   const contactLastName = document.getElementById('sf-contact-lastname').value.trim();
   const contactEmail = document.getElementById('sf-contact-email').value.trim();
@@ -5226,7 +5286,7 @@ async function saveSupplier(id){
       method:'PATCH', body:{ name, category:cat, delay, email, address, contactFirstName, contactLastName, contactEmail, contactPhone },
     });
     s.name = data.supplier.name; s.cat = data.supplier.category; s.address = data.supplier.address;
-    s.email = data.supplier.email; s.delay = data.supplier.delay; s.reliability = reliability;
+    s.email = data.supplier.email; s.delay = data.supplier.delay;
     s.contactFirstName = data.supplier.contact_first_name; s.contactLastName = data.supplier.contact_last_name;
     s.contactEmail = data.supplier.contact_email; s.contactPhone = data.supplier.contact_phone;
     s.latitude = data.supplier.latitude; s.longitude = data.supplier.longitude; s.isApproximate = data.supplier.is_approximate;
@@ -5573,11 +5633,12 @@ function drawCharts(){
   }
   const suppCanvas = document.getElementById('chartSuppliers');
   if(suppCanvas){
+    const suppliersWithReliability = SUPPLIERS.map(s=>({ s, r: calculateSupplierReliability(s.id) })).filter(x=>x.r!==null);
     charts.supp = new Chart(suppCanvas, {
       type:'bar',
       data:{
-        labels: SUPPLIERS.map(s=>s.name.split(' ')[0]),
-        datasets:[{label:'Fiabilité %', data:SUPPLIERS.map(s=>s.reliability), backgroundColor: SUPPLIERS.map(s=>s.reliability>=95?'#141414':s.reliability>=90?'#8A8A84':'#A93A2E'), borderRadius:5, maxBarThickness:26}]
+        labels: suppliersWithReliability.map(x=>x.s.name.split(' ')[0]),
+        datasets:[{label:'Fiabilité %', data:suppliersWithReliability.map(x=>x.r.score), backgroundColor: suppliersWithReliability.map(x=>x.r.score>=95?'#141414':x.r.score>=90?'#8A8A84':'#A93A2E'), borderRadius:5, maxBarThickness:26}]
       },
       options:{
         indexAxis:'y', responsive:true, maintainAspectRatio:false,
