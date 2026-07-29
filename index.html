@@ -2095,7 +2095,10 @@ function viewStocks(){
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Produits</h2><div class="sub">${PRODUCTS.length} produit${PRODUCTS.length>1?'s':''} au catalogue · le site sert à commander, pas à suivre un stock en temps réel</div></div>
-      <button class="btn btn-primary" onclick="openNewProductModal()">${iconSm(I.plus)} Nouveau produit</button>
+      <div class="flex gap8">
+        ${(!financialsHidden() && (state.role==='patron'||state.role==='manager')) ? `<button class="btn btn-ghost" onclick="setView('comparateur')">${iconSm(I.chart)} Comparer les prix</button>` : ''}
+        <button class="btn btn-primary" onclick="openNewProductModal()">${iconSm(I.plus)} Nouveau produit</button>
+      </div>
     </div>
     <div class="pill-nav">
       <button class="${filter==='tous'?'active':''}" onclick="setStockFilter('tous')">Tous</button>
@@ -2209,6 +2212,10 @@ function viewCommandes(role){
       <div class="flex gap8">
         <button class="btn btn-ghost btn-sm" onclick="openHistoryDocumentModal('month')">${iconXs(I.download)} Ce mois</button>
         <button class="btn btn-ghost btn-sm" onclick="openHistoryDocumentModal('year')">${iconXs(I.download)} Cette année</button>
+        ${financialsHidden() ? '' : `
+          <button class="btn btn-ghost btn-sm" onclick="downloadOrdersCSV('month')">${iconXs(I.download)} CSV — ce mois</button>
+          <button class="btn btn-ghost btn-sm" onclick="downloadOrdersCSV('year')">${iconXs(I.download)} CSV — cette année</button>
+        `}
       </div>
     </div>
     <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:14px;">
@@ -2679,6 +2686,67 @@ async function geocodeSuppliersNow(){
     state.geocodingSuppliers = false;
     render();
   }
+}
+// Regroupe les produits par nom (normalisé) pour repérer ceux disponibles chez plusieurs
+// fournisseurs à la fois — seule façon fiable de savoir qu'il s'agit "du même produit", sans
+// deviner. Un produit dont le nom diffère un peu d'un fournisseur à l'autre ne sera pas
+// regroupé : c'est une limite assumée plutôt qu'un risque de comparer des choses différentes.
+function groupProductsForComparison(){
+  const groups = {};
+  PRODUCTS.forEach(p=>{
+    const key = p.name.toLowerCase().trim();
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(p);
+  });
+  return Object.values(groups).filter(g => new Set(g.map(p=>p.supplier)).size >= 2);
+}
+function viewComparateurPrix(){
+  const groups = groupProductsForComparison();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Comparateur de prix</h2><div class="sub">Produits disponibles chez plusieurs de vos fournisseurs — le moins cher est mis en avant</div></div>
+      <button class="btn btn-ghost" onclick="setView('stocks')">← Retour aux produits</button>
+    </div>
+    ${groups.length === 0 ? emptyState("Aucun produit avec le même nom chez plusieurs fournisseurs pour l'instant — le comparateur se remplit au fur et à mesure que votre catalogue grandit.") : groups.map(g=>{
+      const sorted = [...g].sort((a,b)=>a.price-b.price);
+      const units = new Set(g.map(p=>p.unit));
+      const unitMismatch = units.size > 1;
+      return `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="flex between center" style="margin-bottom:10px;">
+          <div class="card-title" style="margin-bottom:0;">${escapeHtml(sorted[0].name)}</div>
+          ${unitMismatch ? `<span class="tag tag-neutral" title="Les unités diffèrent d'un fournisseur à l'autre — comparez avec prudence">⚠️ Unités différentes</span>` : ''}
+        </div>
+        ${sorted.map((p,idx)=>{
+          const supplier = SUPPLIERS.find(s=>s.id===p.supplier);
+          return `
+          <div class="flex between center" style="padding:8px 0;${idx<sorted.length-1?'border-bottom:1px solid var(--border);':''}">
+            <div class="flex center gap8">
+              ${idx===0 ? `<span class="tag tag-subtle">Moins cher</span>` : ''}
+              <span>${escapeHtml(supplier ? supplier.name : 'Fournisseur inconnu')}</span>
+            </div>
+            <span class="mono" style="font-weight:${idx===0?'700':'400'};">${fmtEUR(p.price)} / ${escapeHtml(p.unit)}</span>
+          </div>
+        `;}).join('')}
+      </div>
+    `;}).join('')}
+    ${NEARBY_SUPPLIERS.length > 0 ? `
+      <div class="section-head"><div><h2>Fournisseurs potentiels à proximité</h2><div class="sub">Repérés sur votre carte des fournisseurs — sans données de prix disponibles (OpenStreetMap ne les fournit pas), mais peut-être à contacter pour comparer vous-même</div></div></div>
+      <div class="grid grid-3">
+        ${NEARBY_SUPPLIERS.slice(0,9).map(s=>`
+          <div class="card">
+            <div class="flex between center">
+              <div style="font-weight:700;font-size:14px;">${escapeHtml(s.name)}</div>
+              ${s.isProducer ? `<span class="tag tag-subtle">Producteur</span>` : ''}
+            </div>
+            <div class="small muted" style="margin:4px 0 10px 0;">${escapeHtml(s.category)}</div>
+            ${s.link ? `<a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer" class="small">${s.linkIsWebsite?'🔗 Voir le site':'🔎 Chercher sur Internet'}</a>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    ` : `<div class="small muted" style="margin-top:10px;">Astuce : visitez la Carte des fournisseurs pour repérer d'autres fournisseurs potentiels autour de vous, ils apparaîtront ici ensuite.</div>`}
+  `;
 }
 function viewFournisseurs(){
   return `
@@ -5191,6 +5259,43 @@ function openHistoryDocumentModal(period){
 function downloadHistoryDocument(period){
   downloadHtmlFile('historique-achats-'+period+'.html', buildHistoryDocumentHTML(period));
 }
+function csvEscape(value){
+  const str = String(value==null ? '' : value);
+  // Un champ contenant une virgule, un guillemet ou un retour à la ligne doit être entouré de
+  // guillemets, et les guillemets internes doublés — sinon le fichier s'ouvre mal dans Excel.
+  if(/[",\n]/.test(str)) return '"' + str.replace(/"/g,'""') + '"';
+  return str;
+}
+function downloadOrdersCSV(period){
+  const orders = ordersForPeriod(period).filter(o=>o.status!=='refusee');
+  const rows = [
+    ['Référence','Fournisseur','Date','Statut','Écart détecté','Montant (€)','Produits commandés'],
+    ...orders.map(o=>{
+      const supplier = SUPPLIERS.find(s=>s.id===o.supplier);
+      const products = (o.lineItems||[]).map(li=>`${li.name} x${li.qty}`).join('; ') || o.items || '';
+      return [
+        o.id,
+        supplier ? supplier.name : '—',
+        o.createdAt ? new Date(o.createdAt).toLocaleDateString('fr-FR') : '',
+        orderStatusLabel(o.status),
+        o.hasDiscrepancy ? 'Oui' : 'Non',
+        o.amount.toFixed(2),
+        products,
+      ];
+    }),
+  ];
+  // Le point-virgule est utilisé comme séparateur : c'est ce qu'Excel en français attend par
+  // défaut pour ouvrir correctement les colonnes sans manipulation supplémentaire.
+  const csvContent = rows.map(row => row.map(csvEscape).join(';')).join('\r\n');
+  const bom = '\uFEFF'; // pour que les accents s'affichent bien dans Excel
+  const blob = new Blob([bom + csvContent], { type:'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'commandes-'+period+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Export CSV téléchargé');
+}
 
 /* ============================================================
    FOURNISSEURS — création / fiche + édition
@@ -5476,6 +5581,7 @@ function renderContent(){
   if(view==='notifications') return viewNotifications(role);
   if(view==='aide') return viewAide();
   if(view==='carte-fournisseurs') return viewSupplierMap();
+  if(view==='comparateur' && (role==='patron'||role==='manager')) return financialsHidden() ? viewPatronDashboard() : viewComparateurPrix();
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
     if(view==='demandes') return soloModeEnabled() ? viewPatronDashboard() : viewPatronDemandes();
