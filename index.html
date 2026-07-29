@@ -1618,39 +1618,54 @@ function openInstallAppModalForSelection(){
   openInstallAppModal(select.value || null);
 }
 function openInstallAppModal(employeeId){
-  const link = employeeId !== undefined ? installLinkFor(employeeId) : myInstallLink();
+  const forSelf = !employeeId;
+  const link = forSelf ? myInstallLink() : installLinkFor(employeeId);
   const targetMember = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
-  const forSelf = employeeId === undefined;
-  const title = forSelf ? "Installer l'application sur mon téléphone" : `Lien d'installation pour ${escapeHtml(targetMember ? targetMember.name : 'le patron')}`;
-  const labelLink = forSelf ? 'Votre lien personnel' : 'Son lien personnel';
+  const personName = forSelf ? null : (targetMember ? targetMember.name : 'cette personne');
+  const title = forSelf ? "Installer l'application sur mon téléphone" : `Envoyer le lien à ${escapeHtml(personName)}`;
+  const smsBody = forSelf
+    ? `Voici le lien pour installer l'application : ${link}`
+    : `Bonjour ${personName}, voici votre lien personnel pour installer l'application ${RESTOS.find(r=>r.id===state.resto)?.name||''} sur votre téléphone : ${link}`;
+  // Le bouton "Installer maintenant" ne peut fonctionner que sur l'appareil qui affiche CETTE
+  // page — donc seulement pour son propre lien (forSelf), et seulement si CE téléphone/navigateur
+  // le permet (Android/Chrome surtout ; jamais sur iPhone, Apple ne l'autorise pas).
+  const canInstallDirectly = forSelf && DEFERRED_INSTALL_PROMPT;
   openModal(`
     <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
     <h3>${title}</h3>
-    <div class="modal-sub">Une fois installée, elle s'ouvre comme une vraie application — en plein écran, avec une icône sur l'écran d'accueil, sans barre de navigateur.</div>
+    <div class="modal-sub">${forSelf ? "Une fois installée, elle s'ouvre comme une vraie application — en plein écran, avec une icône sur l'écran d'accueil." : `Envoyez-lui ce lien : en l'ouvrant sur SON téléphone, ${personName} pourra installer l'application de la même façon.`}</div>
+    ${canInstallDirectly ? `<button class="btn btn-primary btn-block" onclick="triggerDirectInstall()" style="margin-bottom:14px;">📲 Installer maintenant sur ce téléphone</button>` : ''}
     <div class="field">
-      <label>${labelLink}</label>
+      <label>${forSelf ? 'Votre lien personnel' : 'Son lien personnel'}</label>
+      <input id="install-link-input" value="${escapeHtml(link)}" readonly onclick="this.select()" style="margin-bottom:8px;">
       <div class="flex gap8">
-        <input id="install-link-input" value="${escapeHtml(link)}" readonly style="flex:1;" onclick="this.select()">
-        <button class="btn btn-ghost btn-sm" onclick="copyInstallLink()">Copier</button>
+        <a class="btn btn-primary btn-sm" style="flex:1;text-align:center;" href="sms:?body=${encodeURIComponent(smsBody)}">💬 Envoyer par SMS</a>
+        <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="copyInstallLink()">Copier le lien</button>
       </div>
-      <div class="small muted" style="margin-top:6px;">Ouvrez ce lien directement sur le téléphone à équiper — envoyez-le vous-même par SMS ou message si besoin.</div>
     </div>
     <div class="field">
-      <label>📱 Sur iPhone (Safari)</label>
+      <label>📱 Si le lien s'ouvre sur un iPhone</label>
       <ol class="small" style="padding-left:18px;line-height:1.8;">
-        <li>Ouvrez le lien ci-dessus dans Safari</li>
-        <li>Appuyez sur l'icône Partager (le carré avec une flèche) en bas de l'écran</li>
-        <li>Choisissez « Sur l'écran d'accueil »</li>
+        <li>Ouvrir le lien dans Safari (pas un autre navigateur)</li>
+        <li>Appuyer sur l'icône Partager ⬆️ en bas de l'écran</li>
+        <li>Choisir « Sur l'écran d'accueil »</li>
       </ol>
     </div>
     <div class="field">
-      <label>🤖 Sur Android (Chrome)</label>
+      <label>🤖 Si le lien s'ouvre sur un Android</label>
       <ol class="small" style="padding-left:18px;line-height:1.8;">
-        <li>Ouvrez le lien ci-dessus dans Chrome</li>
-        <li>Un bandeau « Ajouter à l'écran d'accueil » apparaît généralement tout seul — sinon, menu ⋮ en haut à droite, puis « Installer l'application »</li>
+        <li>Ouvrir le lien dans Chrome</li>
+        <li>Un bandeau « Installer » apparaît en bas — sinon, menu ⋮ puis « Installer l'application »</li>
       </ol>
     </div>
   `);
+}
+async function triggerDirectInstall(){
+  if(!DEFERRED_INSTALL_PROMPT) return;
+  DEFERRED_INSTALL_PROMPT.prompt();
+  await DEFERRED_INSTALL_PROMPT.userChoice;
+  DEFERRED_INSTALL_PROMPT = null;
+  closeModal();
 }
 function copyInstallLink(){
   const input = document.getElementById('install-link-input');
@@ -6676,6 +6691,40 @@ if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('service-worker.js').catch(() => {});
   });
+}
+// Sur Android/Chrome (et navigateurs basés sur Chromium), le téléphone propose de déclencher
+// l'installation directement par code — on capture cette occasion dès qu'elle se présente, pour
+// pouvoir l'utiliser plus tard avec un simple bouton "Installer maintenant", sans passer par un
+// menu. Sur iPhone/Safari, cet événement n'existe pas : ce n'est pas une erreur, juste une
+// limite volontaire d'Apple — on affichera alors les instructions manuelles à la place.
+let DEFERRED_INSTALL_PROMPT = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  DEFERRED_INSTALL_PROMPT = e;
+  showInstallBanner();
+});
+function showInstallBanner(){
+  if(!DEFERRED_INSTALL_PROMPT || localStorage.getItem('mise_et_sure_install_banner_dismissed') || document.getElementById('install-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'install-banner';
+  banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:200;background:#141414;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;font-size:13.5px;';
+  banner.innerHTML = `
+    <span>📱 Installez cette application sur votre téléphone, en un tap</span>
+    <button id="install-banner-confirm" style="background:#fff;color:#141414;border:none;padding:7px 16px;border-radius:6px;font-weight:600;cursor:pointer;">Installer</button>
+    <button id="install-banner-dismiss" style="background:none;border:none;color:#B8B8B0;cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">×</button>
+  `;
+  document.body.appendChild(banner);
+  document.getElementById('install-banner-confirm').onclick = async () => {
+    if(!DEFERRED_INSTALL_PROMPT) return;
+    DEFERRED_INSTALL_PROMPT.prompt();
+    await DEFERRED_INSTALL_PROMPT.userChoice;
+    DEFERRED_INSTALL_PROMPT = null;
+    banner.remove();
+  };
+  document.getElementById('install-banner-dismiss').onclick = () => {
+    localStorage.setItem('mise_et_sure_install_banner_dismissed', '1');
+    banner.remove();
+  };
 }
 </script>
 </body>
