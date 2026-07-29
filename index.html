@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <title>Mise&Sûre — plateforme de gestion pour restaurants</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#141414">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Mise & Sûre">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -643,7 +651,7 @@ function updateFavicon(logoDataUrl){
     link.rel = 'icon';
     document.head.appendChild(link);
   }
-  link.href = logoDataUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%23141414"/><text x="50" y="68" font-size="60" font-family="serif" fill="white" text-anchor="middle">M</text></svg>';
+  link.href = logoDataUrl || 'icon-192.png';
 }
 function accentTextColor(hex){
   // Choisit blanc ou noir comme couleur de texte selon la vraie clarté de la couleur d'accent
@@ -1567,6 +1575,7 @@ function openMyProfileModal(){
       ${photo ? `<button class="btn btn-ghost btn-sm" onclick="removeMyPhoto()">Retirer la photo</button>` : ''}
     </div>
     <div class="field"><label>${photo?'Changer de photo':'Ajouter une photo'}</label><input type="file" accept="image/*" onchange="handleMyPhotoUpload(this)"></div>
+    <button class="btn btn-ghost btn-block" onclick="openInstallAppModal()">${iconSm(I.mobile)} Installer l'application sur mon téléphone</button>
   `);
 }
 function handleMyPhotoUpload(input){
@@ -1594,6 +1603,81 @@ function removeMyPhoto(){
   toast('Photo retirée');
   render();
   openMyProfileModal();
+}
+function installLinkFor(employeeId){
+  const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  // Le patron se connecte par email/mot de passe : le lien de base suffit. Un employé a un lien
+  // personnel (avec son établissement déjà repéré) s'il en a un ; sinon, à défaut, le même lien
+  // de base, il se connectera alors avec son identifiant comme d'habitude.
+  if(member && member.inviteToken) return inviteLinkFor(member.inviteToken);
+  return window.location.origin + window.location.pathname;
+}
+function myInstallLink(){
+  return installLinkFor(state.loggedInEmployeeId);
+}
+function openInstallAppModalForSelection(){
+  const select = document.getElementById('install-target-select');
+  openInstallAppModal(select.value || null);
+}
+function openInstallAppModal(employeeId){
+  const forSelf = !employeeId;
+  const link = forSelf ? myInstallLink() : installLinkFor(employeeId);
+  const targetMember = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  const personName = forSelf ? null : (targetMember ? targetMember.name : 'cette personne');
+  const title = forSelf ? "Installer l'application sur mon téléphone" : `Envoyer le lien à ${escapeHtml(personName)}`;
+  const smsBody = forSelf
+    ? `Voici le lien pour installer l'application : ${link}`
+    : `Bonjour ${personName}, voici votre lien personnel pour installer l'application ${RESTOS.find(r=>r.id===state.resto)?.name||''} sur votre téléphone : ${link}`;
+  // Le bouton "Installer maintenant" ne peut fonctionner que sur l'appareil qui affiche CETTE
+  // page — donc seulement pour son propre lien (forSelf), et seulement si CE téléphone/navigateur
+  // le permet (Android/Chrome surtout ; jamais sur iPhone, Apple ne l'autorise pas).
+  const canInstallDirectly = forSelf && DEFERRED_INSTALL_PROMPT;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()">${iconSm(I.x)}</button>
+    <h3>${title}</h3>
+    <div class="modal-sub">${forSelf ? "Une fois installée, elle s'ouvre comme une vraie application — en plein écran, avec une icône sur l'écran d'accueil." : `Envoyez-lui ce lien : en l'ouvrant sur SON téléphone, ${personName} pourra installer l'application de la même façon.`}</div>
+    ${canInstallDirectly ? `<button class="btn btn-primary btn-block" onclick="triggerDirectInstall()" style="margin-bottom:14px;">📲 Installer maintenant sur ce téléphone</button>` : ''}
+    <div class="field">
+      <label>${forSelf ? 'Votre lien personnel' : 'Son lien personnel'}</label>
+      <input id="install-link-input" value="${escapeHtml(link)}" readonly onclick="this.select()" style="margin-bottom:8px;">
+      <div class="flex gap8">
+        <a class="btn btn-primary btn-sm" style="flex:1;text-align:center;" href="sms:?body=${encodeURIComponent(smsBody)}">💬 Envoyer par SMS</a>
+        <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="copyInstallLink()">Copier le lien</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>📱 Si le lien s'ouvre sur un iPhone</label>
+      <ol class="small" style="padding-left:18px;line-height:1.8;">
+        <li>Ouvrir le lien dans Safari (pas un autre navigateur)</li>
+        <li>Appuyer sur l'icône Partager ⬆️ en bas de l'écran</li>
+        <li>Choisir « Sur l'écran d'accueil »</li>
+      </ol>
+    </div>
+    <div class="field">
+      <label>🤖 Si le lien s'ouvre sur un Android</label>
+      <ol class="small" style="padding-left:18px;line-height:1.8;">
+        <li>Ouvrir le lien dans Chrome</li>
+        <li>Un bandeau « Installer » apparaît en bas — sinon, menu ⋮ puis « Installer l'application »</li>
+      </ol>
+    </div>
+  `);
+}
+async function triggerDirectInstall(){
+  if(!DEFERRED_INSTALL_PROMPT) return;
+  DEFERRED_INSTALL_PROMPT.prompt();
+  await DEFERRED_INSTALL_PROMPT.userChoice;
+  DEFERRED_INSTALL_PROMPT = null;
+  closeModal();
+}
+function copyInstallLink(){
+  const input = document.getElementById('install-link-input');
+  input.select();
+  navigator.clipboard?.writeText(input.value).then(()=>{
+    toast('Lien copié — envoyez-le au téléphone concerné');
+  }).catch(()=>{
+    document.execCommand('copy');
+    toast('Lien copié');
+  });
 }
 function logout(){
   if(AUTO_REFRESH_INTERVAL){ clearInterval(AUTO_REFRESH_INTERVAL); AUTO_REFRESH_INTERVAL = null; }
@@ -3329,6 +3413,18 @@ function viewParametres(){
         </label>
 
         <button class="btn btn-primary" onclick="saveAppearance()">Enregistrer l'apparence</button>
+      </div>
+      <div class="card">
+        <div class="card-title">${iconSm(I.mobile)} Application mobile</div>
+        <p class="small muted">L'équipe cuisine et salle peut signaler une commande directement depuis l'application mobile, même en plein service — installée sur un téléphone ou une tablette, elle s'ouvre comme une vraie application.</p>
+        <div class="field">
+          <label>Obtenir le lien d'installation pour</label>
+          <select id="install-target-select">
+            <option value="">Moi-même (Patron)</option>
+            ${TEAM.map(t=>`<option value="${t.id}">${escapeHtml(t.name)} — ${escapeHtml(t.role)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-ghost btn-block" onclick="openInstallAppModalForSelection()">Voir le lien et les instructions</button>
       </div>
     </div>
   `;
@@ -5797,7 +5893,7 @@ function siteNav(active){
   return `
     <header class="site-nav">
       <button class="site-nav-brand" onclick="goToSite('marketing')">
-        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--black);color:#fff;">M</div>
+        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--black);color:#fff;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
         <span>Mise &amp; Sûre</span>
       </button>
       <nav class="site-nav-links">
@@ -5900,7 +5996,7 @@ function renderLegalPage(page){
     <div class="site-page">
       <div class="site-nav">
         <div class="site-brand" onclick="goToSite('marketing')" style="cursor:pointer;">
-          <div class="logo-mark">M</div>
+          <div class="brand-mark" style="width:30px;height:30px;background:var(--black);flex-shrink:0;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
           <div class="brand-text">Mise<br>&amp; Sûre</div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="goToSite('marketing')">← Retour à l'accueil</button>
@@ -5962,7 +6058,7 @@ function renderAdminPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Panneau administrateur — changez le forfait ou accordez un accès gratuit à n'importe quel compte, sans passer par Stripe.</p>
       </div>
@@ -6008,7 +6104,7 @@ function renderAccountAuthPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>${plan ? `Vous vous abonnez au forfait <b>${escapeHtml(plan.name)}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.` : "Connectez-vous pour accéder à votre espace."}</p>
         <div class="login-feature">${I.check} Sans engagement</div>
@@ -6054,7 +6150,7 @@ function renderVerifyEmailPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Vérifiez votre adresse email pour activer votre compte.</p>
         <div class="login-feature">${I.check} Ça ne prend que quelques secondes</div>
@@ -6084,7 +6180,7 @@ function renderResetPasswordPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Réinitialisez votre mot de passe en toute sécurité.</p>
         <div class="login-feature">${I.check} Code à usage unique</div>
@@ -6124,7 +6220,7 @@ function renderSetupRestaurantPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;">M</div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Bienvenue ! Configurons votre premier établissement.</p>
         <div class="login-feature">${I.check} Ça prend moins d'une minute</div>
@@ -6590,6 +6686,78 @@ async function checkExistingSession(){
   render();
 }
 checkExistingSession();
+showIOSInstallBanner();
+if('serviceWorker' in navigator){
+  // Nécessaire pour que le navigateur propose vraiment d'installer le site comme une
+  // application (surtout sur Android/Chrome) — échoue silencieusement si le fichier n'est pas
+  // encore présent à côté d'index.html, sans jamais bloquer le reste du site.
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+// Sur Android/Chrome (et navigateurs basés sur Chromium), le téléphone propose de déclencher
+// l'installation directement par code — on capture cette occasion dès qu'elle se présente, pour
+// pouvoir l'utiliser plus tard avec un simple bouton "Installer maintenant", sans passer par un
+// menu. Sur iPhone/Safari, cet événement n'existe pas : ce n'est pas une erreur, juste une
+// limite volontaire d'Apple — on affichera alors les instructions manuelles à la place.
+let DEFERRED_INSTALL_PROMPT = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  DEFERRED_INSTALL_PROMPT = e;
+  showInstallBanner();
+});
+function showInstallBanner(){
+  if(!DEFERRED_INSTALL_PROMPT || localStorage.getItem('mise_et_sure_install_banner_dismissed') || document.getElementById('install-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'install-banner';
+  banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:200;background:#141414;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;font-size:13.5px;';
+  banner.innerHTML = `
+    <span>📱 Installez cette application sur votre téléphone, en un tap</span>
+    <button id="install-banner-confirm" style="background:#fff;color:#141414;border:none;padding:7px 16px;border-radius:6px;font-weight:600;cursor:pointer;">Installer</button>
+    <button id="install-banner-dismiss" style="background:none;border:none;color:#B8B8B0;cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">×</button>
+  `;
+  document.body.appendChild(banner);
+  document.getElementById('install-banner-confirm').onclick = async () => {
+    if(!DEFERRED_INSTALL_PROMPT) return;
+    DEFERRED_INSTALL_PROMPT.prompt();
+    await DEFERRED_INSTALL_PROMPT.userChoice;
+    DEFERRED_INSTALL_PROMPT = null;
+    banner.remove();
+  };
+  document.getElementById('install-banner-dismiss').onclick = () => {
+    localStorage.setItem('mise_et_sure_install_banner_dismissed', '1');
+    banner.remove();
+  };
+}
+// Sur iPhone/iPad, Safari ne propose JAMAIS rien automatiquement, quel que soit le site — la
+// seule façon d'installer est manuelle (bouton Partager, puis "Sur l'écran d'accueil"). Comme
+// rien ne se déclenche tout seul, on affiche nous-mêmes ces instructions bien en évidence dès
+// l'ouverture de la page, plutôt que de les cacher dans les paramètres où seul le patron les
+// verrait — sinon la personne qui reçoit le lien atterrit juste sur le site, sans aucune piste.
+function isIOSDevice(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+function isRunningStandalone(){
+  return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+}
+function showIOSInstallBanner(){
+  if(!isIOSDevice() || isRunningStandalone()) return; // pas concerné, ou déjà installée
+  if(localStorage.getItem('mise_et_sure_ios_banner_dismissed') || document.getElementById('ios-install-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'ios-install-banner';
+  banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:200;background:#141414;color:#fff;padding:14px 16px;font-size:13.5px;';
+  banner.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:12px;max-width:520px;margin:0 auto;">
+      <div style="flex:1;">Pour installer cette application : appuyez sur <strong>⎋</strong> (Partager) en bas de Safari, puis choisissez « Sur l'écran d'accueil »</div>
+      <button id="ios-banner-dismiss" style="background:none;border:none;color:#B8B8B0;cursor:pointer;font-size:18px;line-height:1;padding:0 4px;flex-shrink:0;">×</button>
+    </div>
+  `;
+  document.body.appendChild(banner);
+  document.getElementById('ios-banner-dismiss').onclick = () => {
+    localStorage.setItem('mise_et_sure_ios_banner_dismissed', '1');
+    banner.remove();
+  };
+}
 </script>
 </body>
 </html>
