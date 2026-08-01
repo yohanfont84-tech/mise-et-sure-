@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://yohanfont84-tech.github.io/mise-et-sure-/sitemap.xml
