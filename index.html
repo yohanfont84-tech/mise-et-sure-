@@ -6936,8 +6936,11 @@ function initRestaurantScrollScene3D(canvas){
     });
     scene.rotation.y = Math.min(progress, 1) * 0.22;
     callouts.forEach(el=>{
-      const [rs, re] = (el.dataset.range||'0,1').split(',').map(Number);
-      el.classList.toggle('visible', progress >= rs && progress <= re);
+      // Chaque légende apparaît à son tour et RESTE affichée ensuite — elle ne doit plus jamais
+      // disparaître une fois montrée, contrairement à avant où elle cédait la place à la
+      // suivante. On ne regarde donc que le début de sa plage ("rs"), plus sa fin ("re").
+      const [rs] = (el.dataset.range||'0,1').split(',').map(Number);
+      el.classList.toggle('visible', progress >= rs);
     });
   }
 
