@@ -158,6 +158,13 @@ a{text-decoration:none;color:inherit;}
   .topbar{padding:0 16px;height:58px;}
   .content{padding:16px 16px 50px 16px;}
   .page-title{font-size:16.5px;}
+  /* Un titre de page long ("Multi-établissements", "Notifications"...) ne doit jamais pousser
+     les boutons d'action (actualiser, notifications, thème, déconnexion) hors de l'écran — on
+     le tronque avec des points de suspension plutôt que de déborder. topbar-left a besoin de
+     min-width:0 pour que cette troncature fonctionne réellement dans un conteneur flex (sinon
+     un enfant flex refuse par défaut de rétrécir sous sa taille de contenu). */
+  .topbar-left{min-width:0;flex:1;}
+  .page-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 }
 
 .main{flex:1;min-width:0;display:flex;flex-direction:column;}
@@ -214,7 +221,7 @@ a{text-decoration:none;color:inherit;}
   overflow-x:auto;-webkit-overflow-scrolling:touch;min-width:0;max-width:100%;
 }
 .card-title{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
-.section-head{display:flex;align-items:center;justify-content:space-between;margin:32px 0 14px 0;}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin:32px 0 14px 0;flex-wrap:wrap;gap:10px;}
 .section-head:first-child{margin-top:0;}
 .section-head h2{font-size:18px;margin:0;font-weight:600;}
 .section-head .sub{font-size:13px;color:var(--muted);margin-top:2px;}
@@ -258,6 +265,10 @@ th{
 td{padding:11px 8px;border-bottom:1px solid var(--border);vertical-align:middle;word-break:break-word;overflow-wrap:anywhere;}
 tr:last-child td{border-bottom:none;}
 tr.tr-hover:hover{background:var(--paper);}
+/* Lignes de groupe réductibles (catégories dans le tableau produits, façon Excel) */
+tr.group-row:hover td{background:var(--gray-100);}
+.group-chevron svg{transition:transform .15s ease;transform:rotate(-90deg);}
+.group-chevron.open svg{transform:rotate(0deg);}
 /* Tableaux : on privilégie le retour à la ligne dans les cellules plutôt que le défilement
    horizontal, pour que le tableau tienne le plus possible dans la largeur de l'écran. Les
    badges/boutons gardent leur propre white-space:nowrap (défini plus bas) pour ne pas se
@@ -267,6 +278,10 @@ tr.tr-hover:hover{background:var(--paper);}
   th{font-size:10px;padding:7px 6px;}
   td{padding:8px 6px;}
   .card{padding:14px;}
+  /* Le groupe de boutons d'action à droite d'un titre de section (ex : "Comparer les prix" +
+     "Importer un CSV" + "Nouveau produit") ne doit jamais forcer toute la page à déborder
+     horizontalement — on l'autorise à passer sur plusieurs lignes plutôt que de dépasser. */
+  .section-head .flex{flex-wrap:wrap;}
 }
 
 .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;}
@@ -411,6 +426,77 @@ tr.tr-hover:hover{background:var(--paper);}
 .site-features{max-width:1040px;margin:0 auto;padding:0 24px 80px 24px;}
 .site-feature-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
 .site-feature-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 18px;box-shadow:var(--shadow);}
+
+/* ============================================================
+   LOGO 3D DANS LE HERO — un "médaillon" tournant (cylindre plat texturé avec le logo sur
+   chaque face), qu'on peut aussi faire pivoter soi-même à la souris/au doigt.
+   ============================================================ */
+.hero-logo-3d-wrap{
+  width:220px;height:220px;margin:0 auto 18px auto;cursor:grab;touch-action:none;
+}
+.hero-logo-3d-wrap:active{cursor:grabbing;}
+.hero-logo-3d-wrap canvas{width:100%;height:100%;display:block;}
+
+/* ============================================================
+   SCÈNE 3D "LE RESTAURANT SE DÉPLOIE" — une longue section, avec le canvas et les légendes
+   fixés à l'écran (position:sticky) pendant que la scène évolue selon la progression du
+   défilement à l'intérieur de cette section.
+   ============================================================ */
+.restaurant-scroll-wrapper{position:relative;height:340vh;background:var(--surface);}
+.restaurant-scroll-sticky{
+  position:sticky;top:0;height:100vh;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+.restaurant-scroll-sticky canvas{width:100%;height:100%;display:block;}
+.resto-scroll-intro{
+  position:absolute;top:9%;left:50%;transform:translateX(-50%);text-align:center;z-index:3;
+  font-family:'Fraunces',serif;font-size:15px;color:var(--muted);letter-spacing:.3px;
+  opacity:1;transition:opacity .4s ease;pointer-events:none;
+}
+.resto-scroll-intro.hide{opacity:0;}
+.resto-callout{
+  position:absolute;max-width:280px;padding:18px 20px;background:var(--surface);
+  border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);
+  opacity:0;transform:translateY(14px);transition:opacity .5s ease, transform .5s ease;z-index:3;
+  pointer-events:none;
+}
+.resto-callout.visible{opacity:1;transform:translateY(0);}
+.resto-callout-title{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:5px;}
+.resto-callout-text{font-size:13px;color:var(--muted);line-height:1.5;}
+.resto-callout-1{top:16%;left:7%;}
+.resto-callout-2{top:64%;right:7%;}
+.resto-callout-3{top:16%;right:7%;}
+.resto-callout-4{top:64%;left:7%;}
+@media(max-width:760px){
+  .restaurant-scroll-wrapper{height:280vh;}
+  .resto-callout{max-width:210px;padding:14px 16px;}
+  .resto-callout-title{font-size:14px;}
+  .resto-callout-text{font-size:12px;}
+  .resto-callout-1,.resto-callout-4{left:4%;}
+  .resto-callout-2,.resto-callout-3{right:4%;}
+  .resto-callout-1,.resto-callout-3{top:9%;}
+  .resto-callout-2,.resto-callout-4{top:auto;bottom:9%;}
+}
+
+/* ============================================================
+   SHOWCASE FONCTIONNALITÉS — blocs alternés texte / capture d'écran réelle du site.
+   ============================================================ */
+.site-showcase{max-width:1080px;margin:0 auto;padding:30px 24px 60px 24px;display:flex;flex-direction:column;gap:90px;}
+.showcase-block{display:flex;align-items:center;gap:56px;}
+.showcase-block.reverse{flex-direction:row-reverse;}
+.showcase-text{flex:0 0 340px;}
+.showcase-text .site-hero-tag{margin-bottom:14px;}
+.showcase-text h3{font-family:'Fraunces',serif;font-size:25px;font-weight:700;margin:0 0 12px 0;line-height:1.25;}
+.showcase-text p{font-size:14.5px;color:var(--muted);line-height:1.65;margin:0;}
+.showcase-image{flex:1;min-width:0;}
+.showcase-image img{
+  width:100%;display:block;border-radius:12px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.08);
+}
+@media(max-width:860px){
+  .showcase-block, .showcase-block.reverse{flex-direction:column;gap:22px;}
+  .showcase-text{flex:none;}
+}
+
 .site-cta{text-align:center;padding:70px 24px;background:var(--black);color:#EDEDE8;}
 .site-cta h2{font-family:'Fraunces',serif;font-size:26px;margin:0 0 8px 0;color:#fff;}
 .site-cta .muted{color:#B8B8B1 !important;}
@@ -2375,11 +2461,44 @@ function resetProductFilters(){
 function zoneTagsFor(p){
   return (p.zoneIds||[]).map(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z ? `<span class="tag tag-neutral" style="margin:2px;">${escapeHtml(z.name)}</span>` : ''; }).join('');
 }
+function ensureCollapsedCategories(){
+  if(!state.collapsedCategories) state.collapsedCategories = {};
+  return state.collapsedCategories;
+}
+function toggleCategoryGroup(cat){
+  const collapsed = ensureCollapsedCategories();
+  collapsed[cat] = !collapsed[cat];
+  render();
+}
+function setAllCategoryGroups(collapsedValue){
+  const collapsed = ensureCollapsedCategories();
+  Object.keys(collapsed).forEach(k=>delete collapsed[k]);
+  if(collapsedValue){
+    PRODUCTS.forEach(p=>{ collapsed[p.cat||'Sans catégorie'] = true; });
+  }
+  render();
+}
+// Regroupe une liste déjà filtrée/triée par catégorie, en conservant l'ordre relatif des
+// produits à l'intérieur de chaque groupe (le tri choisi par la personne reste donc respecté
+// au sein de chaque catégorie, seul le regroupement lui-même s'ajoute par-dessus).
+function groupProductsByCategory(products){
+  const order = [];
+  const byCategory = {};
+  products.forEach(p=>{
+    const cat = p.cat || 'Sans catégorie';
+    if(!byCategory[cat]){ byCategory[cat] = []; order.push(cat); }
+    byCategory[cat].push(p);
+  });
+  return order.map(cat=>({ category: cat, items: byCategory[cat] }));
+}
 function viewStocks(){
   const filter = state.stockFilter || 'tous';
   const f = ensureProductFilters();
   const byDept = PRODUCTS.filter(p=> filter==='tous' ? true : (filter==='cuisine' ? (p.department==='cuisine'||p.department==='both') : (p.department==='salle'||p.department==='both')));
   const filtered = sortProductsList(filterProductsList(byDept, f), f.sort);
+  const collapsed = ensureCollapsedCategories();
+  const groups = groupProductsByCategory(filtered);
+  const colCount = financialsHidden() ? 8 : 9;
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Produits</h2><div class="sub">${PRODUCTS.length} produit${PRODUCTS.length>1?'s':''} au catalogue · le site sert à commander, pas à suivre un stock en temps réel</div></div>
@@ -2395,11 +2514,26 @@ function viewStocks(){
       <button class="${filter==='salle'?'active':''}" onclick="setStockFilter('salle')">Salle</button>
     </div>
     ${productFilterBar(f)}
+    ${groups.length>1 ? `<div class="flex gap8" style="margin:0 0 12px 0;">
+      <button class="btn btn-ghost btn-sm" onclick="setAllCategoryGroups(true)">${iconXs(I.chevronDown)} Tout réduire</button>
+      <button class="btn btn-ghost btn-sm" onclick="setAllCategoryGroups(false)">${iconXs(I.chevronDown)} Tout développer</button>
+    </div>` : ''}
     <div class="card">
       ${filtered.length ? `<table>
         <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th>${financialsHidden()?'':`<th>Prix d'achat</th>`}<th></th></tr>
-        ${filtered.map(p=>{
-          return `<tr class="tr-hover">
+        ${groups.map(g=>{
+          const isCollapsed = groups.length>1 && !!collapsed[g.category];
+          // La ligne d'en-tête de groupe ne s'affiche que s'il y a plus d'une catégorie dans la
+          // liste actuelle — inutile de proposer de "réduire" un groupe unique qui contient déjà
+          // tout ce qui est affiché.
+          const groupHeader = groups.length>1 ? `
+            <tr class="group-row" onclick="toggleCategoryGroup('${escapeHtml(g.category).replace(/'/g,"\\'")}')" style="cursor:pointer;background:var(--paper);">
+              <td colspan="${colCount}" style="font-weight:600;padding:9px 8px;">
+                <span class="group-chevron ${isCollapsed?'':'open'}" style="display:inline-flex;margin-right:8px;vertical-align:middle;">${iconXs(I.chevronDown)}</span>
+                ${escapeHtml(g.category)} <span class="muted small" style="font-weight:400;">(${g.items.length} produit${g.items.length>1?'s':''})</span>
+              </td>
+            </tr>` : '';
+          const itemRows = isCollapsed ? '' : g.items.map(p=>`<tr class="tr-hover">
             <td style="font-weight:600;">${escapeHtml(p.name)}${p.supplierReference?`<div class="small muted mono">${escapeHtml(p.supplierReference)}</div>`:''}</td>
             <td class="muted small">${escapeHtml(p.cat||'—')}</td>
             <td>${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
@@ -2414,7 +2548,8 @@ function viewStocks(){
               <button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button>
               <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button>
             </div></td>
-          </tr>`;
+          </tr>`).join('');
+          return groupHeader + itemRows;
         }).join('')}
       </table>` : emptyState(PRODUCTS.length ? 'Aucun produit ne correspond à ces critères' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
     </div>
@@ -6517,12 +6652,325 @@ function siteNav(active){
     </header>
   `;
 }
+const SITE_SHOWCASE = [
+  {
+    tag: 'Commandes & fournisseurs',
+    title: 'Vos commandes, centralisées',
+    text: "Un panier par fournisseur, une commande envoyée en un clic. Les écarts de quantité ou de prix à la réception sont détectés et signalés automatiquement — plus besoin de comparer une facture à la main.",
+    img: 'mkt-commandes.jpg',
+    alt: 'Page Commandes de Mise & Sûre, avec un panier en attente et l’historique des commandes',
+  },
+  {
+    tag: 'Équipe & permissions',
+    title: 'Toute votre équipe, un espace chacun',
+    text: "Patron, manager, cuisine, salle : chaque personne a son identifiant, son mot de passe et ses permissions. Vous décidez qui peut commander directement, et jusqu'à quel montant avant de repasser par votre validation.",
+    img: 'mkt-equipe.jpg',
+    alt: 'Page Équipe de Mise & Sûre, avec les permissions et le plafond de commande directe',
+  },
+  {
+    tag: 'Réception & écarts',
+    title: 'Repérez les écarts avant qu\'ils ne coûtent cher',
+    text: "À la réception, comparez ce qui a vraiment été livré et facturé à ce qui était commandé. Un produit manquant ? Marquez la commande comme partiellement reçue et complétez-la dès son arrivée, sans rien ressaisir.",
+    img: 'mkt-ecarts.jpg',
+    alt: 'Page Écarts de livraison de Mise & Sûre, montrant un écart de prix détecté automatiquement',
+  },
+  {
+    tag: 'Statistiques',
+    title: 'Des chiffres clairs, des décisions rapides',
+    text: "Dépenses du mois, projection de fin de mois, répartition par fournisseur et par catégorie : tout est calculé automatiquement à partir de votre historique de commandes, sans tableur à mettre à jour.",
+    img: 'mkt-stats.jpg',
+    alt: 'Page Statistiques de Mise & Sûre, avec le budget prévisionnel',
+  },
+  {
+    tag: 'Catalogue produits',
+    title: 'Un catalogue qui reste lisible, même avec 200 produits',
+    text: "Recherche, filtres et tri par nom, catégorie ou prix, plus un regroupement par catégorie qui se réduit ou se développe en un clic — comme sur un tableur, mais déjà organisé pour vous.",
+    img: 'mkt-produits.jpg',
+    alt: 'Page Produits de Mise & Sûre, avec les catégories regroupées et réductibles',
+  },
+];
+// ============================================================
+// THREE.JS — chargé UNIQUEMENT sur la page marketing (pas dans le reste du site, pour ne pas
+// alourdir l'application pour les personnes déjà connectées) : logo 3D dans le hero, et scène
+// 3D du restaurant qui se construit au défilement.
+// ============================================================
+let THREE_JS_LOADING = false;
+function loadThreeJS(callback){
+  if(window.THREE){ callback(); return; }
+  if(THREE_JS_LOADING){
+    document.addEventListener('three-js-ready', callback, { once:true });
+    return;
+  }
+  THREE_JS_LOADING = true;
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+  script.onload = () => { THREE_JS_LOADING = false; document.dispatchEvent(new Event('three-js-ready')); callback(); };
+  script.onerror = () => { THREE_JS_LOADING = false; console.error("Impossible de charger la bibliothèque 3D — le reste du site continue de fonctionner normalement."); };
+  document.head.appendChild(script);
+}
+// État des deux scènes 3D, pour pouvoir arrêter proprement leur boucle d'animation et leurs
+// écouteurs si la page marketing est quittée puis rouverte (sinon plusieurs boucles tourneraient
+// en même temps sur des canvas qui n'existent plus).
+let MARKETING_3D = { logoRAF:null, restoRAF:null, restoScrollHandler:null, restoResizeHandler:null };
+function initMarketing3D(){
+  const logoCanvas = document.getElementById('hero-logo-3d');
+  const restoCanvas = document.getElementById('restaurant-3d-canvas');
+  if(!logoCanvas && !restoCanvas) return; // pas sur la page marketing pour l'instant
+  loadThreeJS(() => {
+    if(document.getElementById('hero-logo-3d') === logoCanvas && logoCanvas){
+      cancelAnimationFrame(MARKETING_3D.logoRAF);
+      initHeroLogo3D(logoCanvas);
+    }
+    if(document.getElementById('restaurant-3d-canvas') === restoCanvas && restoCanvas){
+      cancelAnimationFrame(MARKETING_3D.restoRAF);
+      if(MARKETING_3D.restoScrollHandler) window.removeEventListener('scroll', MARKETING_3D.restoScrollHandler);
+      if(MARKETING_3D.restoResizeHandler) window.removeEventListener('resize', MARKETING_3D.restoResizeHandler);
+      initRestaurantScrollScene3D(restoCanvas);
+    }
+  });
+}
+// --- Logo 3D : un médaillon (cylindre plat) texturé avec le logo sur ses deux faces, qui
+// tourne doucement tout seul et qu'on peut aussi faire pivoter à la souris ou au doigt.
+function initHeroLogo3D(canvas){
+  const wrap = canvas.parentElement;
+  const size = () => Math.min(wrap.clientWidth || 220, wrap.clientHeight || 220);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+  camera.position.set(0, 0, 6.2);
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(size(), size());
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const key = new THREE.DirectionalLight(0xffffff, 0.8);
+  key.position.set(2.5, 3, 4);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+  rim.position.set(-3, -1, -2);
+  scene.add(rim);
+
+  const texture = new THREE.TextureLoader().load('icon-512.png');
+  texture.colorSpace = THREE.SRGBColorSpace || texture.colorSpace;
+  const faceMat = new THREE.MeshStandardMaterial({ map: texture, roughness:0.45, metalness:0.08 });
+  const edgeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness:0.55, metalness:0.15 });
+  const geometry = new THREE.CylinderGeometry(1.55, 1.55, 0.22, 72);
+  const coin = new THREE.Mesh(geometry, [edgeMat, faceMat, faceMat]);
+  coin.rotation.x = Math.PI / 2; // les faces plates du cylindre pointent vers la caméra (Z), pas vers le haut (Y)
+  scene.add(coin);
+
+  let autoSpeed = 0.45; // radians/seconde, vitesse de rotation automatique au repos
+  let velocity = autoSpeed;
+  let dragging = false;
+  let lastX = 0;
+  let lastT = performance.now();
+
+  function pointerDown(e){
+    dragging = true;
+    lastX = (e.touches ? e.touches[0].clientX : e.clientX);
+  }
+  function pointerMove(e){
+    if(!dragging) return;
+    const x = (e.touches ? e.touches[0].clientX : e.clientX);
+    const dx = x - lastX;
+    lastX = x;
+    coin.rotation.y += dx * 0.012;
+    velocity = dx * 0.6; // l'élan de la dernière impulsion continue un peu après le relâchement
+  }
+  function pointerUp(){ dragging = false; }
+  wrap.addEventListener('mousedown', pointerDown);
+  wrap.addEventListener('touchstart', pointerDown, { passive:true });
+  window.addEventListener('mousemove', pointerMove);
+  window.addEventListener('touchmove', pointerMove, { passive:true });
+  window.addEventListener('mouseup', pointerUp);
+  window.addEventListener('touchend', pointerUp);
+
+  function animate(){
+    MARKETING_3D.logoRAF = requestAnimationFrame(animate);
+    if(!document.body.contains(canvas)) return; // page quittée : on arrête proprement
+    const now = performance.now();
+    const dt = Math.min((now - lastT) / 1000, 0.05);
+    lastT = now;
+    if(!dragging){
+      // Ralentit progressivement vers la vitesse de croisière après une impulsion manuelle,
+      // plutôt que de reprendre brutalement la rotation automatique.
+      velocity += (autoSpeed - velocity) * Math.min(dt * 1.5, 1);
+      coin.rotation.y += velocity * dt;
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  const onResize = () => { const s = size(); renderer.setSize(s, s); };
+  window.addEventListener('resize', onResize);
+}
+// --- Scène "le restaurant se déploie" : quatre groupes d'objets simples (bar, cuisine, salle,
+// fournisseur) qui s'assemblent progressivement selon la progression du défilement dans la
+// section. Formes volontairement simples (boîtes, cylindres) dans la palette du site, pour un
+// rendu "plan 3D épuré" assumé plutôt qu'une tentative de réalisme qui rendrait mal en low-poly.
+function initRestaurantScrollScene3D(canvas){
+  const wrapper = document.getElementById('restaurant-scroll-wrapper');
+  const sticky = canvas.parentElement;
+  const introEl = document.getElementById('resto-scroll-intro');
+  const callouts = Array.from(document.querySelectorAll('.resto-callout'));
+
+  const scene = new THREE.Scene();
+  const w = () => sticky.clientWidth || window.innerWidth;
+  const h = () => sticky.clientHeight || window.innerHeight;
+  const camera = new THREE.OrthographicCamera(-6, 6, 4, -4, 0.1, 100);
+  camera.position.set(7.5, 6.5, 7.5);
+  camera.lookAt(0, 0.4, 0);
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+  function fitCamera(){
+    const aspect = w() / h();
+    const viewSize = 5.4;
+    camera.left = -viewSize * aspect;
+    camera.right = viewSize * aspect;
+    camera.top = viewSize;
+    camera.bottom = -viewSize;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w(), h());
+  }
+  fitCamera();
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.55);
+  sun.position.set(6, 10, 4);
+  scene.add(sun);
+
+  // Sol — présent dès le début, sert de socle à toute la scène.
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(11, 11),
+    new THREE.MeshStandardMaterial({ color: 0xEFEFEA, roughness:1 })
+  );
+  floor.rotation.x = -Math.PI/2;
+  scene.add(floor);
+  const grid = new THREE.GridHelper(11, 22, 0xD8D8D0, 0xE3E3DD);
+  scene.add(grid);
+
+  const DARK = 0x111111, ACCENT = 0xA93A2E, WOOD = 0xC9A876, LIGHT = 0xF7F7F4;
+  function box(w_,h_,d_,color){ return new THREE.Mesh(new THREE.BoxGeometry(w_,h_,d_), new THREE.MeshStandardMaterial({color, roughness:0.8})); }
+  function cyl(r,h_,color,seg){ return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h_,seg||16), new THREE.MeshStandardMaterial({color, roughness:0.8})); }
+
+  // --- Groupe 1 : le bar (comptoir + 2 tabourets) ---
+  const barGroup = new THREE.Group();
+  const barCounter = box(3.2, 0.9, 0.8, DARK); barCounter.position.set(0, 0.45, 0);
+  barGroup.add(barCounter);
+  [[-1.1, 0.55],[1.1, 0.55]].forEach(([x])=>{
+    const stool = cyl(0.28, 0.6, WOOD); stool.position.set(x, 0.3, 1.0);
+    barGroup.add(stool);
+  });
+  barGroup.position.set(-3.4, 0, -2.6);
+  barGroup.userData.finalPos = barGroup.position.clone();
+  barGroup.userData.startPos = barGroup.position.clone().add(new THREE.Vector3(0, 4, 0));
+  scene.add(barGroup);
+
+  // --- Groupe 2 : la cuisine (îlot + deux "plaques") ---
+  const kitchenGroup = new THREE.Group();
+  const island = box(2.6, 0.85, 1.4, 0xDCDCD3); island.position.set(0, 0.42, 0);
+  kitchenGroup.add(island);
+  [[-0.6],[0.6]].forEach(([x])=>{
+    const burner = cyl(0.22, 0.06, DARK); burner.position.set(x, 0.88, 0);
+    kitchenGroup.add(burner);
+  });
+  kitchenGroup.position.set(3.4, 0, -2.6);
+  kitchenGroup.userData.finalPos = kitchenGroup.position.clone();
+  kitchenGroup.userData.startPos = kitchenGroup.position.clone().add(new THREE.Vector3(0, 4, 0));
+  scene.add(kitchenGroup);
+
+  // --- Groupe 3 : la salle (deux tables rondes + chaises) ---
+  const diningGroup = new THREE.Group();
+  [[-1.6, 0],[1.6, 0]].forEach(([x,z])=>{
+    const table = cyl(0.65, 0.06, WOOD, 24); table.position.set(x, 0.62, z);
+    const foot = cyl(0.08, 0.6, 0xB7B7AE); foot.position.set(x, 0.3, z);
+    diningGroup.add(table, foot);
+    [[0.9,0],[-0.9,0],[0,0.9],[0,-0.9]].forEach(([dx,dz])=>{
+      const chair = box(0.32,0.5,0.32, LIGHT); chair.position.set(x+dx, 0.25, z+dz);
+      diningGroup.add(chair);
+    });
+  });
+  diningGroup.position.set(0, 0, 1.6);
+  diningGroup.userData.finalPos = diningGroup.position.clone();
+  diningGroup.userData.startPos = diningGroup.position.clone().add(new THREE.Vector3(0, 4, 0));
+  scene.add(diningGroup);
+
+  // --- Groupe 4 : la livraison fournisseur (caisse + palette) ---
+  const deliveryGroup = new THREE.Group();
+  const crate1 = box(0.7,0.7,0.7, ACCENT); crate1.position.set(-0.4, 0.35, 0);
+  const crate2 = box(0.6,0.5,0.6, 0xC96A56); crate2.position.set(0.45, 0.25, 0.3);
+  const pallet = box(1.6,0.12,1.2, WOOD); pallet.position.set(0, 0.06, 0);
+  deliveryGroup.add(pallet, crate1, crate2);
+  deliveryGroup.position.set(4.6, 0, 2.6);
+  deliveryGroup.userData.finalPos = deliveryGroup.position.clone();
+  deliveryGroup.userData.startPos = deliveryGroup.position.clone().add(new THREE.Vector3(2.5, 3, 2));
+  scene.add(deliveryGroup);
+
+  const groups = [
+    { obj: barGroup, range: [0.03, 0.28] },
+    { obj: kitchenGroup, range: [0.26, 0.51] },
+    { obj: diningGroup, range: [0.49, 0.74] },
+    { obj: deliveryGroup, range: [0.72, 0.97] },
+  ];
+  groups.forEach(g=>{
+    g.obj.position.copy(g.obj.userData.startPos);
+    g.obj.traverse(o=>{ if(o.material){ o.material.transparent = true; o.material.opacity = 0; } });
+  });
+
+  function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
+  function updateFromProgress(progress){
+    if(introEl) introEl.classList.toggle('hide', progress > 0.04);
+    groups.forEach(g=>{
+      const [start,end] = g.range;
+      const local = Math.max(0, Math.min(1, (progress - start) / (end - start)));
+      const eased = easeOutCubic(local);
+      g.obj.position.lerpVectors(g.obj.userData.startPos, g.obj.userData.finalPos, eased);
+      g.obj.traverse(o=>{ if(o.material) o.material.opacity = eased; });
+    });
+    // Rotation d'ensemble très légère pour accentuer l'effet de profondeur pendant le scroll.
+    scene.rotation.y = progress * 0.25;
+    callouts.forEach(el=>{
+      const [rs, re] = (el.dataset.range||'0,1').split(',').map(Number);
+      el.classList.toggle('visible', progress >= rs && progress <= re);
+    });
+  }
+
+  function computeProgress(){
+    const rect = wrapper.getBoundingClientRect();
+    const total = rect.height - window.innerHeight;
+    if(total <= 0) return 0;
+    return Math.max(0, Math.min(1, -rect.top / total));
+  }
+
+  let targetProgress = 0, currentProgress = 0;
+  function onScroll(){ targetProgress = computeProgress(); }
+  MARKETING_3D.restoScrollHandler = onScroll;
+  window.addEventListener('scroll', onScroll, { passive:true });
+  onScroll();
+
+  function animate(){
+    MARKETING_3D.restoRAF = requestAnimationFrame(animate);
+    if(!document.body.contains(canvas)) return;
+    currentProgress += (targetProgress - currentProgress) * 0.12; // lissage : évite un mouvement saccadé au scroll rapide
+    updateFromProgress(currentProgress);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  const onResize = () => { fitCamera(); };
+  MARKETING_3D.restoResizeHandler = onResize;
+  window.addEventListener('resize', onResize);
+}
 function renderMarketingPage(){
   return `
     <div class="site-page">
       ${siteNav('marketing')}
       <section class="site-hero">
         <div class="site-hero-tag">Plateforme de gestion pour restaurants</div>
+        <div class="hero-logo-3d-wrap" id="hero-logo-3d-wrap" title="Cliquez-glissez pour faire tourner">
+          <canvas id="hero-logo-3d"></canvas>
+        </div>
         <h1>La gestion de votre restaurant,<br>sans friction.</h1>
         <p>Commandes fournisseurs, équipe, factures — un espace pour le patron, un espace pour chacun des vôtres.</p>
         <div class="flex gap8" style="justify-content:center;flex-wrap:wrap;">
@@ -6530,6 +6978,43 @@ function renderMarketingPage(){
           ${ACCOUNT ? '' : `<button class="btn btn-ghost" onclick="goToLogin()">J'ai déjà un compte</button>`}
         </div>
       </section>
+
+      <div class="restaurant-scroll-wrapper" id="restaurant-scroll-wrapper">
+        <div class="restaurant-scroll-sticky">
+          <canvas id="restaurant-3d-canvas"></canvas>
+          <div class="resto-scroll-intro" id="resto-scroll-intro">↓ Faites défiler pour voir où Mise &amp; Sûre s'intègre</div>
+          <div class="resto-callout resto-callout-1" data-range="0.03,0.30">
+            <div class="resto-callout-title">Au bar</div>
+            <div class="resto-callout-text">Le stock de boissons se commande en quelques clics, chez le bon fournisseur, au bon prix.</div>
+          </div>
+          <div class="resto-callout resto-callout-2" data-range="0.27,0.53">
+            <div class="resto-callout-title">En cuisine</div>
+            <div class="resto-callout-text">La brigade signale un manque, le patron valide, la commande part directement au fournisseur.</div>
+          </div>
+          <div class="resto-callout resto-callout-3" data-range="0.50,0.76">
+            <div class="resto-callout-title">En salle</div>
+            <div class="resto-callout-text">Chaque serveur a son propre accès, avec seulement les permissions dont il a besoin.</div>
+          </div>
+          <div class="resto-callout resto-callout-4" data-range="0.73,0.98">
+            <div class="resto-callout-title">Chez vos fournisseurs</div>
+            <div class="resto-callout-text">Réception, écarts, historique des prix : tout est suivi automatiquement, livraison après livraison.</div>
+          </div>
+        </div>
+      </div>
+
+      <section class="site-showcase">
+        ${SITE_SHOWCASE.map((s,i)=>`
+          <div class="showcase-block ${i%2===1?'reverse':''}">
+            <div class="showcase-text">
+              <div class="site-hero-tag">${escapeHtml(s.tag)}</div>
+              <h3>${escapeHtml(s.title)}</h3>
+              <p>${escapeHtml(s.text)}</p>
+            </div>
+            <div class="showcase-image"><img src="${s.img}" alt="${escapeHtml(s.alt)}" loading="lazy"></div>
+          </div>
+        `).join('')}
+      </section>
+
       <section class="site-features">
         <div class="site-feature-grid">
           ${SITE_FEATURES.map(f=>`
@@ -7065,6 +7550,7 @@ function renderInner(){
   if(state.site==='marketing'){
     document.title = 'Mise & Sûre — la gestion de restaurant, sans friction';
     document.getElementById('app').innerHTML = renderMarketingPage();
+    requestAnimationFrame(initMarketing3D);
     return;
   }
   if(state.site==='pricing'){
