@@ -442,7 +442,7 @@ tr.group-row:hover td{background:var(--gray-100);}
    fixés à l'écran (position:sticky) pendant que la scène évolue selon la progression du
    défilement à l'intérieur de cette section.
    ============================================================ */
-.restaurant-scroll-wrapper{position:relative;height:340vh;background:var(--surface);}
+.restaurant-scroll-wrapper{position:relative;height:220vh;background:var(--surface);}
 .restaurant-scroll-sticky{
   position:sticky;top:0;height:100vh;overflow:hidden;
   display:flex;align-items:center;justify-content:center;
@@ -468,7 +468,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .resto-callout-3{top:16%;right:7%;}
 .resto-callout-4{top:64%;left:7%;}
 @media(max-width:760px){
-  .restaurant-scroll-wrapper{height:280vh;}
+  .restaurant-scroll-wrapper{height:190vh;}
   .resto-callout{max-width:210px;padding:14px 16px;}
   .resto-callout-title{font-size:14px;}
   .resto-callout-text{font-size:12px;}
@@ -515,13 +515,49 @@ tr.group-row:hover td{background:var(--gray-100);}
 .cookie-banner .btn-primary{background:var(--surface);color:var(--text);flex-shrink:0;}
 .site-pricing-head{max-width:640px;margin:0 auto;padding:70px 24px 40px 24px;text-align:center;}
 .site-pricing-head h1{font-family:'Fraunces',serif;font-size:32px;margin:0 0 10px 0;}
-.site-plans-grid{max-width:1080px;margin:0 auto;padding:0 24px 90px 24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
-.site-plan-card{padding:32px 28px;}
+.site-plans-grid{max-width:1080px;margin:0 auto;padding:0 24px 90px 24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;align-items:start;}
+.site-plan-card{padding:32px 28px;position:relative;overflow:visible;}
+.site-plan-card.recommended{border:2px solid var(--black);box-shadow:0 12px 32px rgba(0,0,0,0.1);transform:translateY(-8px);}
+.site-plan-ribbon{
+  position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+  background:var(--black);color:#fff;font-size:11px;font-weight:700;letter-spacing:.3px;
+  padding:5px 16px;border-radius:20px;white-space:nowrap;
+}
 .site-plan-name{font-family:'Fraunces',serif;font-size:20px;font-weight:700;}
 .site-plan-price{font-family:'Fraunces',serif;font-size:34px;font-weight:700;margin-bottom:22px;}
+.site-plan-save{display:inline-block;background:var(--gray-100);color:var(--text);font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:12px;margin-left:6px;vertical-align:middle;}
 .site-plan-features{list-style:none;padding:0;margin:0 0 26px 0;display:flex;flex-direction:column;gap:10px;}
 .site-plan-features li{display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:var(--text);}
 .site-plan-features li svg{width:14px;height:14px;flex-shrink:0;margin-top:3px;color:var(--text);}
+
+/* Bandeau de garanties/confiance, juste sous les cartes de forfait */
+.trust-strip{max-width:1080px;margin:0 auto;padding:0 24px 70px 24px;display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
+.trust-item{text-align:center;}
+.trust-item .tile-icon{margin:0 auto 10px auto;}
+.trust-item-title{font-weight:700;font-size:13.5px;margin-bottom:3px;}
+.trust-item-text{font-size:12.5px;color:var(--muted);line-height:1.5;}
+
+/* Tableau comparatif complet */
+.pricing-compare{max-width:900px;margin:0 auto;padding:0 24px 80px 24px;}
+.pricing-compare h2{font-family:'Fraunces',serif;font-size:24px;text-align:center;margin:0 0 30px 0;}
+.pricing-compare-table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.pricing-compare-table th, .pricing-compare-table td{padding:13px 16px;text-align:center;border-bottom:1px solid var(--border);font-size:13.5px;}
+.pricing-compare-table th{background:var(--paper);font-weight:700;font-family:'Fraunces',serif;font-size:14.5px;}
+.pricing-compare-table td:first-child, .pricing-compare-table th:first-child{text-align:left;color:var(--muted);font-weight:500;}
+.pricing-compare-table tr:last-child td{border-bottom:none;}
+.pricing-compare-table td.yes{color:#2E7D32;font-weight:700;}
+.pricing-compare-table td.no{color:var(--muted-2);}
+.pricing-compare-table th.recommended-col{background:var(--black);color:#fff;}
+
+/* Mini-FAQ sur la page tarifs */
+.pricing-faq{max-width:720px;margin:0 auto;padding:0 24px 90px 24px;}
+.pricing-faq h2{font-family:'Fraunces',serif;font-size:24px;text-align:center;margin:0 0 20px 0;}
+
+@media(max-width:900px){
+  .trust-strip{grid-template-columns:1fr 1fr;}
+  .pricing-compare-table{font-size:12px;}
+  .pricing-compare-table th, .pricing-compare-table td{padding:10px 8px;}
+}
 .payment-summary{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin:2px 0 20px 0;font-size:13.5px;}
 @media(max-width:1000px) and (min-width:761px){
   .site-plans-grid{grid-template-columns:1fr 1fr;max-width:700px;}
@@ -532,6 +568,7 @@ tr.group-row:hover td{background:var(--gray-100);}
   .site-hero h1{font-size:30px;}
   .site-feature-grid{grid-template-columns:1fr 1fr;}
   .site-plans-grid{grid-template-columns:1fr;}
+  .site-plan-card.recommended{transform:none;margin-top:14px;}
 }
 
 #toast-zone{position:fixed;bottom:22px;right:22px;z-index:999;display:flex;flex-direction:column;gap:9px;}
@@ -1148,6 +1185,24 @@ const PLANS = [
     features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Support prioritaire'] },
 ];
 function planAnnualPrice(monthly){ return monthly*10; }
+// Comparatif ligne par ligne — reflète exactement les fonctionnalités listées dans PLANS
+// ci-dessus (rien n'est ajouté ici qui ne soit pas déjà réellement vrai pour chaque forfait).
+const PRICING_COMPARISON = [
+  { label:'Établissements', solo:'1', essentiel:'1', pro:'Illimités' },
+  { label:'Membres d’équipe', solo:'Mode solo, sans équipe', essentiel:'Jusqu’à 10', pro:'Illimités' },
+  { label:'Commandes fournisseurs', solo:'Illimitées', essentiel:'Illimitées', pro:'Illimitées' },
+  { label:'Achats personnalisés', solo:true, essentiel:true, pro:true },
+  { label:'Export PDF des commandes', solo:false, essentiel:true, pro:true },
+  { label:'Factures et historique d’achats', solo:true, essentiel:true, pro:true },
+  { label:'Notifications par email', solo:true, essentiel:true, pro:true },
+  { label:'Support', solo:'Par email', essentiel:'Par email', pro:'Prioritaire' },
+];
+const PRICING_FAQ = [
+  { q:"Puis-je changer de forfait à tout moment ?", a:"Oui, à tout moment depuis vos Paramètres — à la hausse comme à la baisse. Le changement est géré directement par Stripe, notre prestataire de paiement, au prorata de la période en cours." },
+  { q:"Y a-t-il un engagement ou des frais cachés ?", a:"Aucun engagement : c'est un abonnement mensuel ou annuel, résiliable à tout moment. Le prix affiché est le prix payé, sans frais additionnels surprise." },
+  { q:"Que se passe-t-il si je résilie ?", a:"Vous gardez l'accès jusqu'à la fin de la période déjà payée. Vos données restent disponibles ; contactez-nous si vous souhaitez les récupérer avant suppression." },
+  { q:"Le forfait Solo me convient si je travaille seul ?", a:"Oui — le mode Solo masque toute la gestion d'équipe et les demandes internes, pour un outil épuré si vous n'avez pas d'équipe à gérer. Vous pourrez passer à un forfait avec équipe si besoin, sans rien perdre." },
+];
 const SITE_FEATURES = [
   { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, une seule facture." },
   { icon:'team', title:'Un accès par personne', desc:"Patron, manager, cuisine, salle : chacun son espace, ses permissions, son mot de passe." },
@@ -6600,7 +6655,7 @@ function loadThreeJS(callback){
 // État des deux scènes 3D, pour pouvoir arrêter proprement leur boucle d'animation et leurs
 // écouteurs si la page marketing est quittée puis rouverte (sinon plusieurs boucles tourneraient
 // en même temps sur des canvas qui n'existent plus).
-let MARKETING_3D = { logoRAF:null, restoRAF:null, restoScrollHandler:null, restoResizeHandler:null };
+let MARKETING_3D = { logoRAF:null, restoRAF:null, restoObserver:null, restoResizeHandler:null };
 function initMarketing3D(){
   const logoCanvas = document.getElementById('hero-logo-3d');
   const restoCanvas = document.getElementById('restaurant-3d-canvas');
@@ -6612,7 +6667,7 @@ function initMarketing3D(){
     }
     if(document.getElementById('restaurant-3d-canvas') === restoCanvas && restoCanvas){
       cancelAnimationFrame(MARKETING_3D.restoRAF);
-      if(MARKETING_3D.restoScrollHandler) window.removeEventListener('scroll', MARKETING_3D.restoScrollHandler);
+      if(MARKETING_3D.restoObserver) MARKETING_3D.restoObserver.disconnect();
       if(MARKETING_3D.restoResizeHandler) window.removeEventListener('resize', MARKETING_3D.restoResizeHandler);
       initRestaurantScrollScene3D(restoCanvas);
     }
@@ -6826,23 +6881,44 @@ function initRestaurantScrollScene3D(canvas){
   }
 
   function computeProgress(){
-    const rect = wrapper.getBoundingClientRect();
-    const total = rect.height - window.innerHeight;
-    if(total <= 0) return 0;
-    return Math.max(0, Math.min(1, -rect.top / total));
+    // Purement basé sur le temps désormais (voir plus bas) — cette fonction ne sert plus qu'à
+    // documenter l'ancienne approche pour mémoire ; elle n'est plus appelée.
   }
 
-  let targetProgress = 0, currentProgress = 0;
-  function onScroll(){ targetProgress = computeProgress(); }
-  MARKETING_3D.restoScrollHandler = onScroll;
-  window.addEventListener('scroll', onScroll, { passive:true });
-  onScroll();
+  // ANIMATION AUTOMATIQUE — jouée une fois, dès que la scène devient visible à l'écran, sur une
+  // durée fixe. Avant, la progression était calquée directement sur la position de défilement :
+  // dès que la personne arrêtait de faire défiler la page (pour simplement regarder), la scène
+  // se figeait instantanément, ce qui la rendait quasi impossible à observer tranquillement.
+  // Désormais, un simple passage dans la zone suffit à déclencher la construction complète,
+  // qu'on continue de faire défiler la page ou qu'on s'arrête pour regarder.
+  const AUTOPLAY_DURATION_MS = 3400;
+  let progress = 0;
+  let playing = false;
+  let played = false;
+  let playStart = null;
+
+  function startAutoplay(){
+    if(played) return;
+    played = true;
+    playing = true;
+    playStart = performance.now();
+  }
+
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{ if(entry.isIntersecting) startAutoplay(); });
+  }, { threshold: 0.15 });
+  observer.observe(wrapper);
+  MARKETING_3D.restoObserver = observer;
 
   function animate(){
     MARKETING_3D.restoRAF = requestAnimationFrame(animate);
     if(!document.body.contains(canvas)) return;
-    currentProgress += (targetProgress - currentProgress) * 0.12; // lissage : évite un mouvement saccadé au scroll rapide
-    updateFromProgress(currentProgress);
+    if(playing){
+      const elapsed = performance.now() - playStart;
+      progress = Math.min(1, elapsed / AUTOPLAY_DURATION_MS);
+      if(progress >= 1) playing = false;
+    }
+    updateFromProgress(progress);
     renderer.render(scene, camera);
   }
   animate();
@@ -7010,8 +7086,11 @@ function renderPricingPage(){
     <div class="site-page">
       ${siteNav('pricing')}
       <section class="site-pricing-head">
+        <div class="hero-logo-3d-wrap" id="hero-logo-3d-wrap" style="width:110px;height:110px;" title="Cliquez-glissez pour faire tourner">
+          <canvas id="hero-logo-3d"></canvas>
+        </div>
         <h1>Des tarifs simples, sans surprise.</h1>
-        <p class="muted" style="margin-bottom:18px;">Changez de forfait ou de formule de facturation à tout moment.</p>
+        <p class="muted" style="margin-bottom:18px;">Changez de forfait ou de formule de facturation à tout moment, sans engagement.</p>
         <div class="pill-nav" style="justify-content:center;display:inline-flex;">
           <button class="${cycle==='monthly'?'active':''}" onclick="setBillingCycle('monthly')">Mensuel</button>
           <button class="${cycle==='annual'?'active':''}" onclick="setBillingCycle('annual')">Annuel — 2 mois offerts</button>
@@ -7021,21 +7100,74 @@ function renderPricingPage(){
         ${PLANS.map(p=>{
           const price = cycle==='monthly' ? p.monthly : planAnnualPrice(p.monthly);
           const per = cycle==='monthly' ? '/ mois' : '/ an';
+          const isRecommended = p.id==='essentiel';
+          const savings = cycle==='annual' ? (p.monthly*12 - planAnnualPrice(p.monthly)) : 0;
           return `
-          <div class="card site-plan-card">
+          <div class="card site-plan-card ${isRecommended?'recommended':''}">
+            ${isRecommended ? `<div class="site-plan-ribbon">★ Le plus choisi</div>` : ''}
             <div class="site-plan-name">${escapeHtml(p.name)}</div>
             <div class="small muted" style="margin:4px 0 20px 0;">${p.tagline}</div>
-            <div class="site-plan-price">${price}&nbsp;€<span class="small muted"> ${per}</span></div>
+            <div class="site-plan-price">${price}&nbsp;€<span class="small muted"> ${per}</span>${savings>0?`<span class="site-plan-save">−${savings}€/an</span>`:''}</div>
             <ul class="site-plan-features">
               ${p.features.map(f=>`<li>${iconXs(I.check)}<span>${f}</span></li>`).join('')}
             </ul>
-            <button class="btn btn-primary btn-block" onclick="choosePlan('${p.id}')">Choisir ${escapeHtml(p.name)}</button>
+            <button class="btn ${isRecommended?'btn-primary':'btn-ghost'} btn-block" onclick="choosePlan('${p.id}')">Choisir ${escapeHtml(p.name)}</button>
           </div>`;
         }).join('')}
+      </section>
+
+      <section class="trust-strip">
+        <div class="trust-item"><div class="tile-icon">${I.check}</div><div class="trust-item-title">Sans engagement</div><div class="trust-item-text">Résiliable à tout moment, en un clic depuis vos Paramètres.</div></div>
+        <div class="trust-item"><div class="tile-icon">${I.lock}</div><div class="trust-item-title">Paiement sécurisé</div><div class="trust-item-text">Traité directement par Stripe — vos coordonnées bancaires ne transitent jamais par nos serveurs.</div></div>
+        <div class="trust-item"><div class="tile-icon">${I.mail}</div><div class="trust-item-title">Support réactif</div><div class="trust-item-text">Une question ? Une réponse par email, rapidement.</div></div>
+        <div class="trust-item"><div class="tile-icon">${I.building}</div><div class="trust-item-title">Vos données vous appartiennent</div><div class="trust-item-text">Exportables à tout moment, jamais revendues à des tiers.</div></div>
+      </section>
+
+      <section class="pricing-compare">
+        <h2>Comparer les forfaits en détail</h2>
+        <table class="pricing-compare-table">
+          <tr><th>&nbsp;</th><th>Solo</th><th class="recommended-col">Essentiel</th><th>Pro</th></tr>
+          ${PRICING_COMPARISON.map(row=>`
+            <tr>
+              <td>${escapeHtml(row.label)}</td>
+              ${['solo','essentiel','pro'].map(k=>{
+                const v = row[k];
+                if(v===true) return `<td class="yes">${iconXs(I.check)}</td>`;
+                if(v===false) return `<td class="no">—</td>`;
+                return `<td>${escapeHtml(v)}</td>`;
+              }).join('')}
+            </tr>
+          `).join('')}
+        </table>
+      </section>
+
+      <section class="pricing-faq">
+        <h2>Questions fréquentes</h2>
+        ${PRICING_FAQ.map((item,idx)=>{
+          const isOpen = state.pricingFaqOpen === idx;
+          return `
+          <div class="faq-item">
+            <button class="faq-question" onclick="togglePricingFaq(${idx})">
+              <span>${escapeHtml(item.q)}</span>
+              <span class="faq-chevron ${isOpen?'open':''}">${iconSm(I.chevronDown)}</span>
+            </button>
+            ${isOpen ? `<div class="faq-answer"><p>${escapeHtml(item.a)}</p></div>` : ''}
+          </div>
+        `;}).join('')}
+      </section>
+
+      <section class="site-cta">
+        <h2>Prêt à essayer ?</h2>
+        <p class="muted small" style="margin-bottom:18px;">Choisissez un forfait ci-dessus, ou revenez à l'accueil pour en savoir plus.</p>
+        <button class="btn btn-primary" onclick="window.scrollTo({top:0,behavior:'smooth'})">Voir les forfaits</button>
       </section>
       ${renderSiteFooter()}
     </div>
   `;
+}
+function togglePricingFaq(idx){
+  state.pricingFaqOpen = (state.pricingFaqOpen === idx) ? null : idx;
+  render();
 }
 function renderAdminPage(){
   const rows = state.adminUsers;
@@ -7445,6 +7577,7 @@ function renderInner(){
   if(state.site==='pricing'){
     document.title = 'Tarifs — Mise & Sûre';
     document.getElementById('app').innerHTML = renderPricingPage();
+    requestAnimationFrame(initMarketing3D);
     return;
   }
   if(state.site==='mentions-legales'){
