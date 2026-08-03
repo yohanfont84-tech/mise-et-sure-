@@ -906,16 +906,26 @@ async function sendBasket(supplierId){
         amount: Math.round(amount*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now),
       },
     });
+    // Le statut réellement appliqué vient du serveur (validee tout de suite pour le patron ou
+    // un employé autorisé sous son plafond ; en_attente_validation sinon) — on ne le devine
+    // jamais côté navigateur, pour ne pas afficher un statut different de la réalité.
+    const finalStatus = data.order.status;
     ORDERS.unshift({
       id:'CMD-'+nextId(), remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
       lineItems: enrichedItems.map(li=>({productId:li.productId, name:li.name, qty:li.qty, price:li.price})),
-      amount: Math.round(amount*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now
+      amount: Math.round(amount*100)/100, status:finalStatus, date: fmtDateShort(now), createdAt: now
     });
     try{
       await apiRequest(`/api/restaurants/${resto.remoteId}/baskets/${supplierObj.remoteId}`, { method:'DELETE' });
     } catch(e){ /* la commande est déjà bien envoyée ; on nettoiera le panier au prochain chargement si besoin */ }
     delete BASKETS[supplierId];
-    toast('Commande envoyée pour validation — '+supplierName(supplierId));
+    if(data.requiredApprovalDueToLimit){
+      toast('Commande envoyée, mais au-delà de votre plafond de commande directe — en attente de validation du patron.');
+    } else if(finalStatus==='validee'){
+      toast('Commande envoyée — '+supplierName(supplierId));
+    } else {
+      toast('Commande envoyée pour validation — '+supplierName(supplierId));
+    }
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -1008,6 +1018,11 @@ const state = {
   loginSelectedRole: null,
   loginSelectedEmployeeId: null,
   loginError: null,
+  // Rempli juste après une connexion employé réussie si le serveur indique que le mot de passe
+  // doit être changé (premier mot de passe généré, ou réinitialisé par le patron) — bloque
+  // l'entrée dans le tableau de bord tant qu'un nouveau mot de passe personnel n'est pas défini.
+  pendingPasswordChange: null, // { role, employeeId, currentPassword } | null
+  forcedPasswordChangeError: null,
   notifOpen: false,
   stockFilter: 'tous',
   orderFilter: {dept:'tous', supplier:'tous', month:'tous', year:'tous'},
@@ -1496,14 +1511,23 @@ async function attemptLogin(){
       return;
     }
     try{
-      await apiRequest(`/api/restaurants/${resto.remoteId}/team-login`, { method:'POST', body:{ username: userVal, password: passVal } });
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team-login`, { method:'POST', body:{ username: userVal, password: passVal } });
+      if(data.mustChangePassword){
+        // On ne rentre PAS dans le tableau de bord tout de suite : la session serveur est déjà
+        // valide (le jeton d'équipe est stocké), mais on impose de choisir un nouveau mot de
+        // passe personnel avant de continuer.
+        state.pendingPasswordChange = { role, employeeId, currentPassword: passVal };
+        state.forcedPasswordChangeError = null;
+        render();
+        return;
+      }
       login(role, employeeId);
       // Première connexion réelle de cette personne (surtout si elle arrive via son lien
       // personnel, sans être jamais passée par le compte du patron) : on recharge tout
       // maintenant que la session est bien établie côté serveur.
       syncRestoOperationalData(state.resto);
     } catch(err){
-      showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
+      showFormError('login-error-slot', err.message || "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
     }
     return;
   }
@@ -1514,7 +1538,68 @@ async function attemptLogin(){
     await apiRequest('/api/account/team-login', { method:'POST', body:{ username: userVal, password: passVal } });
     login(role, null);
   } catch(err){
-    showFormError('login-error-slot', "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
+    showFormError('login-error-slot', err.message || "Nom d'utilisateur ou mot de passe incorrect. Merci de réessayer.", ['login-username','login-password']);
+  }
+}
+function renderForcedPasswordChangeScreen(){
+  const pending = state.pendingPasswordChange;
+  const member = pending && pending.employeeId ? TEAM.find(t=>t.id===pending.employeeId) : null;
+  return `
+    <div class="login-shell">
+      <div class="login-brand">
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+        <h1>Nouveau mot de passe requis</h1>
+        <p>Pour la sécurité de votre compte, choisissez un mot de passe personnel avant de continuer${member ? ', '+escapeHtml(member.name) : ''}.</p>
+      </div>
+      <div class="login-form-side">
+        <div class="login-form-inner">
+          <h2 style="margin-bottom:6px;">Choisir un nouveau mot de passe</h2>
+          <p class="small muted" style="margin-bottom:20px;">Ce mot de passe sera désormais le vôtre — le patron ne le connaîtra pas.</p>
+          <div id="forced-pw-error-slot"></div>
+          <div class="field">
+            <label>Nouveau mot de passe</label>
+            ${passwordFieldWithToggle('forced-new-password', '', '8 caractères minimum')}
+          </div>
+          <div class="field">
+            <label>Confirmer le nouveau mot de passe</label>
+            ${passwordFieldWithToggle('forced-new-password-confirm', '', '')}
+          </div>
+          <button class="btn btn-primary btn-block" onclick="submitForcedPasswordChange()">Valider et continuer</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+async function submitForcedPasswordChange(){
+  const pending = state.pendingPasswordChange;
+  if(!pending) return;
+  const newPassword = (document.getElementById('forced-new-password')||{}).value || '';
+  const confirmPassword = (document.getElementById('forced-new-password-confirm')||{}).value || '';
+  if(newPassword.length < 8){
+    showFormError('forced-pw-error-slot', 'Le mot de passe doit contenir au moins 8 caractères.', ['forced-new-password']);
+    return;
+  }
+  if(newPassword !== confirmPassword){
+    showFormError('forced-pw-error-slot', 'Les deux mots de passe ne correspondent pas.', ['forced-new-password','forced-new-password-confirm']);
+    return;
+  }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const member = TEAM.find(t=>t.id===pending.employeeId);
+  if(!resto || !resto.remoteId || !member || !member.remoteId){
+    showFormError('forced-pw-error-slot', 'Une erreur est survenue. Merci de recharger la page.', []);
+    return;
+  }
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/team/${member.remoteId}/change-own-password`, {
+      method:'POST', body:{ currentPassword: pending.currentPassword, newPassword },
+    });
+    const { role, employeeId } = pending;
+    state.pendingPasswordChange = null;
+    login(role, employeeId);
+    syncRestoOperationalData(state.resto);
+    toast('Mot de passe mis à jour');
+  } catch(err){
+    showFormError('forced-pw-error-slot', err.message || "Une erreur est survenue. Merci de réessayer.", ['forced-new-password']);
   }
 }
 function togglePasswordVisibility(inputId, iconId){
@@ -1907,6 +1992,25 @@ function totalSpendThisMonth(){
     return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
   }).reduce((sum,o)=>sum+(o.amount||0),0);
 }
+// Compare les dépenses du mois en cours à la moyenne des mois précédents, et projette une
+// estimation de fin de mois en extrapolant le rythme observé jusqu'ici — volontairement simple
+// (pas de saisonnalité, pas de pondération), pour rester lisible d'un coup d'œil plutôt que de
+// viser une précision que l'historique ne permet de toute façon pas encore.
+function budgetForecastInsight(){
+  const trend = monthlyTrendData(7); // les 6 mois précédents + le mois en cours
+  const currentMonth = trend[trend.length-1];
+  const pastMonths = trend.slice(0,-1).filter(m=>m.value>0);
+  if(!pastMonths.length) return null; // pas assez d'historique pour comparer à quoi que ce soit
+  const avgPast = pastMonths.reduce((s,m)=>s+m.value,0)/pastMonths.length;
+  const now = new Date();
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const projected = (currentMonth.value / dayOfMonth) * daysInMonth;
+  return {
+    currentSpend: currentMonth.value, avgPast, projected,
+    deltaPct: avgPast>0 ? Math.round(((projected-avgPast)/avgPast)*100) : null,
+  };
+}
 function ensureStatsTrendPeriod(){
   if(!state.statsTrendPeriod) state.statsTrendPeriod = 'mois';
   return state.statsTrendPeriod;
@@ -1920,6 +2024,7 @@ function viewStats(){
   const spendCategory = spendByCategoryData();
   const thisMonth = totalSpendThisMonth();
   const trendPeriod = ensureStatsTrendPeriod();
+  const forecast = financialsHidden() ? null : budgetForecastInsight();
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Statistiques</h2><div class="sub">Dépenses par fournisseur, par catégorie, et évolution dans le temps</div></div>
@@ -1929,6 +2034,30 @@ function viewStats(){
       <div class="card"><div class="small muted">Commandes au total</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.status!=='refusee').length}</div></div>
       <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy).length}</div></div>
     </div>
+    ${forecast ? `
+    <div class="card">
+      <div class="card-title">Budget prévisionnel</div>
+      <div class="grid grid-3" style="margin-top:4px;">
+        <div>
+          <div class="small muted">Dépensé ce mois-ci</div>
+          <div style="font-size:20px;font-weight:700;">${fmtEUR(forecast.currentSpend)}</div>
+        </div>
+        <div>
+          <div class="small muted">Projection fin de mois</div>
+          <div style="font-size:20px;font-weight:700;">${fmtEUR(forecast.projected)}</div>
+        </div>
+        <div>
+          <div class="small muted">Moyenne des mois précédents</div>
+          <div style="font-size:20px;font-weight:700;">${fmtEUR(forecast.avgPast)}</div>
+        </div>
+      </div>
+      ${forecast.deltaPct!=null ? `<div class="small ${forecast.deltaPct>15?'':'muted'}" style="margin-top:10px;${forecast.deltaPct>15?'color:var(--urgent);':''}">
+        ${forecast.deltaPct>0
+          ? `Au rythme actuel, vous dépenserez <b>${forecast.deltaPct}% de plus</b> que d'habitude ce mois-ci.`
+          : `Au rythme actuel, vous dépenserez <b>${Math.abs(forecast.deltaPct)}% de moins</b> que d'habitude ce mois-ci.`}
+      </div>` : ''}
+      <div class="small muted" style="margin-top:8px;">Estimation simple à partir du rythme observé depuis le début du mois — à prendre comme un repère, pas une prévision exacte.</div>
+    </div>` : ''}
     <div class="card">
       <div class="flex between center" style="margin-bottom:10px;">
         <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${trendPeriod==='mois' ? '(6 derniers mois)' : '(5 dernières années)'}</div>
@@ -1992,8 +2121,28 @@ function buildAIInsights(){
   }
   const pending = ORDERS.filter(o=>o.status==='en_attente_validation').length;
   if(pending>0) insights.push(`${pending} commande${pending>1?'s':''} fournisseur${pending>1?'s':''} en attente de votre validation.`);
+  // Relance douce : signale le fournisseur le plus longtemps délaissé (au-delà d'un mois), sans
+  // rien bloquer — juste une question, au cas où ce serait un oubli plutôt qu'un choix assumé.
+  // On ignore les fournisseurs jamais commandés (ce n'est pas un "oubli", juste un nouveau
+  // fournisseur pas encore utilisé).
+  if(SUPPLIERS.length){
+    const REMINDER_THRESHOLD_DAYS = 30;
+    const now = new Date();
+    const overdue = SUPPLIERS.map(s=>{
+        const supplierOrders = ORDERS.filter(o=>o.supplier===s.id && o.status!=='refusee' && o.createdAt);
+        if(!supplierOrders.length) return null;
+        const lastOrderTime = Math.max(...supplierOrders.map(o=>new Date(o.createdAt).getTime()));
+        const daysSince = Math.floor((now - lastOrderTime) / 86400000);
+        return { supplier: s, daysSince };
+      })
+      .filter(x=>x && x.daysSince >= REMINDER_THRESHOLD_DAYS)
+      .sort((a,b)=>b.daysSince-a.daysSince)[0];
+    if(overdue){
+      insights.push(`Aucune commande chez <b>${escapeHtml(overdue.supplier.name)}</b> depuis <b>${overdue.daysSince} jours</b> — un oubli, ou c'est voulu ?`);
+    }
+  }
   if(insights.length===0) insights.push('Aucune information disponible pour le moment.');
-  return insights.slice(0,4);
+  return insights.slice(0,5);
 }
 function viewPatronDashboard(){
   const achatsTotal = ORDERS.reduce((a,o)=>a+o.amount,0);
@@ -2129,7 +2278,8 @@ function emptyState(msg){
 
 function setStockFilter(f){ state.stockFilter = f; render(); }
 function ensureProductFilters(){
-  if(!state.productFilters) state.productFilters = { search:'', category:'tous', zone:'tous', supplier:'tous' };
+  if(!state.productFilters) state.productFilters = { search:'', category:'tous', zone:'tous', supplier:'tous', sort:'name-asc' };
+  if(!state.productFilters.sort) state.productFilters.sort = 'name-asc'; // pour les sessions déjà ouvertes avant l'ajout du tri
   return state.productFilters;
 }
 function matchesProductSearch(p, q){
@@ -2151,6 +2301,19 @@ function filterProductsList(products, f){
     return true;
   });
 }
+const PRODUCT_SORTERS = {
+  'name-asc': (a,b) => (a.name||'').localeCompare(b.name||'', 'fr'),
+  'name-desc': (a,b) => (b.name||'').localeCompare(a.name||'', 'fr'),
+  'price-asc': (a,b) => (a.price||0) - (b.price||0),
+  'price-desc': (a,b) => (b.price||0) - (a.price||0),
+  'category-asc': (a,b) => (a.cat||'').localeCompare(b.cat||'', 'fr') || (a.name||'').localeCompare(b.name||'', 'fr'),
+};
+function sortProductsList(products, sortKey){
+  const sorter = PRODUCT_SORTERS[sortKey] || PRODUCT_SORTERS['name-asc'];
+  // .slice() : on trie une copie, jamais le tableau PRODUCTS original — sinon l'ordre change
+  // aussi partout ailleurs où PRODUCTS est utilisé (paniers, comparateur...), pas seulement ici.
+  return products.slice().sort(sorter);
+}
 function productFilterBar(f){
   return `
     <div class="product-filter-bar">
@@ -2166,6 +2329,13 @@ function productFilterBar(f){
       <select onchange="updateProductFilter('supplier',this.value)">
         <option value="tous">Tous fournisseurs</option>
         ${SUPPLIERS.map(s=>`<option value="${s.id}" ${f.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+      </select>
+      <select onchange="updateProductFilter('sort',this.value)" title="Trier la liste">
+        <option value="name-asc" ${f.sort==='name-asc'?'selected':''}>Nom (A → Z)</option>
+        <option value="name-desc" ${f.sort==='name-desc'?'selected':''}>Nom (Z → A)</option>
+        <option value="category-asc" ${f.sort==='category-asc'?'selected':''}>Catégorie</option>
+        ${financialsHidden()?'':`<option value="price-asc" ${f.sort==='price-asc'?'selected':''}>Prix (croissant)</option>
+        <option value="price-desc" ${f.sort==='price-desc'?'selected':''}>Prix (décroissant)</option>`}
       </select>
       ${(f.search||f.category!=='tous'||f.zone!=='tous'||f.supplier!=='tous') ? `<button class="btn btn-ghost btn-sm" onclick="resetProductFilters()">Réinitialiser</button>` : ''}
     </div>
@@ -2185,7 +2355,7 @@ function updateProductFilter(key, value){
   }
 }
 function resetProductFilters(){
-  state.productFilters = { search:'', category:'tous', zone:'tous', supplier:'tous' };
+  state.productFilters = { search:'', category:'tous', zone:'tous', supplier:'tous', sort:'name-asc' };
   render();
 }
 function zoneTagsFor(p){
@@ -2195,12 +2365,13 @@ function viewStocks(){
   const filter = state.stockFilter || 'tous';
   const f = ensureProductFilters();
   const byDept = PRODUCTS.filter(p=> filter==='tous' ? true : (filter==='cuisine' ? (p.department==='cuisine'||p.department==='both') : (p.department==='salle'||p.department==='both')));
-  const filtered = filterProductsList(byDept, f);
+  const filtered = sortProductsList(filterProductsList(byDept, f), f.sort);
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Produits</h2><div class="sub">${PRODUCTS.length} produit${PRODUCTS.length>1?'s':''} au catalogue · le site sert à commander, pas à suivre un stock en temps réel</div></div>
       <div class="flex gap8">
         ${(!financialsHidden() && (state.role==='patron'||state.role==='manager')) ? `<button class="btn btn-ghost" onclick="setView('comparateur')">${iconSm(I.chart)} Comparer les prix</button>` : ''}
+        ${(state.role==='patron'||state.role==='manager') ? `<button class="btn btn-ghost" onclick="openImportProductsModal()">${iconSm(I.doc)} Importer un CSV</button>` : ''}
         <button class="btn btn-primary" onclick="openNewProductModal()">${iconSm(I.plus)} Nouveau produit</button>
       </div>
     </div>
@@ -2396,7 +2567,7 @@ function orderRowActions(o, role){
   const dupBtn = canDuplicate ? `<button class="btn btn-ghost btn-sm" onclick="duplicateOrder('${o.id}')" title="Réutiliser cette commande">${iconXs(I.copy)} Dupliquer</button>` : '';
   const pdfBtn = (o.supplier && ['patron','manager'].includes(role) && !soloModeEnabled()) ? `<button class="btn btn-ghost btn-sm" onclick="openOrderPdfOptions('${o.id}')" title="Bon de commande PDF">${iconXs(I.doc)} PDF</button>` : '';
   if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
-  if((role==='manager' || role==='cuisine' || role==='patron') && o.status==='validee') return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></div>`;
+  if((role==='manager' || role==='cuisine' || role==='patron') && (o.status==='validee' || o.status==='partiellement_recue')) return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}')">${o.status==='partiellement_recue'?'Compléter la réception':'Marquer reçue'}</button></div>`;
   return `<div class="flex gap8">${pdfBtn}${dupBtn}</div>`;
 }
 async function duplicateOrder(id){
@@ -2419,6 +2590,7 @@ function orderStatusTag(o){
   let tag;
   if(s==='en_attente_validation') tag = `<span class="tag tag-neutral">En attente</span>`;
   else if(s==='validee') tag = `<span class="tag tag-neutral">Validée</span>`;
+  else if(s==='partiellement_recue') tag = `<span class="tag tag-subtle" style="background:#FFF3CD;color:#8A6100;">Partiellement reçue</span>`;
   else if(s==='livree') tag = `<span class="tag tag-strong">Livrée</span>`;
   else if(s==='refusee') tag = `<span class="tag tag-red">Refusée</span>`;
   else tag = `<span class="tag tag-subtle">${s}</span>`;
@@ -2474,6 +2646,25 @@ let NEARBY_SUPPLIERS_LOADING = false;
 let NEARBY_SUPPLIERS_ERROR = null;
 let NEARBY_SUPPLIERS_LOADED_FOR = null;
 let NEARBY_SUPPLIERS_LOADED_RADIUS = null;
+// Vue consolidée multi-établissements (forfait Pro) — mêmes principes de chargement paresseux
+// que pour les fournisseurs à proximité ci-dessus : chargée une fois, réutilisée ensuite, et
+// invalidée (remise à null) quand un établissement est ajouté ou supprimé.
+let CONSOLIDATED_STATS = null;
+let CONSOLIDATED_STATS_LOADING = false;
+let CONSOLIDATED_STATS_ERROR = null;
+async function loadConsolidatedStats(){
+  if(CONSOLIDATED_STATS_LOADING) return;
+  CONSOLIDATED_STATS_LOADING = true;
+  CONSOLIDATED_STATS_ERROR = null;
+  try{
+    CONSOLIDATED_STATS = await apiRequest('/api/restaurants/consolidated-stats');
+  } catch(err){
+    CONSOLIDATED_STATS_ERROR = err.message || "Impossible de charger la vue consolidée pour le moment.";
+  } finally {
+    CONSOLIDATED_STATS_LOADING = false;
+    render();
+  }
+}
 let SUPPLIER_MAP_INSTANCE = null;
 let SUPPLIER_MAP_VIEW = null; // {center:[lat,lng], zoom} — retenu pour ne pas perdre la position lors d'un nouveau rendu
 let SUPPLIER_MAP_LAST_SEARCH = null; // [lat,lng] du dernier endroit réellement recherché
@@ -2897,18 +3088,25 @@ function viewEquipe(){
           <td class="muted small">${t.shift}</td>
           <td><span class="tag ${t.status==='actif'?'tag-subtle':'tag-neutral'}">${t.status==='actif'?'En service':'Repos'}</span></td>
           <td class="muted small">${permsForRole(t.role)}</td>
-          <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button>${t.inviteToken?`<button class="btn btn-ghost btn-sm" onclick="showEmployeeCredentialsModal('${escapeHtml(t.name)}','${escapeHtml(t.username||'')}','—',  '${t.inviteToken}')" title="Retrouver le lien de connexion">${iconSm(I.mail)}</button>`:''}<button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
+          <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button>${t.inviteToken?`<button class="btn btn-ghost btn-sm" onclick="showEmployeeCredentialsModal('${escapeHtml(t.name)}','${escapeHtml(t.username||'')}','—',  '${t.inviteToken}','${t.id}')" title="Retrouver le lien de connexion">${iconSm(I.mail)}</button>`:''}<button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
     <div class="section-head"><div><h2>Autorisation de commande directe</h2><div class="sub">Ces personnes peuvent envoyer une commande au fournisseur sans attendre la validation du patron</div></div></div>
     <div class="card">
       ${TEAM.length ? `<table>
-        <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th></tr>
+        <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th><th>Plafond avant validation</th></tr>
         ${TEAM.map(t=>`<tr class="tr-hover">
           <td style="font-weight:600;">${escapeHtml(t.name)}</td>
           <td class="muted">${escapeHtml(t.role)}</td>
           <td><label class="flex center gap8" style="cursor:pointer;"><input type="checkbox" ${t.canOrderDirectly?'checked':''} onchange="toggleCanOrderDirectly('${t.id}', this.checked)"> ${t.canOrderDirectly?'Autorisé':'Non autorisé'}</label></td>
+          <td>
+            <div class="flex center gap8">
+              <input type="number" min="0" step="10" placeholder="Illimité" value="${t.orderSpendingLimit!=null?t.orderSpendingLimit:''}" style="width:100px;" ${t.canOrderDirectly?'':'disabled'} onchange="updateOrderSpendingLimit('${t.id}', this.value)">
+              <span class="small muted">€</span>
+            </div>
+            ${t.canOrderDirectly ? `<div class="small muted" style="margin-top:2px;">${t.orderSpendingLimit!=null ? 'Au-delà, repasse par votre validation' : 'Aucune limite — commande toujours validée automatiquement'}</div>` : ''}
+          </td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
@@ -2932,6 +3130,23 @@ async function toggleCanOrderDirectly(id, checked){
     render();
   } catch(err){
     toast(err.message, 'alert');
+  }
+}
+async function updateOrderSpendingLimit(id, value){
+  const t = TEAM.find(x=>x.id===id); if(!t) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const limit = value==='' ? null : parseFloat(value);
+  if(limit!=null && (Number.isNaN(limit) || limit<0)){ toast('Plafond invalide', 'alert'); render(); return; }
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team/${t.remoteId}/spending-limit`, {
+      method:'PATCH', body:{ limit },
+    });
+    t.orderSpendingLimit = data.orderSpendingLimit!=null ? parseFloat(data.orderSpendingLimit) : null;
+    toast(limit!=null ? `Plafond fixé à ${fmtEUR(limit)} pour ${escapeHtml(t.name)}` : `Plafond retiré pour ${escapeHtml(t.name)}`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+    render();
   }
 }
 function permsForRole(role){
@@ -2971,6 +3186,10 @@ async function confirmDeleteEmployee(id){
 function isEssentielPlan(){ return !!(ACCOUNT && ACCOUNT.plan==='essentiel'); }
 function viewMulti(){
   const locked = isEssentielPlan();
+  const showConsolidated = !locked && RESTOS.length>1 && !financialsHidden();
+  if(showConsolidated && !CONSOLIDATED_STATS && !CONSOLIDATED_STATS_LOADING && !CONSOLIDATED_STATS_ERROR){
+    loadConsolidatedStats();
+  }
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Gestion multi-établissements</h2><div class="sub">Pilotez tous vos restaurants depuis un même compte</div></div>
@@ -2988,6 +3207,29 @@ function viewMulti(){
           </div>
           <button class="btn btn-primary btn-sm" onclick="openUpgradeModal()">Voir le forfait Pro</button>
         </div>
+      </div>
+    ` : ''}
+    ${showConsolidated ? `
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-title">Vue consolidée — tous établissements</div>
+        ${CONSOLIDATED_STATS ? `
+          <div class="grid grid-2" style="margin-bottom:14px;">
+            <div><div class="small muted">Dépenses ce mois-ci (total)</div><div style="font-size:22px;font-weight:700;">${fmtEUR(CONSOLIDATED_STATS.totalThisMonth)}</div></div>
+            <div><div class="small muted">Dépenses depuis toujours (total)</div><div style="font-size:22px;font-weight:700;">${fmtEUR(CONSOLIDATED_STATS.totalAllTime)}</div></div>
+          </div>
+          <table>
+            <tr><th>Établissement</th><th>Ce mois-ci</th><th>Commandes ce mois-ci</th><th>Total historique</th></tr>
+            ${CONSOLIDATED_STATS.restaurants.map(r=>`<tr class="tr-hover">
+              <td style="font-weight:600;">${escapeHtml(r.name)}</td>
+              <td class="mono">${fmtEUR(r.spendThisMonth)}</td>
+              <td class="mono">${r.ordersThisMonth}</td>
+              <td class="mono">${fmtEUR(r.spendAllTime)}</td>
+            </tr>`).join('')}
+          </table>
+        ` : CONSOLIDATED_STATS_ERROR ? `
+          <div class="small" style="color:var(--urgent);margin-bottom:8px;">${escapeHtml(CONSOLIDATED_STATS_ERROR)}</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadConsolidatedStats()">Réessayer</button>
+        ` : `<div class="small muted">Chargement…</div>`}
       </div>
     ` : ''}
     <div class="grid grid-2b">
@@ -3046,9 +3288,9 @@ async function syncTeamFromServer(localId){
       id: 't'+m.id, remoteId: m.id, name: m.name, role: m.role, shift: m.shift,
       status: m.status, username: m.username, photoDataUrl: m.photo_url, theme: m.theme,
       inviteToken: m.invite_token, canOrderDirectly: !!m.can_order_directly,
+      orderSpendingLimit: m.order_spending_limit != null ? parseFloat(m.order_spending_limit) : null,
     }));
     if(state.resto === localId) TEAM = d.team;
-    render();
   } catch(err){
     // Une erreur ici (ex : établissement pas encore payé) laisse simplement l'équipe locale
     // telle quelle — sans bloquer le reste de l'application.
@@ -3062,7 +3304,6 @@ async function syncCategoriesFromServer(localId){
     const d = ensureRestoData(localId);
     d.categories = data.categories.map(c => ({ id:'cat'+c.id, remoteId:c.id, name:c.name }));
     if(state.resto === localId) CATEGORIES = d.categories;
-    render();
   } catch(err){}
 }
 async function syncZonesFromServer(localId){
@@ -3073,7 +3314,6 @@ async function syncZonesFromServer(localId){
     const d = ensureRestoData(localId);
     d.zones = data.zones.map(z => ({ id:'zone'+z.id, remoteId:z.id, name:z.name }));
     if(state.resto === localId) ZONES = d.zones;
-    render();
   } catch(err){}
 }
 async function syncSuppliersFromServer(localId){
@@ -3090,7 +3330,6 @@ async function syncSuppliersFromServer(localId){
       latitude: s.latitude, longitude: s.longitude, isApproximate: s.is_approximate,
     }));
     if(state.resto === localId) SUPPLIERS = d.suppliers;
-    render();
   } catch(err){
     // Idem : on laisse la liste locale telle quelle en cas d'erreur (ex : pas encore payé).
   }
@@ -3113,7 +3352,6 @@ async function syncProductsFromServer(localId){
       };
     });
     if(state.resto === localId) PRODUCTS = d.products;
-    render();
   } catch(err){
     // Idem.
   }
@@ -3139,7 +3377,6 @@ async function syncOrdersFromServer(localId){
       };
     });
     if(state.resto === localId) ORDERS = d.orders;
-    render();
   } catch(err){}
 }
 async function syncRequestsFromServer(localId){
@@ -3155,7 +3392,6 @@ async function syncRequestsFromServer(localId){
       createdByMemberId: r.created_by_member_id,
     }));
     if(state.resto === localId) REQUESTS = d.requests;
-    render();
   } catch(err){}
 }
 async function syncCustomRequestsFromServer(localId){
@@ -3169,7 +3405,6 @@ async function syncCustomRequestsFromServer(localId){
       note: cr.note, status: cr.status, time: fmtTime(new Date(cr.created_at)), createdAt: new Date(cr.created_at),
     }));
     if(state.resto === localId) CUSTOM_REQUESTS = d.customRequests;
-    render();
   } catch(err){}
 }
 async function manualRefresh(){
@@ -3193,7 +3428,6 @@ async function syncBasketsFromServer(localId){
     });
     d.baskets = newBaskets;
     if(state.resto === localId) BASKETS = d.baskets;
-    render();
   } catch(err){}
 }
 async function syncRestaurantInfoFromServer(localId){
@@ -3217,7 +3451,6 @@ async function syncRestaurantInfoFromServer(localId){
     resto.colorTheme = data.restaurant.color_theme;
     resto.defaultDarkMode = data.restaurant.default_dark_mode;
     applyAppearance(resto);
-    render();
   } catch(err){}
 }
 async function syncNotificationSettingsFromServer(localId){
@@ -3230,7 +3463,6 @@ async function syncNotificationSettingsFromServer(localId){
         NOTIF_STATE[role] = { ...NOTIF_STATE[role], ...data.notificationSettings[role] };
       }
     });
-    render();
   } catch(err){}
 }
 async function syncRestoOperationalData(localId){
@@ -3247,6 +3479,14 @@ async function syncRestoOperationalData(localId){
   for(const step of steps){
     try{ await step(localId); } catch(err){ console.error('Erreur de synchronisation (une étape ignorée, les autres continuent) :', err); }
   }
+  // Un SEUL rendu ici, une fois toutes les étapes terminées — plutôt qu'un rendu après chacune
+  // des 11 étapes. Chaque rendu recrée entièrement la carte des fournisseurs et les graphiques
+  // (ils vivent dans un conteneur recréé à chaque rendu, donc impossibles à simplement "mettre
+  // à jour" sans les reconstruire) : les appeler 11 fois de suite toutes les 30 secondes faisait
+  // clignoter/disparaître brièvement les marqueurs pendant que la personne regardait la carte,
+  // pour un gain nul puisque les données de ces 11 étapes arrivent de toute façon quasi en même
+  // temps. Un seul rendu final donne le même résultat visuel, sans le clignotement.
+  render();
 }
 function switchResto(id){
   state.resto = id;
@@ -3270,19 +3510,28 @@ function deleteResto(id){
     </div>
   `);
 }
-function confirmDeleteResto(id){
+async function confirmDeleteResto(id){
   const idx = RESTOS.findIndex(r=>r.id===id);
   if(idx===-1) return;
-  const wasActive = state.resto===id;
-  RESTOS.splice(idx,1);
-  delete RESTO_DATA[id];
-  if(wasActive){
-    state.resto = RESTOS[0].id;
-    loadRestoData(state.resto);
+  const r = RESTOS[idx];
+  try{
+    // Supprimé réellement côté serveur — l'ancienne version ne retirait l'établissement que de
+    // ce navigateur, il réapparaissait donc après un rechargement ou sur un autre appareil.
+    if(r.remoteId) await apiRequest(`/api/restaurants/${r.remoteId}`, { method:'DELETE' });
+    const wasActive = state.resto===id;
+    RESTOS.splice(idx,1);
+    delete RESTO_DATA[id];
+    if(wasActive){
+      state.resto = RESTOS[0].id;
+      loadRestoData(state.resto);
+    }
+    CONSOLIDATED_STATS = null; // un établissement en moins change la vue consolidée : à recharger
+    closeModal();
+    toast('Établissement supprimé');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
   }
-  closeModal();
-  toast('Établissement supprimé');
-  render();
 }
 
 
@@ -4074,16 +4323,16 @@ function viewManagerDemandes(){
   `;
 }
 function viewLivraisons(){
-  const awaiting = ORDERS.filter(o=>o.status==='validee');
+  const awaiting = ORDERS.filter(o=>o.status==='validee' || o.status==='partiellement_recue');
   const recent = ORDERS.filter(o=>o.status==='livree').slice(0,5);
   return `
     <div class="section-head" style="margin-top:0;"><div><h2>Livraisons</h2><div class="sub">Réceptionnez les commandes validées par le patron</div></div></div>
     <div class="card">
       <div class="card-title">En attente de réception</div>
       <table>
-        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th></th></tr>
-        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">Marquer reçue</button></td></tr>`).join('')}
-        ${awaiting.length===0?`<tr><td colspan="5"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Statut</th>${financialsHidden()?"":"<th>Montant</th>"}<th></th></tr>
+        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td><td>${orderStatusTag(o)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">${o.status==='partiellement_recue'?'Compléter la réception':'Marquer reçue'}</button></td></tr>`).join('')}
+        ${awaiting.length===0?`<tr><td colspan="6"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
     <div class="section-head"><div><h2>Réceptionnées récemment</h2></div></div>
@@ -4237,7 +4486,16 @@ function updateReceiveSummary(id){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
   let receivedTotal = 0;
   let hasDiscrepancy = false;
+  let expectedTotal = 0;
   (o.lineItems||[]).forEach((li,idx)=>{
+    // Une ligne déjà réceptionnée lors d'un passage précédent (réception partielle) n'est plus
+    // éditable ici et ne rentre pas dans le total "en cours de confirmation" — elle a déjà été
+    // comptabilisée à l'époque.
+    if(o.status==='partiellement_recue' && li.received===true) return;
+    expectedTotal += (Number(li.qty)||0)*(Number(li.price)||0);
+    const checkbox = document.getElementById('rcv-received-'+idx);
+    const isReceivedNow = checkbox ? checkbox.checked : true;
+    if(!isReceivedNow) return;
     const qtyInput = document.getElementById('rcv-qty-'+idx);
     const priceInput = document.getElementById('rcv-price-'+idx);
     const qty = qtyInput ? parseFloat(qtyInput.value)||0 : li.qty;
@@ -4245,9 +4503,10 @@ function updateReceiveSummary(id){
     receivedTotal += qty*price;
     if(qty !== Number(li.qty) || price !== Number(li.price)) hasDiscrepancy = true;
   });
-  const expectedTotal = (o.lineItems||[]).reduce((sum,li)=>sum+(Number(li.qty)||0)*(Number(li.price)||0),0);
   const totalEl = document.getElementById('rcv-total-received');
   if(totalEl) totalEl.textContent = receivedTotal.toFixed(2)+' €';
+  const expectedEl = document.getElementById('rcv-total-expected');
+  if(expectedEl) expectedEl.textContent = expectedTotal.toFixed(2)+' €';
   const diffRow = document.getElementById('rcv-diff-row');
   if(diffRow){
     const diff = receivedTotal - expectedTotal;
@@ -4256,40 +4515,68 @@ function updateReceiveSummary(id){
       : `<span class="small muted">Aucun écart pour l'instant</span><span class="mono muted">0.00 €</span>`;
   }
 }
+// Affiche/masque les champs quantité-prix d'une ligne selon qu'elle est cochée "reçue
+// maintenant" ou non — décocher une ligne veut dire "pas encore arrivée, on la recevra une
+// prochaine fois", ce qui laissera la commande ouverte en "partiellement reçue" au lieu de
+// "livrée" une fois la réception confirmée.
+function toggleReceiveLine(id, idx){
+  const checkbox = document.getElementById('rcv-received-'+idx);
+  const fields = document.getElementById('rcv-fields-'+idx);
+  const note = document.getElementById('rcv-pending-note-'+idx);
+  if(fields) fields.style.display = checkbox && checkbox.checked ? '' : 'none';
+  if(note) note.style.display = checkbox && checkbox.checked ? 'none' : '';
+  updateReceiveSummary(id);
+}
 function openReceiveOrderModal(id){
   if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
-  if(o.status!=='validee'){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
+  if(!['validee','partiellement_recue'].includes(o.status)){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
   const hideFin = financialsHidden();
+  const isCompleting = o.status==='partiellement_recue';
   const lines = (o.lineItems||[]).map((li,idx)=>{
     const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
     const name = p ? p.name : (li.name || 'Article');
-    const unit = p ? p.unit : '';
+    if(isCompleting && li.received===true){
+      // Déjà confirmée lors d'un passage précédent : affichée pour information seulement,
+      // on ne revient pas dessus ici.
+      return `
+        <div class="receive-line" style="padding:10px 0;border-bottom:1px solid var(--border);opacity:0.6;">
+          <div style="font-weight:600;font-size:13.5px;margin-bottom:4px;">${escapeHtml(name)} <span class="tag tag-strong" style="margin-left:6px;">Déjà reçu</span></div>
+          <div class="small muted">${li.qtyReceived} ${p?escapeHtml(p.unit):''}${hideFin?'':` — ${Number(li.priceReceived).toFixed(2)} €`}</div>
+        </div>
+      `;
+    }
     return `
       <div class="receive-line" data-idx="${idx}" style="padding:10px 0;border-bottom:1px solid var(--border);">
-        <div style="font-weight:600;font-size:13.5px;margin-bottom:6px;">${name}</div>
-        <div class="field-row">
-          <div class="field"><label>Quantité commandée</label><input value="${li.qty}" disabled style="opacity:0.6;"></div>
-          <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${li.qty}" oninput="updateReceiveSummary('${id}')"></div>
+        <label class="flex center gap8" style="margin-bottom:6px;cursor:pointer;">
+          <input type="checkbox" id="rcv-received-${idx}" checked onchange="toggleReceiveLine('${id}',${idx})">
+          <span style="font-weight:600;font-size:13.5px;">${escapeHtml(name)}</span>
+        </label>
+        <div id="rcv-fields-${idx}">
+          <div class="field-row">
+            <div class="field"><label>Quantité commandée</label><input value="${li.qty}" disabled style="opacity:0.6;"></div>
+            <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${li.qty}" oninput="updateReceiveSummary('${id}')"></div>
+          </div>
+          ${hideFin ? '' : `
+          <div class="field-row">
+            <div class="field"><label>Prix attendu (€)</label><input value="${li.price!=null?Number(li.price).toFixed(2):'—'}" disabled style="opacity:0.6;"></div>
+            <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}" oninput="updateReceiveSummary('${id}')"></div>
+          </div>`}
         </div>
-        ${hideFin ? '' : `
-        <div class="field-row">
-          <div class="field"><label>Prix attendu (€)</label><input value="${li.price!=null?Number(li.price).toFixed(2):'—'}" disabled style="opacity:0.6;"></div>
-          <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}" oninput="updateReceiveSummary('${id}')"></div>
-        </div>`}
+        <div class="small muted" id="rcv-pending-note-${idx}" style="display:none;">Sera laissé "en attente" — vous pourrez compléter la réception plus tard quand le reste arrivera.</div>
       </div>
     `;
   }).join('');
-  const expectedTotal = (o.lineItems||[]).reduce((sum,li)=>sum+(Number(li.qty)||0)*(Number(li.price)||0),0);
+  const expectedTotal = (o.lineItems||[]).filter(li=>!(isCompleting && li.received===true)).reduce((sum,li)=>sum+(Number(li.qty)||0)*(Number(li.price)||0),0);
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
-    <h3>Réceptionner la commande ${o.id}</h3>
-    <div class="modal-sub">Vérifiez ce qui a vraiment été livré${hideFin?'':' et facturé'} — les écarts éventuels seront signalés automatiquement.</div>
+    <h3>${isCompleting ? 'Compléter la réception' : 'Réceptionner'} la commande ${o.id}</h3>
+    <div class="modal-sub">${isCompleting ? "Certaines lignes ont déjà été reçues — indiquez ce qui vient d'arriver parmi le reste." : `Vérifiez ce qui a vraiment été livré${hideFin?'':' et facturé'} — les écarts éventuels seront signalés automatiquement.`} Si un produit n'est pas encore arrivé, décochez-le : la commande restera ouverte pour le reste.</div>
     <div style="max-height:320px;overflow-y:auto;">${lines || emptyState('Aucun article détaillé sur cette commande')}</div>
     ${hideFin ? '' : `
     <div id="rcv-summary" style="margin:14px 0;padding:12px 14px;border-radius:8px;background:var(--surface-subtle,rgba(0,0,0,0.03));">
-      <div class="flex between"><span class="small muted">Total commandé</span><span class="mono" id="rcv-total-expected">${expectedTotal.toFixed(2)} €</span></div>
-      <div class="flex between" style="margin-top:4px;"><span class="small muted">Total facturé (en direct)</span><span class="mono" id="rcv-total-received">${expectedTotal.toFixed(2)} €</span></div>
+      <div class="flex between"><span class="small muted">Total commandé (reste à recevoir)</span><span class="mono" id="rcv-total-expected">${expectedTotal.toFixed(2)} €</span></div>
+      <div class="flex between" style="margin-top:4px;"><span class="small muted">Total facturé maintenant</span><span class="mono" id="rcv-total-received">${expectedTotal.toFixed(2)} €</span></div>
       <div class="flex between" style="margin-top:4px;" id="rcv-diff-row"></div>
     </div>`}
     <div class="field">
@@ -4303,14 +4590,27 @@ function openReceiveOrderModal(id){
 }
 async function confirmReceiveOrder(id){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  const isCompleting = o.status==='partiellement_recue';
   const receivedLineItems = (o.lineItems||[]).map((li,idx)=>{
+    const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
+    // Ligne déjà reçue lors d'un passage précédent : renvoyée telle quelle, inchangée — le
+    // serveur en a besoin pour reconstituer l'état complet de la commande à chaque appel.
+    if(isCompleting && li.received===true){
+      return {
+        productId: p ? p.remoteId : null, name: p ? p.name : li.name,
+        qtyOrdered: li.qty, qtyReceived: li.qtyReceived,
+        priceOrdered: li.price, priceReceived: li.priceReceived, received: true,
+      };
+    }
+    const checkbox = document.getElementById('rcv-received-'+idx);
+    const isReceivedNow = checkbox ? checkbox.checked : true;
     const qtyInput = document.getElementById('rcv-qty-'+idx);
     const priceInput = document.getElementById('rcv-price-'+idx);
-    const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
     return {
       productId: p ? p.remoteId : null, name: p ? p.name : li.name,
-      qtyOrdered: li.qty, qtyReceived: qtyInput ? parseFloat(qtyInput.value)||0 : li.qty,
-      priceOrdered: li.price, priceReceived: priceInput ? parseFloat(priceInput.value)||0 : li.price,
+      qtyOrdered: li.qty, qtyReceived: isReceivedNow ? (qtyInput ? parseFloat(qtyInput.value)||0 : li.qty) : null,
+      priceOrdered: li.price, priceReceived: isReceivedNow ? (priceInput ? parseFloat(priceInput.value)||0 : li.price) : null,
+      received: isReceivedNow,
     };
   });
   const updateCatalogEl = document.getElementById('rcv-update-catalog');
@@ -4322,7 +4622,7 @@ async function confirmReceiveOrder(id){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/receive`, {
       method:'PATCH', body:{ receivedLineItems, updateCatalogPrices, deliveryNotePhotoUrl },
     });
-    o.status = 'livree';
+    o.status = data.order.status; // 'livree' ou 'partiellement_recue', selon ce qui a vraiment été reçu — jamais deviné côté navigateur
     o.hasDiscrepancy = data.order.has_discrepancy;
     o.lineItems = (data.order.line_items||[]).map(li=>{
       const localProduct = li.productId ? PRODUCTS.find(p=>p.remoteId===li.productId) : null;
@@ -4331,13 +4631,17 @@ async function confirmReceiveOrder(id){
     o.amount = parseFloat(data.order.amount);
     if(updateCatalogPrices){
       receivedLineItems.forEach(li=>{
-        if(!li.productId) return;
+        if(!li.productId || !li.received) return;
         const localProduct = PRODUCTS.find(p=>p.remoteId===li.productId);
         if(localProduct && li.priceReceived != null) localProduct.price = li.priceReceived;
       });
     }
     closeModal();
-    toast(data.order.has_discrepancy ? 'Réception confirmée — écart détecté par rapport à la commande' : 'Livraison réceptionnée — tout correspond à la commande');
+    if(o.status==='partiellement_recue'){
+      toast('Réception partielle enregistrée — vous pourrez compléter le reste dès son arrivée.');
+    } else {
+      toast(data.order.has_discrepancy ? 'Réception confirmée — écart détecté par rapport à la commande' : 'Livraison réceptionnée — tout correspond à la commande');
+    }
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -4965,6 +5269,156 @@ async function addProduct(){
     toast(err.message, 'alert');
   }
 }
+// ============================================================
+// IMPORT CSV DE PRODUITS — pour rentrer un catalogue existant (Excel/Google Sheets exporté en
+// CSV) sans tout retaper produit par produit. Colonnes reconnues (accents et casse ignorés,
+// ordre libre) : nom (obligatoire), categorie, unite, prix, quantite_commande, fournisseur
+// (par nom, doit déjà exister), conditionnement, reference_fournisseur.
+// ============================================================
+const CSV_COLUMN_ALIASES = {
+  name: ['nom','name','produit','article'],
+  category: ['categorie','category'],
+  unit: ['unite','unit','uniteDeCommande'.toLowerCase()],
+  price: ['prix','price','prixachat','prixdachat'],
+  qty: ['quantitecommande','qtecommande','quantite','qty','qtycommande'],
+  supplier: ['fournisseur','supplier'],
+  packaging: ['conditionnement','packaging'],
+  reference: ['referencefournisseur','reference','ref'],
+};
+function normalizeCSVHeader(h){
+  return (h||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+}
+// Analyseur CSV volontairement simple mais robuste aux cas réels : détecte automatiquement le
+// séparateur (virgule ou point-virgule — Excel en France exporte souvent avec ;), gère les
+// champs entre guillemets contenant des virgules, des retours à la ligne ou des guillemets
+// échappés ("").
+function parseCSVText(text){
+  const firstLine = (text.split(/\r?\n/)[0] || '');
+  const delimiter = (firstLine.split(';').length > firstLine.split(',').length) ? ';' : ',';
+  const rows = []; let row = []; let field = ''; let inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else inQuotes=false; }
+      else field += c;
+    } else {
+      if(c==='"') inQuotes = true;
+      else if(c===delimiter){ row.push(field); field=''; }
+      else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c==='\r'){ /* ignoré, le \n qui suit termine déjà la ligne */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(f=>(f||'').trim()!==''));
+}
+// Transforme les lignes CSV brutes en objets produits exploitables, en retenant au passage les
+// lignes invalides (sans nom) pour les signaler clairement plutôt que de les créer à moitié.
+function mapCSVRowsToProducts(rows){
+  if(!rows.length) return { items: [], skipped: 0 };
+  const header = rows[0].map(normalizeCSVHeader);
+  const colIndex = {};
+  Object.keys(CSV_COLUMN_ALIASES).forEach(field=>{
+    const idx = header.findIndex(h => CSV_COLUMN_ALIASES[field].includes(h));
+    if(idx !== -1) colIndex[field] = idx;
+  });
+  let skipped = 0;
+  const items = [];
+  for(const r of rows.slice(1)){
+    const name = (colIndex.name!=null ? r[colIndex.name] : '')?.trim();
+    if(!name){ skipped++; continue; }
+    items.push({
+      name,
+      category: colIndex.category!=null ? (r[colIndex.category]||'').trim() : '',
+      unit: colIndex.unit!=null ? (r[colIndex.unit]||'').trim() : 'unité',
+      price: colIndex.price!=null ? (parseNum(r[colIndex.price])||0) : 0,
+      qtyCommande: colIndex.qty!=null ? (parseNum(r[colIndex.qty])||1) : 1,
+      supplierName: colIndex.supplier!=null ? (r[colIndex.supplier]||'').trim() : '',
+      packaging: colIndex.packaging!=null ? (r[colIndex.packaging]||'').trim() : '',
+      supplierReference: colIndex.reference!=null ? (r[colIndex.reference]||'').trim() : '',
+    });
+  }
+  return { items, skipped, hasNameColumn: colIndex.name!=null };
+}
+function openImportProductsModal(){
+  state.pendingCSVImport = null;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Importer des produits depuis un CSV</h3>
+    <div class="modal-sub">Pratique pour rentrer un catalogue déjà existant (export Excel ou Google Sheets) sans tout retaper.</div>
+    <div class="small muted" style="background:var(--paper);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.6;">
+      Colonnes reconnues (une seule est obligatoire) : <b>nom</b> (obligatoire), catégorie, unité, prix, quantité_commande, fournisseur (doit déjà exister dans vos fournisseurs, sinon laissé vide), conditionnement, référence_fournisseur.
+      L'ordre des colonnes n'a pas d'importance, ni les accents ou majuscules dans les en-têtes.
+    </div>
+    <div class="field">
+      <label>Fichier CSV</label>
+      <input type="file" accept=".csv,text/csv" onchange="handleProductsCSVFileSelected(this)">
+    </div>
+    <div id="csv-import-preview"></div>
+    <button class="btn btn-primary btn-block" id="csv-import-confirm-btn" onclick="confirmImportProductsCSV()" disabled>Importer</button>
+  `);
+}
+function handleProductsCSVFileSelected(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const rows = parseCSVText(String(reader.result));
+    const { items, skipped, hasNameColumn } = mapCSVRowsToProducts(rows);
+    state.pendingCSVImport = { items };
+    const preview = document.getElementById('csv-import-preview');
+    const confirmBtn = document.getElementById('csv-import-confirm-btn');
+    if(!hasNameColumn){
+      if(preview) preview.innerHTML = `<div class="small" style="color:var(--urgent);margin-bottom:10px;">Aucune colonne "nom" reconnue dans ce fichier — vérifiez l'en-tête de la première ligne.</div>`;
+      if(confirmBtn) confirmBtn.disabled = true;
+      return;
+    }
+    if(preview){
+      preview.innerHTML = `<div class="small muted" style="margin-bottom:10px;">
+        <b>${items.length}</b> produit${items.length>1?'s':''} prêt${items.length>1?'s':''} à importer${skipped?` · ${skipped} ligne${skipped>1?'s':''} ignorée${skipped>1?'s':''} (sans nom)`:''}.
+      </div>`;
+    }
+    if(confirmBtn) confirmBtn.disabled = items.length===0;
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+async function confirmImportProductsCSV(){
+  const pending = state.pendingCSVImport;
+  if(!pending || !pending.items.length) return;
+  const confirmBtn = document.getElementById('csv-import-confirm-btn');
+  if(confirmBtn){ confirmBtn.disabled = true; confirmBtn.textContent = 'Import en cours…'; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  let created = 0, failed = 0;
+  // Un appel par produit, l'un après l'autre : plus lent qu'un import groupé côté serveur, mais
+  // réutilise telle quelle la validation déjà en place pour la création d'un produit, sans
+  // avoir à dupliquer cette logique dans une route dédiée pour ce cas d'usage plus rare.
+  for(const item of pending.items){
+    try{
+      const supplierObj = item.supplierName ? SUPPLIERS.find(s=>s.name.toLowerCase().trim()===item.supplierName.toLowerCase()) : null;
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
+        method:'POST',
+        body:{
+          name:item.name, category:item.category, unit:item.unit||'unité', price:item.price,
+          qtyCommande:item.qtyCommande||1, department:'both',
+          supplierId: supplierObj?supplierObj.remoteId:null, packaging:item.packaging, supplierReference:item.supplierReference,
+        },
+      });
+      PRODUCTS.push({
+        id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit,
+        qtyCommande:parseFloat(data.product.qty_commande), supplier: supplierObj?supplierObj.id:null,
+        cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department,
+        packaging:item.packaging, supplierReference:item.supplierReference, zoneIds:[],
+      });
+      created++;
+    } catch(err){
+      failed++;
+    }
+  }
+  state.pendingCSVImport = null;
+  closeModal();
+  toast(failed>0 ? `${created} produit${created>1?'s':''} importé${created>1?'s':''}, ${failed} échec${failed>1?'s':''}` : `${created} produit${created>1?'s':''} importé${created>1?'s':''}`);
+  render();
+}
 function editProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
   const zoneIds = p.zoneIds || [];
@@ -5189,6 +5643,7 @@ async function createOrder(){
 function orderStatusLabel(s){
   if(s==='en_attente_validation') return 'En attente de validation';
   if(s==='validee') return 'Validée — en attente de réception';
+  if(s==='partiellement_recue') return 'Partiellement reçue — reste en attente';
   if(s==='livree') return 'Livrée';
   if(s==='refusee') return 'Refusée';
   return s;
@@ -5574,7 +6029,7 @@ async function addEmployee(){
       inviteToken: data.member.invite_token,
     });
     closeModal();
-    showEmployeeCredentialsModal(data.member.name, data.member.username, data.generatedPassword, data.member.invite_token);
+    showEmployeeCredentialsModal(data.member.name, data.member.username, data.generatedPassword, data.member.invite_token, 't'+data.member.id);
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -5583,7 +6038,7 @@ async function addEmployee(){
 function inviteLinkFor(token){
   return window.location.origin + window.location.pathname + '?equipe=' + token;
 }
-function showEmployeeCredentialsModal(name, username, password, inviteToken){
+function showEmployeeCredentialsModal(name, username, password, inviteToken, employeeId){
   const link = inviteLinkFor(inviteToken);
   const hasPassword = password && password !== '—';
   openModal(`
@@ -5597,7 +6052,25 @@ function showEmployeeCredentialsModal(name, username, password, inviteToken){
       <input readonly id="invite-link-input" value="${link}">
     </div>
     <button class="btn btn-primary btn-block" onclick="copyInviteLink()">Copier le lien</button>
+    ${employeeId ? `
+    <div class="divider"></div>
+    <div class="small muted" style="margin-bottom:8px;">Si ce lien a pu être vu par quelqu'un d'autre (téléphone perdu, capture partagée par erreur...), vous pouvez l'invalider et en générer un nouveau — l'identifiant et le mot de passe de la personne, eux, ne changent pas.</div>
+    <button class="btn btn-ghost btn-block" onclick="regenerateInviteLink('${employeeId}')">${iconSm(I.refresh)} Régénérer ce lien</button>
+    ` : ''}
   `);
+}
+async function regenerateInviteLink(employeeId){
+  const member = TEAM.find(t=>t.id===employeeId);
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!member || !member.remoteId || !resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team/${member.remoteId}/regenerate-invite`, { method:'POST' });
+    member.inviteToken = data.inviteToken;
+    showEmployeeCredentialsModal(escapeHtml(member.name), escapeHtml(member.username||''), '—', data.inviteToken, member.id);
+    toast("Lien régénéré — l'ancien lien ne fonctionne plus");
+  } catch(err){
+    toast(err.message || "Impossible de régénérer le lien pour le moment.", 'alert');
+  }
 }
 function copyInviteLink(){
   const input = document.getElementById('invite-link-input');
@@ -5669,7 +6142,7 @@ function openNewRestoModal(){
     <button class="btn btn-primary btn-block" onclick="addResto()">Ajouter</button>
   `);
 }
-function addResto(){
+async function addResto(){
   if(isEssentielPlan()){ closeModal(); openUpgradeModal(); return; }
   const name = document.getElementById('nr-name').value.trim();
   if(!name){ toast("Le nom de l'établissement est requis",'alert'); return; }
@@ -5677,12 +6150,26 @@ function addResto(){
   const postalCode = document.getElementById('nr-postal').value.trim();
   const city = document.getElementById('nr-city').value.trim() || '—';
   const currency = document.getElementById('nr-currency').value;
-  const newId = 'r'+nextId();
-  RESTOS.push({id:newId, name, address, postalCode, city, currency});
-  ensureRestoData(newId);
-  closeModal();
-  toast('Établissement ajouté');
-  render();
+  try{
+    // Créé réellement côté serveur (et pas seulement dans ce navigateur) — sans remoteId, cet
+    // établissement serait invisible pour toute synchronisation ultérieure, sur cet appareil
+    // comme sur un autre.
+    const data = await apiRequest('/api/restaurants', {
+      method:'POST', body:{ name, address, postalCode, city, currency },
+    });
+    const newId = 'r'+data.restaurant.id;
+    RESTOS.push({
+      id:newId, remoteId:data.restaurant.id, name:data.restaurant.name, address:data.restaurant.address,
+      postalCode:data.restaurant.postal_code, city:data.restaurant.city, currency:data.restaurant.currency,
+    });
+    ensureRestoData(newId);
+    CONSOLIDATED_STATS = null; // un nouvel établissement change la vue consolidée : à recharger
+    closeModal();
+    toast('Établissement ajouté');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 /* ============================================================
@@ -6518,6 +7005,11 @@ function renderInner(){
     return;
   }
   if(!state.loggedIn){
+    if(state.pendingPasswordChange){
+      document.title = 'Nouveau mot de passe requis — Mise & Sûre';
+      document.getElementById('app').innerHTML = renderForcedPasswordChangeScreen();
+      return;
+    }
     document.title = 'Mise & Sûre — plateforme de gestion pour restaurants';
     document.getElementById('app').innerHTML = renderLoginScreen();
     return;
