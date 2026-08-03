@@ -6762,14 +6762,14 @@ function initRestaurantScrollScene3D(canvas){
   const w = () => sticky.clientWidth || window.innerWidth;
   const h = () => sticky.clientHeight || window.innerHeight;
   const camera = new THREE.OrthographicCamera(-6, 6, 4, -4, 0.1, 100);
-  camera.position.set(7.5, 6.5, 7.5);
+  camera.position.set(7.5, 6.8, 7.5);
   camera.lookAt(0, 0.4, 0);
   const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
   function fitCamera(){
     const aspect = w() / h();
-    const viewSize = 5.4;
+    const viewSize = 6.3;
     camera.left = -viewSize * aspect;
     camera.right = viewSize * aspect;
     camera.top = viewSize;
@@ -6779,85 +6779,146 @@ function initRestaurantScrollScene3D(canvas){
   }
   fitCamera();
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.55);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
   sun.position.set(6, 10, 4);
   scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.2);
+  fill.position.set(-5, 4, -6);
+  scene.add(fill);
 
-  // Sol — présent dès le début, sert de socle à toute la scène.
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(11, 11),
-    new THREE.MeshStandardMaterial({ color: 0xEFEFEA, roughness:1 })
-  );
+  const DARK = 0x111111, ACCENT = 0xA93A2E, WOOD = 0xC9A876, WOOD_DK = 0xAD8B5E, LIGHT = 0xF7F7F4, STEEL = 0xC7C7C0, PAPER = 0xEFEFEA;
+  function box(w_,h_,d_,color,opts){ const m = new THREE.Mesh(new THREE.BoxGeometry(w_,h_,d_), new THREE.MeshStandardMaterial(Object.assign({color, roughness:0.8}, opts||{}))); return m; }
+  function cyl(r,h_,color,seg){ return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h_,seg||16), new THREE.MeshStandardMaterial({color, roughness:0.8})); }
+  function cone(r,h_,color,seg){ return new THREE.Mesh(new THREE.ConeGeometry(r,h_,seg||10), new THREE.MeshStandardMaterial({color, roughness:0.9})); }
+
+  // ============================================================
+  // LE BÂTIMENT — sol, zones au sol teintées et murs bas délimitant les pièces. Présent dès le
+  // départ (pas animé) : c'est le "restaurant vide" que chaque espace va ensuite meubler,
+  // plutôt que des meubles isolés flottant sans contexte.
+  // ============================================================
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), new THREE.MeshStandardMaterial({ color: PAPER, roughness:1 }));
   floor.rotation.x = -Math.PI/2;
   scene.add(floor);
-  const grid = new THREE.GridHelper(11, 22, 0xD8D8D0, 0xE3E3DD);
+  const grid = new THREE.GridHelper(12, 24, 0xDDDDD4, 0xE6E6DF);
   scene.add(grid);
 
-  const DARK = 0x111111, ACCENT = 0xA93A2E, WOOD = 0xC9A876, LIGHT = 0xF7F7F4;
-  function box(w_,h_,d_,color){ return new THREE.Mesh(new THREE.BoxGeometry(w_,h_,d_), new THREE.MeshStandardMaterial({color, roughness:0.8})); }
-  function cyl(r,h_,color,seg){ return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h_,seg||16), new THREE.MeshStandardMaterial({color, roughness:0.8})); }
+  function zonePatch(w_,d_,x,z,color){
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w_,d_), new THREE.MeshStandardMaterial({ color, roughness:1, transparent:true, opacity:0 }));
+    m.rotation.x = -Math.PI/2; m.position.set(x, 0.008, z);
+    scene.add(m);
+    return m;
+  }
+  const zoneBar = zonePatch(4.6, 4.2, -3.2, -1.8, 0xEAE2D6);
+  const zoneKitchen = zonePatch(4.4, 4.2, 3.2, -1.8, 0xE4E4DE);
+  const zoneDining = zonePatch(6.6, 4.8, -0.2, 2.4, 0xF2EFE8);
+  const zoneDelivery = zonePatch(3.6, 3.6, 4.6, 3.2, 0xEFE3DE);
 
-  // --- Groupe 1 : le bar (comptoir + 2 tabourets) ---
+  // Murs bas (juste assez pour lire "un bâtiment"), avec une ouverture façade (entrée) et une
+  // ouverture arrière (livraisons).
+  const wallsGroup = new THREE.Group();
+  const wallLeft = box(0.14, 0.7, 9.6, 0xD8D8D0); wallLeft.position.set(-5.9, 0.35, 0); wallsGroup.add(wallLeft);
+  const wallBack = box(11.6, 0.7, 0.14, 0xD8D8D0); wallBack.position.set(0, 0.35, -4.9); wallsGroup.add(wallBack);
+  const wallFrontL = box(3.6, 0.7, 0.14, 0xD8D8D0); wallFrontL.position.set(-4.1, 0.35, 4.9); wallsGroup.add(wallFrontL);
+  const wallFrontR = box(4.6, 0.7, 0.14, 0xD8D8D0); wallFrontR.position.set(3.5, 0.35, 4.9); wallsGroup.add(wallFrontR);
+  const wallRightBack = box(0.14, 0.7, 3.2, 0xD8D8D0); wallRightBack.position.set(5.9, 0.35, -3.1); wallsGroup.add(wallRightBack);
+  const wallRightFront = box(0.14, 0.7, 3.0, 0xD8D8D0); wallRightFront.position.set(5.9, 0.35, 3.4); wallsGroup.add(wallRightFront);
+  scene.add(wallsGroup);
+
+  // --- Groupe 1 : le bar — comptoir deux tons, étagère à bouteilles, tabourets ---
   const barGroup = new THREE.Group();
-  const barCounter = box(3.2, 0.9, 0.8, DARK); barCounter.position.set(0, 0.45, 0);
-  barGroup.add(barCounter);
-  [[-1.1, 0.55],[1.1, 0.55]].forEach(([x])=>{
-    const stool = cyl(0.28, 0.6, WOOD); stool.position.set(x, 0.3, 1.0);
-    barGroup.add(stool);
+  const barBase = box(3.4, 0.72, 0.8, DARK); barBase.position.set(0, 0.36, 0);
+  const barTop = box(3.5, 0.08, 0.86, WOOD_DK); barTop.position.set(0, 0.76, 0);
+  barGroup.add(barBase, barTop);
+  const backShelf = box(3.0, 1.2, 0.16, 0xE3E3DD); backShelf.position.set(0, 0.6, -0.85);
+  barGroup.add(backShelf);
+  for(let i=0;i<7;i++){
+    const bottle = cyl(0.055, 0.34, i%2===0?ACCENT:0x3E6B4F, 8);
+    bottle.position.set(-1.15 + i*0.38, 1.05, -0.85);
+    barGroup.add(bottle);
+  }
+  [[-1.15],[0],[1.15]].forEach(([x])=>{
+    const seat = cyl(0.24, 0.06, WOOD, 16); seat.position.set(x, 0.62, 0.85);
+    const leg = cyl(0.05, 0.56, STEEL, 8); leg.position.set(x, 0.34, 0.85);
+    barGroup.add(seat, leg);
   });
-  barGroup.position.set(-3.4, 0, -2.6);
+  barGroup.position.set(-3.2, 0, -1.8);
   barGroup.userData.finalPos = barGroup.position.clone();
-  barGroup.userData.startPos = barGroup.position.clone().add(new THREE.Vector3(0, 4, 0));
+  barGroup.userData.startPos = barGroup.position.clone().add(new THREE.Vector3(0, 4.5, 0));
   scene.add(barGroup);
 
-  // --- Groupe 2 : la cuisine (îlot + deux "plaques") ---
+  // --- Groupe 2 : la cuisine — îlot, hotte suspendue, plaques, armoire froide ---
   const kitchenGroup = new THREE.Group();
-  const island = box(2.6, 0.85, 1.4, 0xDCDCD3); island.position.set(0, 0.42, 0);
+  const island = box(2.7, 0.85, 1.5, STEEL); island.position.set(-0.3, 0.42, 0.1);
   kitchenGroup.add(island);
-  [[-0.6],[0.6]].forEach(([x])=>{
-    const burner = cyl(0.22, 0.06, DARK); burner.position.set(x, 0.88, 0);
+  [[-1.0],[-0.3],[0.4]].forEach(([x])=>{
+    const burner = cyl(0.16, 0.05, DARK, 16); burner.position.set(x, 0.875, 0.1);
     kitchenGroup.add(burner);
   });
-  kitchenGroup.position.set(3.4, 0, -2.6);
+  const hood = box(1.6, 0.12, 1.0, DARK); hood.position.set(-0.3, 1.9, 0.1);
+  const hoodPipe = box(0.5, 0.7, 0.3, 0xB7B7AE); hoodPipe.position.set(-0.3, 2.35, 0.1);
+  kitchenGroup.add(hood, hoodPipe);
+  const fridge = box(0.9, 1.5, 0.75, 0xE9E9E3); fridge.position.set(1.55, 0.75, -0.7);
+  kitchenGroup.add(fridge);
+  kitchenGroup.position.set(3.2, 0, -1.8);
   kitchenGroup.userData.finalPos = kitchenGroup.position.clone();
-  kitchenGroup.userData.startPos = kitchenGroup.position.clone().add(new THREE.Vector3(0, 4, 0));
+  kitchenGroup.userData.startPos = kitchenGroup.position.clone().add(new THREE.Vector3(0, 4.5, 0));
   scene.add(kitchenGroup);
 
-  // --- Groupe 3 : la salle (deux tables rondes + chaises) ---
+  // --- Groupe 3 : la salle — trois tables rondes garnies, plante en pot ---
   const diningGroup = new THREE.Group();
-  [[-1.6, 0],[1.6, 0]].forEach(([x,z])=>{
-    const table = cyl(0.65, 0.06, WOOD, 24); table.position.set(x, 0.62, z);
-    const foot = cyl(0.08, 0.6, 0xB7B7AE); foot.position.set(x, 0.3, z);
+  [[-2.0,-0.4],[0.4,1.1],[-2.0,1.9]].forEach(([x,z])=>{
+    const table = cyl(0.62, 0.06, WOOD, 24); table.position.set(x, 0.62, z);
+    const foot = cyl(0.07, 0.56, STEEL, 10); foot.position.set(x, 0.32, z);
     diningGroup.add(table, foot);
-    [[0.9,0],[-0.9,0],[0,0.9],[0,-0.9]].forEach(([dx,dz])=>{
-      const chair = box(0.32,0.5,0.32, LIGHT); chair.position.set(x+dx, 0.25, z+dz);
-      diningGroup.add(chair);
+    [[0.85,0],[-0.85,0],[0,0.85],[0,-0.85]].forEach(([dx,dz])=>{
+      const seat = box(0.3,0.06,0.3, LIGHT); seat.position.set(x+dx, 0.42, z+dz);
+      const back = box(0.3,0.34,0.05, LIGHT); back.position.set(x+dx+(dx!==0?(dx>0?0.12:-0.12):0), 0.58, z+dz+(dz!==0?(dz>0?0.12:-0.12):0));
+      const leg = cyl(0.03,0.4, STEEL, 6); leg.position.set(x+dx, 0.2, z+dz);
+      diningGroup.add(seat, back, leg);
     });
   });
-  diningGroup.position.set(0, 0, 1.6);
+  const potBase = cyl(0.24, 0.32, WOOD_DK, 12); potBase.position.set(2.6, 0.16, 2.6);
+  const leaf = cone(0.32, 0.7, 0x3E6B4F, 8); leaf.position.set(2.6, 0.65, 2.6);
+  diningGroup.add(potBase, leaf);
+  diningGroup.position.set(-0.2, 0, 1.2);
   diningGroup.userData.finalPos = diningGroup.position.clone();
-  diningGroup.userData.startPos = diningGroup.position.clone().add(new THREE.Vector3(0, 4, 0));
+  diningGroup.userData.startPos = diningGroup.position.clone().add(new THREE.Vector3(0, 4.5, 0));
   scene.add(diningGroup);
 
-  // --- Groupe 4 : la livraison fournisseur (caisse + palette) ---
+  // --- Groupe 4 : la livraison fournisseur — petite camionnette + palette de caisses ---
   const deliveryGroup = new THREE.Group();
-  const crate1 = box(0.7,0.7,0.7, ACCENT); crate1.position.set(-0.4, 0.35, 0);
-  const crate2 = box(0.6,0.5,0.6, 0xC96A56); crate2.position.set(0.45, 0.25, 0.3);
-  const pallet = box(1.6,0.12,1.2, WOOD); pallet.position.set(0, 0.06, 0);
+  const vanBody = box(1.5, 0.75, 1.0, 0xF0F0EA); vanBody.position.set(0, 0.62, -0.7);
+  const vanCab = box(0.7, 0.55, 0.95, 0xE3E3DD); vanCab.position.set(-1.05, 0.5, -0.7);
+  const vanStripe = box(1.5, 0.14, 1.02, ACCENT); vanStripe.position.set(0, 0.5, -0.7);
+  deliveryGroup.add(vanBody, vanCab, vanStripe);
+  [[-1.05,-0.25,-1.15],[-1.05,-0.25,-0.25],[0.55,-0.25,-1.15],[0.55,-0.25,-0.25]].forEach(([x,y,z])=>{
+    const wheel = cyl(0.18, 0.16, 0x2B2B2B, 14); wheel.rotation.z = Math.PI/2; wheel.position.set(x, 0.18, z);
+    deliveryGroup.add(wheel);
+  });
+  const pallet = box(1.3, 0.1, 1.0, WOOD); pallet.position.set(0.5, 0.05, 1.1);
+  const crate1 = box(0.55,0.55,0.55, ACCENT); crate1.position.set(0.25, 0.37, 1.0);
+  const crate2 = box(0.5,0.4,0.5, 0xC96A56); crate2.position.set(0.85, 0.30, 1.25);
   deliveryGroup.add(pallet, crate1, crate2);
-  deliveryGroup.position.set(4.6, 0, 2.6);
+  deliveryGroup.position.set(4.4, 0, 3.0);
   deliveryGroup.userData.finalPos = deliveryGroup.position.clone();
-  deliveryGroup.userData.startPos = deliveryGroup.position.clone().add(new THREE.Vector3(2.5, 3, 2));
+  deliveryGroup.userData.startPos = deliveryGroup.position.clone().add(new THREE.Vector3(2.6, 3.2, 2.2));
   scene.add(deliveryGroup);
 
-  const groups = [
-    { obj: barGroup, range: [0.03, 0.28] },
-    { obj: kitchenGroup, range: [0.26, 0.51] },
-    { obj: diningGroup, range: [0.49, 0.74] },
-    { obj: deliveryGroup, range: [0.72, 0.97] },
+  // ============================================================
+  // TEMPORISATION — chaque espace se construit RAPIDEMENT (~1s), puis reste posé, assemblé et
+  // éclairé, pendant un long moment avant que le suivant ne commence. Avant, la fenêtre de
+  // construction ET celle du texte explicatif étaient la même plage très courte : le texte
+  // n'avait quasiment pas le temps de s'afficher qu'il disparaissait déjà. Désormais, la
+  // construction (rapide) et la lecture (généreuse) sont deux durées séparées.
+  // ============================================================
+  const zoneGroups = [
+    { obj: barGroup, patch: zoneBar, buildRange: [0.02, 0.10] },
+    { obj: kitchenGroup, patch: zoneKitchen, buildRange: [0.27, 0.35] },
+    { obj: diningGroup, patch: zoneDining, buildRange: [0.52, 0.60] },
+    { obj: deliveryGroup, patch: zoneDelivery, buildRange: [0.77, 0.85] },
   ];
-  groups.forEach(g=>{
+  zoneGroups.forEach(g=>{
     g.obj.position.copy(g.obj.userData.startPos);
     g.obj.traverse(o=>{ if(o.material){ o.material.transparent = true; o.material.opacity = 0; } });
   });
@@ -6865,33 +6926,25 @@ function initRestaurantScrollScene3D(canvas){
   function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
   function updateFromProgress(progress){
     if(introEl) introEl.classList.toggle('hide', progress > 0.04);
-    groups.forEach(g=>{
-      const [start,end] = g.range;
+    zoneGroups.forEach(g=>{
+      const [start,end] = g.buildRange;
       const local = Math.max(0, Math.min(1, (progress - start) / (end - start)));
       const eased = easeOutCubic(local);
       g.obj.position.lerpVectors(g.obj.userData.startPos, g.obj.userData.finalPos, eased);
       g.obj.traverse(o=>{ if(o.material) o.material.opacity = eased; });
+      g.patch.material.opacity = eased * 0.9;
     });
-    // Rotation d'ensemble très légère pour accentuer l'effet de profondeur pendant le scroll.
-    scene.rotation.y = progress * 0.25;
+    scene.rotation.y = Math.min(progress, 1) * 0.22;
     callouts.forEach(el=>{
       const [rs, re] = (el.dataset.range||'0,1').split(',').map(Number);
       el.classList.toggle('visible', progress >= rs && progress <= re);
     });
   }
 
-  function computeProgress(){
-    // Purement basé sur le temps désormais (voir plus bas) — cette fonction ne sert plus qu'à
-    // documenter l'ancienne approche pour mémoire ; elle n'est plus appelée.
-  }
-
   // ANIMATION AUTOMATIQUE — jouée une fois, dès que la scène devient visible à l'écran, sur une
-  // durée fixe. Avant, la progression était calquée directement sur la position de défilement :
-  // dès que la personne arrêtait de faire défiler la page (pour simplement regarder), la scène
-  // se figeait instantanément, ce qui la rendait quasi impossible à observer tranquillement.
-  // Désormais, un simple passage dans la zone suffit à déclencher la construction complète,
-  // qu'on continue de faire défiler la page ou qu'on s'arrête pour regarder.
-  const AUTOPLAY_DURATION_MS = 3400;
+  // durée fixe généreuse (voir la temporisation ci-dessus) : plus besoin de continuer à faire
+  // défiler la page pour que quoi que ce soit continue de se passer.
+  const AUTOPLAY_DURATION_MS = 15000;
   let progress = 0;
   let playing = false;
   let played = false;
@@ -6948,19 +7001,19 @@ function renderMarketingPage(){
         <div class="restaurant-scroll-sticky">
           <canvas id="restaurant-3d-canvas"></canvas>
           <div class="resto-scroll-intro" id="resto-scroll-intro">↓ Faites défiler pour voir où Mise &amp; Sûre s'intègre</div>
-          <div class="resto-callout resto-callout-1" data-range="0.03,0.30">
+          <div class="resto-callout resto-callout-1" data-range="0.02,0.24">
             <div class="resto-callout-title">Au bar</div>
             <div class="resto-callout-text">Le stock de boissons se commande en quelques clics, chez le bon fournisseur, au bon prix.</div>
           </div>
-          <div class="resto-callout resto-callout-2" data-range="0.27,0.53">
+          <div class="resto-callout resto-callout-2" data-range="0.25,0.49">
             <div class="resto-callout-title">En cuisine</div>
             <div class="resto-callout-text">La brigade signale un manque, le patron valide, la commande part directement au fournisseur.</div>
           </div>
-          <div class="resto-callout resto-callout-3" data-range="0.50,0.76">
+          <div class="resto-callout resto-callout-3" data-range="0.50,0.74">
             <div class="resto-callout-title">En salle</div>
             <div class="resto-callout-text">Chaque serveur a son propre accès, avec seulement les permissions dont il a besoin.</div>
           </div>
-          <div class="resto-callout resto-callout-4" data-range="0.73,0.98">
+          <div class="resto-callout resto-callout-4" data-range="0.75,1.00">
             <div class="resto-callout-title">Chez vos fournisseurs</div>
             <div class="resto-callout-text">Réception, écarts, historique des prix : tout est suivi automatiquement, livraison après livraison.</div>
           </div>
