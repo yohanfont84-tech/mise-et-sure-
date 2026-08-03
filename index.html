@@ -278,8 +278,8 @@ tr.group-row:hover td{background:var(--gray-100);}
   th{font-size:10px;padding:7px 6px;}
   td{padding:8px 6px;}
   .card{padding:14px;}
-  /* Le groupe de boutons d'action à droite d'un titre de section (ex : "Comparer les prix" +
-     "Importer un CSV" + "Nouveau produit") ne doit jamais forcer toute la page à déborder
+  /* Le groupe de boutons d'action à droite d'un titre de section (ex : "Importer un CSV" +
+     "Nouveau produit") ne doit jamais forcer toute la page à déborder
      horizontalement — on l'autorise à passer sur plusieurs lignes plutôt que de dépasser. */
   .section-head .flex{flex-wrap:wrap;}
 }
@@ -1056,7 +1056,6 @@ const AIDE_REFERENCE_IMAGES = {
   '11-reception-modale': { desc: "La fenêtre de réception d'une commande, avec la case à cocher pour indiquer qu'un article n'est pas encore arrivé", data: 'help-11-reception-modale.jpg' },
   '12-budget-previsionnel': { desc: "La carte Budget prévisionnel sur la page Statistiques, avec la projection de fin de mois", data: 'help-12-budget-previsionnel.jpg' },
   '13-vue-consolidee': { desc: "La vue consolidée en haut de la page Multi-établissements, avec le détail par établissement", data: 'help-13-vue-consolidee.jpg' },
-  '14-recherche-prix-ia': { desc: "La barre de recherche de prix par IA en haut de la page Comparateur de prix", data: 'help-14-recherche-prix-ia.jpg' },
   '15-regenerer-lien': { desc: "La fenêtre d'identifiants d'un employé, avec le bouton pour régénérer son lien de connexion personnel", data: 'help-15-regenerer-lien.jpg' },
 };
 async function apiRequest(path, options={}){
@@ -2503,7 +2502,6 @@ function viewStocks(){
     <div class="section-head" style="margin-top:0;">
       <div><h2>Produits</h2><div class="sub">${PRODUCTS.length} produit${PRODUCTS.length>1?'s':''} au catalogue · le site sert à commander, pas à suivre un stock en temps réel</div></div>
       <div class="flex gap8">
-        ${(!financialsHidden() && (state.role==='patron'||state.role==='manager')) ? `<button class="btn btn-ghost" onclick="setView('comparateur')">${iconSm(I.chart)} Comparer les prix</button>` : ''}
         ${(state.role==='patron'||state.role==='manager') ? `<button class="btn btn-ghost" onclick="openImportProductsModal()">${iconSm(I.doc)} Importer un CSV</button>` : ''}
         <button class="btn btn-primary" onclick="openNewProductModal()">${iconSm(I.plus)} Nouveau produit</button>
       </div>
@@ -3135,104 +3133,6 @@ async function geocodeSuppliersNow(){
 // fournisseurs à la fois — seule façon fiable de savoir qu'il s'agit "du même produit", sans
 // deviner. Un produit dont le nom diffère un peu d'un fournisseur à l'autre ne sera pas
 // regroupé : c'est une limite assumée plutôt qu'un risque de comparer des choses différentes.
-function groupProductsForComparison(){
-  const groups = {};
-  PRODUCTS.forEach(p=>{
-    if(!p.name) return; // un produit sans nom ne peut pas être comparé de façon fiable
-    const key = p.name.toLowerCase().trim();
-    if(!groups[key]) groups[key] = [];
-    groups[key].push(p);
-  });
-  return Object.values(groups).filter(g => new Set(g.map(p=>p.supplier)).size >= 2);
-}
-function viewComparateurPrix(){
-  const groups = groupProductsForComparison();
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  return `
-    <div class="section-head" style="margin-top:0;">
-      <div><h2>Comparateur de prix</h2><div class="sub">Produits disponibles chez plusieurs de vos fournisseurs — le moins cher est mis en avant</div></div>
-      <button class="btn btn-ghost" onclick="setView('stocks')">← Retour aux produits</button>
-    </div>
-    ${(state.role==='patron'||state.role==='manager') ? `
-    <div class="section-head"><div><h2>Recherche de prix</h2><div class="sub">Cherche sur le web des indications de prix pour un produit — estimation indicative, jamais un prix garanti</div></div></div>
-    <div class="card" style="margin-bottom:18px;">
-      <div class="flex gap8">
-        <input type="text" id="price-research-query" placeholder="Ex : mozzarella di bufala, filet de bœuf, huile de tournesol 5L…" style="flex:1;" onkeydown="if(event.key==='Enter') runPriceResearch();">
-        <button class="btn btn-primary" id="price-research-btn" onclick="runPriceResearch()">Chercher</button>
-      </div>
-      <div id="price-research-result" style="margin-top:14px;"></div>
-    </div>
-    ` : ''}
-    ${groups.length === 0 ? emptyState("Aucun produit avec le même nom chez plusieurs fournisseurs pour l'instant — le comparateur se remplit au fur et à mesure que votre catalogue grandit.") : groups.map(g=>{
-      const sorted = [...g].sort((a,b)=>a.price-b.price);
-      const units = new Set(g.map(p=>p.unit));
-      const unitMismatch = units.size > 1;
-      return `
-      <div class="card" style="margin-bottom:14px;">
-        <div class="flex between center" style="margin-bottom:10px;">
-          <div class="card-title" style="margin-bottom:0;">${escapeHtml(sorted[0].name)}</div>
-          ${unitMismatch ? `<span class="tag tag-neutral" title="Les unités diffèrent d'un fournisseur à l'autre — comparez avec prudence">⚠️ Unités différentes</span>` : ''}
-        </div>
-        ${sorted.map((p,idx)=>{
-          const supplier = SUPPLIERS.find(s=>s.id===p.supplier);
-          return `
-          <div class="flex between center" style="padding:8px 0;${idx<sorted.length-1?'border-bottom:1px solid var(--border);':''}">
-            <div class="flex center gap8">
-              ${idx===0 ? `<span class="tag tag-subtle">Moins cher</span>` : ''}
-              <span>${escapeHtml(supplier ? supplier.name : 'Fournisseur inconnu')}</span>
-            </div>
-            <span class="mono" style="font-weight:${idx===0?'700':'400'};">${fmtEUR(p.price)} / ${escapeHtml(p.unit)}</span>
-          </div>
-        `;}).join('')}
-      </div>
-    `;}).join('')}
-    ${NEARBY_SUPPLIERS.length > 0 ? `
-      <div class="section-head"><div><h2>Fournisseurs potentiels à proximité</h2><div class="sub">Repérés sur votre carte des fournisseurs — sans données de prix disponibles (OpenStreetMap ne les fournit pas), mais peut-être à contacter pour comparer vous-même</div></div></div>
-      <div class="grid grid-3">
-        ${NEARBY_SUPPLIERS.slice(0,9).map(s=>`
-          <div class="card">
-            <div class="flex between center">
-              <div style="font-weight:700;font-size:14px;">${escapeHtml(s.name)}</div>
-              ${s.isProducer ? `<span class="tag tag-subtle">Producteur</span>` : ''}
-            </div>
-            <div class="small muted" style="margin:4px 0 10px 0;">${escapeHtml(s.category)}</div>
-            ${s.link ? `<a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer" class="small">${s.linkIsWebsite?'🔗 Voir le site':'🔎 Chercher sur Internet'}</a>` : ''}
-          </div>
-        `).join('')}
-      </div>
-    ` : `<div class="small muted" style="margin-top:10px;">Astuce : visitez la Carte des fournisseurs pour repérer d'autres fournisseurs potentiels autour de vous, ils apparaîtront ici ensuite.</div>`}
-  `;
-}
-async function runPriceResearch(){
-  const input = document.getElementById('price-research-query');
-  const productName = input ? input.value.trim() : '';
-  if(!productName){ toast('Tapez le nom d\'un produit à rechercher', 'alert'); return; }
-  const resultEl = document.getElementById('price-research-result');
-  const btn = document.getElementById('price-research-btn');
-  if(resultEl) resultEl.innerHTML = `<div class="small muted">Recherche en cours…</div>`;
-  if(btn){ btn.disabled = true; btn.textContent = 'Recherche…'; }
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/price-research`, {
-      method:'POST', body:{ productName },
-    });
-    if(resultEl){
-      resultEl.innerHTML = `
-        ${data.sources && data.sources.length ? data.sources.map(s=>`
-          <div style="padding:10px 0;border-bottom:1px solid var(--border);">
-            <a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;">${escapeHtml(s.title)}</a>
-            ${s.snippet ? `<div class="small muted" style="margin-top:2px;">${escapeHtml(s.snippet)}</div>` : ''}
-          </div>
-        `).join('') : `<div class="small muted">Aucun résultat trouvé pour ce produit.</div>`}
-        <div class="small muted" style="margin-top:10px;">⚠️ Résultats de recherche web bruts — à vérifier avant de commander : les vrais tarifs professionnels sont presque toujours derrière un compte pro, donc rarement publics.</div>
-      `;
-    }
-  } catch(err){
-    if(resultEl) resultEl.innerHTML = `<div class="small" style="color:var(--urgent);">${escapeHtml(err.message)}</div>`;
-  } finally {
-    if(btn){ btn.disabled = false; btn.textContent = 'Chercher'; }
-  }
-}
 function viewFournisseurs(){
   return `
     <div class="section-head" style="margin-top:0;">
@@ -4202,11 +4102,6 @@ const FAQ_CATEGORIES = [
         q: "Comment supprimer un produit ?",
         a: "Dans le tableau des produits, cliquez sur l'icône de suppression (corbeille) à droite de la ligne concernée. Cette action est définitive.",
       },
-      {
-        q: "Comment fonctionne la recherche de prix ?",
-        a: "Depuis le Comparateur de prix, tapez le nom d'un produit dans la barre de recherche en haut : le site cherche sur le web via Google et affiche les résultats trouvés (titre, extrait, lien). C'est une aide à la recherche, pas un prix garanti — les catalogues des grossistes professionnels sont rarement publics, donc il arrive tout à fait qu'aucun résultat exploitable ne remonte.",
-        img: '14-recherche-prix-ia',
-      },
     ],
   },
   {
@@ -4224,11 +4119,6 @@ const FAQ_CATEGORIES = [
       {
         q: "Comment voir l'historique d'un fournisseur ?",
         a: "Sa fiche (cliquez sur son nom depuis la liste) affiche les produits qu'il vous fournit ainsi que ses dernières commandes, avec leur statut.",
-      },
-      {
-        q: "Comment trouver une indication de prix pour un produit que je ne commande pas encore ?",
-        a: "Depuis le Comparateur de prix (page Produits → « Comparer les prix »), utilisez la barre « Recherche de prix » : tapez le nom du produit, le site cherche sur le web via Google et affiche les résultats trouvés (titre, extrait, lien). C'est une aide à la recherche pour vous aider à négocier — jamais un prix garanti, les catalogues des grossistes professionnels étant rarement publics.",
-        img: '14-recherche-prix-ia',
       },
     ],
   },
@@ -6420,7 +6310,6 @@ function renderContent(){
   if(view==='notifications') return viewNotifications(role);
   if(view==='aide') return viewAide();
   if(view==='carte-fournisseurs') return viewSupplierMap();
-  if(view==='comparateur' && (role==='patron'||role==='manager')) return financialsHidden() ? viewPatronDashboard() : viewComparateurPrix();
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
     if(view==='demandes') return soloModeEnabled() ? viewPatronDashboard() : viewPatronDemandes();
