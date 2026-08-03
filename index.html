@@ -963,6 +963,15 @@ const AIDE_REFERENCE_IMAGES = {
   '04-page-equipe': { desc: "La page \"Équipe\" — ajouter un employé, gérer les autorisations de commande directe", data: 'help-04-page-equipe.jpg' },
   '05-reception-ecart': { desc: "La fenêtre de réception d'une commande, comparant quantité/prix commandés et reçus", data: 'help-05-reception-ecart.jpg' },
   '06-signaler-besoin': { desc: "La fenêtre \"Signaler un manque\" côté employé — chercher un produit et envoyer la demande", data: 'help-06-signaler-besoin.jpg' },
+  '07-tri-produits': { desc: "La page Produits avec le sélecteur de tri (nom, catégorie, prix) en haut à droite de la barre de filtres", data: 'help-07-tri-produits.jpg' },
+  '08-import-csv': { desc: "La fenêtre d'import CSV — colonnes reconnues et sélection du fichier", data: 'help-08-import-csv.jpg' },
+  '09-plafond-depense': { desc: "La page Équipe, section autorisation de commande directe, avec la colonne plafond avant validation", data: 'help-09-plafond-depense.jpg' },
+  '10-reception-partielle': { desc: "La page Livraisons avec une commande au statut \"Partiellement reçue\" et son bouton Compléter la réception", data: 'help-10-reception-partielle.jpg' },
+  '11-reception-modale': { desc: "La fenêtre de réception d'une commande, avec la case à cocher pour indiquer qu'un article n'est pas encore arrivé", data: 'help-11-reception-modale.jpg' },
+  '12-budget-previsionnel': { desc: "La carte Budget prévisionnel sur la page Statistiques, avec la projection de fin de mois", data: 'help-12-budget-previsionnel.jpg' },
+  '13-vue-consolidee': { desc: "La vue consolidée en haut de la page Multi-établissements, avec le détail par établissement", data: 'help-13-vue-consolidee.jpg' },
+  '14-recherche-prix-ia': { desc: "La barre de recherche de prix par IA en haut de la page Comparateur de prix", data: 'help-14-recherche-prix-ia.jpg' },
+  '15-regenerer-lien': { desc: "La fenêtre d'identifiants d'un employé, avec le bouton pour régénérer son lien de connexion personnel", data: 'help-15-regenerer-lien.jpg' },
 };
 async function apiRequest(path, options={}){
   const headers = { 'Content-Type': 'application/json' };
@@ -4045,11 +4054,22 @@ const FAQ_CATEGORIES = [
       },
       {
         q: "Comment retrouver rapidement un produit dans une longue liste ?",
-        a: "Utilisez la barre de recherche en haut de la page Produits : elle filtre par nom, catégorie, fournisseur, référence et même par lieu. Vous pouvez aussi filtrer avec les menus déroulants juste à côté.",
+        a: "Utilisez la barre de recherche en haut de la page Produits : elle filtre par nom, catégorie, fournisseur, référence et même par lieu. Vous pouvez aussi filtrer avec les menus déroulants juste à côté, et trier la liste par nom, catégorie ou prix avec le sélecteur tout à droite.",
+        img: '07-tri-produits',
+      },
+      {
+        q: "Comment importer plusieurs produits d'un coup depuis un fichier Excel ou Google Sheets ?",
+        a: "Depuis la page Produits, cliquez sur « Importer un CSV » puis choisissez votre fichier exporté en CSV. Une seule colonne est obligatoire : le nom du produit. Catégorie, unité, prix, quantité de commande, fournisseur (doit déjà exister dans vos fournisseurs), conditionnement et référence fournisseur sont reconnus automatiquement si présents — l'ordre des colonnes n'a pas d'importance.",
+        img: '08-import-csv',
       },
       {
         q: "Comment supprimer un produit ?",
         a: "Dans le tableau des produits, cliquez sur l'icône de suppression (corbeille) à droite de la ligne concernée. Cette action est définitive.",
+      },
+      {
+        q: "Comment fonctionne la recherche de prix par IA ?",
+        a: "Depuis le Comparateur de prix, tapez le nom d'un produit dans la barre de recherche en haut : le site cherche sur le web des indications de prix professionnels et vous en fait un résumé, avec les sources consultées. C'est une aide à la recherche, pas un prix garanti — les catalogues des grossistes professionnels sont rarement publics, donc l'outil peut tout à fait répondre qu'il n'a rien trouvé de fiable plutôt que d'inventer un chiffre.",
+        img: '14-recherche-prix-ia',
       },
     ],
   },
@@ -4068,6 +4088,11 @@ const FAQ_CATEGORIES = [
       {
         q: "Comment voir l'historique d'un fournisseur ?",
         a: "Sa fiche (cliquez sur son nom depuis la liste) affiche les produits qu'il vous fournit ainsi que ses dernières commandes, avec leur statut.",
+      },
+      {
+        q: "Comment trouver une indication de prix pour un produit que je ne commande pas encore ?",
+        a: "Depuis le Comparateur de prix (page Produits → « Comparer les prix »), utilisez la barre « Recherche de prix par IA » : tapez le nom du produit, le site cherche sur le web et Claude résume ce qu'il en ressort côté prix, avec les sources. C'est une estimation indicative pour vous aider à négocier — jamais un prix garanti, les catalogues des grossistes professionnels étant rarement publics.",
+        img: '14-recherche-prix-ia',
       },
     ],
   },
@@ -4093,6 +4118,11 @@ const FAQ_CATEGORIES = [
         q: "Que se passe-t-il si la quantité ou le prix livré diffère de la commande ?",
         a: "Le site détecte automatiquement l'écart et vous le signale dans la commande, avec le montant de la différence. Vous pouvez aussi choisir de mettre à jour le prix au catalogue si le nouveau prix facturé doit devenir la référence pour vos prochaines commandes.",
       },
+      {
+        q: "Que faire si le fournisseur ne livre pas tout d'un coup ?",
+        a: "Dans la fenêtre de réception, décochez simplement les articles qui ne sont pas encore arrivés — la commande passe alors au statut « Partiellement reçue » et reste ouverte. Elle réapparaît dans « En attente de réception » avec un bouton « Compléter la réception » : vous pourrez y revenir dès que le reste sera livré, sans rien resaisir pour ce qui a déjà été confirmé.",
+        img: '11-reception-modale',
+      },
     ],
   },
   {
@@ -4104,8 +4134,18 @@ const FAQ_CATEGORIES = [
         a: "La page « Écarts de livraison » liste toutes les commandes où la quantité ou le prix reçu a différé de ce qui était commandé, filtrable par fournisseur et par période.",
       },
       {
+        q: 'Comment reconnaître une commande "partiellement reçue" et la terminer ?',
+        a: "Elle apparaît avec un badge « Partiellement reçue » dans la page Livraisons, avec un bouton « Compléter la réception » à la place de « Marquer reçue ». Elle reste dans la liste des commandes en attente tant qu'il manque au moins un produit.",
+        img: '10-reception-partielle',
+      },
+      {
         q: "Comment lire la page Statistiques ?",
         a: "Elle affiche vos dépenses du mois, le nombre total de commandes, les écarts détectés, ainsi que l'évolution de vos dépenses (par mois ou par année) et la répartition par fournisseur et par catégorie. Toutes ces données se basent sur votre historique réel de commandes, et se mettent à jour automatiquement (y compris si quelqu'un d'autre de votre équipe passe une commande pendant que vous consultez la page).",
+      },
+      {
+        q: "À quoi sert le bloc \"Budget prévisionnel\" ?",
+        a: "Il compare ce que vous avez déjà dépensé ce mois-ci à la moyenne de vos mois précédents, et projette une estimation de fin de mois en extrapolant le rythme observé depuis le début du mois. C'est un repère simple pour repérer tôt un mois qui s'annonce plus cher que d'habitude — pas une prévision exacte.",
+        img: '12-budget-previsionnel',
       },
       {
         q: "Comment masquer les informations financières (prix, montants) ?",
@@ -4122,8 +4162,22 @@ const FAQ_CATEGORIES = [
         a: "Chaque employé reçoit un lien unique menant directement à l'écran de connexion de votre établissement. En l'ouvrant, il choisit son nom puis saisit son mot de passe. Ce lien et ce mot de passe lui sont propres — ils ne doivent pas être partagés entre plusieurs personnes.",
       },
       {
+        q: "Le lien d'un employé a pu être vu par quelqu'un d'autre — que faire ?",
+        a: "Ouvrez sa fiche (icône enveloppe dans la page Équipe) et cliquez sur « Régénérer ce lien ». L'ancien lien cesse aussitôt de fonctionner ; l'identifiant et le mot de passe de la personne, eux, ne changent pas — ce lien n'est qu'un raccourci vers l'écran de connexion, jamais un identifiant en soi.",
+        img: '15-regenerer-lien',
+      },
+      {
+        q: "Pourquoi mon employé doit-il changer son mot de passe à sa première connexion ?",
+        a: "C'est volontaire et non modifiable : le mot de passe généré à la création de son compte (ou réinitialisé par vous) n'est affiché qu'une seule fois, à vous — l'employé doit donc en choisir un autre, qu'il est seul à connaître, avant d'accéder au tableau de bord. Une fois ce changement fait, il se reconnecte normalement avec son nouveau mot de passe.",
+      },
+      {
         q: 'Qu\'est-ce que l\'autorisation de "commande directe" ?',
         a: "Par défaut, une commande créée par un employé doit être validée par vous avant d'être envoyée au fournisseur. En activant la « commande directe » pour une personne (page Équipe), ses commandes partent directement, sans validation de votre part.",
+      },
+      {
+        q: "Comment plafonner les commandes directes d'un employé ?",
+        a: "Toujours dans la page Équipe, section « Autorisation de commande directe », renseignez un montant dans la colonne « Plafond avant validation ». Au-delà de ce montant, la commande de cet employé n'est plus validée automatiquement — elle repasse par votre validation, comme si la commande directe n'était pas activée pour cette fois. Laissez le champ vide pour aucune limite.",
+        img: '09-plafond-depense',
       },
       {
         q: "Comment un employé signale-t-il un besoin ou une commande urgente ?",
@@ -4167,8 +4221,14 @@ const FAQ_CATEGORIES = [
         a: "L'icône en forme de soleil/lune, en haut à droite de l'écran, bascule instantanément entre mode clair et mode sombre.",
       },
       {
+        q: "Que se passe-t-il après plusieurs mots de passe incorrects ?",
+        a: "Par sécurité, la connexion se bloque temporairement après quelques essais infructueux (15 minutes la première fois). Si de nouvelles tentatives incorrectes suivent après ce délai, le blocage suivant dure plus longtemps. Une connexion réussie efface immédiatement ce compteur.",
+      },
+      {
         q: "Comment gérer plusieurs établissements ?",
-        a: "Si votre forfait le permet (Pro), la page « Multi-établissements » vous permet d'ajouter d'autres restaurants et de basculer de l'un à l'autre — chacun garde son propre catalogue, ses fournisseurs et son équipe.",
+        a: "Si votre forfait le permet (Pro), la page « Multi-établissements » vous permet d'ajouter d'autres restaurants et de basculer de l'un à l'autre — chacun garde son propre catalogue, ses fournisseurs et son équipe. Un bloc « Vue consolidée » en haut de cette page additionne les dépenses de tous vos établissements, avec le détail de chacun.",
+        img: '13-vue-consolidee',
+        img: '13-vue-consolidee',
       },
     ],
   },
@@ -6944,8 +7004,11 @@ async function confirmRecoverPatronCredentials(){
 }
 function renderBanner(){
   if(state.identity==='patron' && state.role!==state.identity){
-    const smallWarnIcon = I.warn.replace('width="24"','width="10"').replace('height="24"','height="10"');
-    return `<div class="demo-banner">${smallWarnIcon} <span><b>Aperçu de l'interface ${ROLE_META[state.role].label}</b> — les actions sont limitées aux permissions de ce rôle. <a href="#" onclick="backToOwnSpace();return false;" style="color:#fff;text-decoration:underline;">Revenir à mon espace Patron</a></span></div>`;
+    // iconXs() (plutôt qu'un remplacement de texte sur "width=24") : I.warn n'a jamais eu
+    // d'attribut width/height à remplacer (seulement un viewBox), donc l'ancienne méthode ne
+    // faisait rien — l'icône s'affichait alors à une taille énorme, non maîtrisée, dès qu'aucune
+    // règle CSS parente ne la contraignait par ailleurs (cf. le commentaire de setSvgSize()).
+    return `<div class="demo-banner">${iconXs(I.warn)} <span><b>Aperçu de l'interface ${ROLE_META[state.role].label}</b> — les actions sont limitées aux permissions de ce rôle. <a href="#" onclick="backToOwnSpace();return false;" style="color:#fff;text-decoration:underline;">Revenir à mon espace Patron</a></span></div>`;
   }
   return '';
 }
