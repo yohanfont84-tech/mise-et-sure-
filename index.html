@@ -3019,7 +3019,7 @@ function viewComparateurPrix(){
       <button class="btn btn-ghost" onclick="setView('stocks')">← Retour aux produits</button>
     </div>
     ${(state.role==='patron'||state.role==='manager') ? `
-    <div class="section-head"><div><h2>Recherche de prix par IA</h2><div class="sub">Cherche sur le web des indications de prix pour un produit — estimation indicative, jamais un prix garanti</div></div></div>
+    <div class="section-head"><div><h2>Recherche de prix</h2><div class="sub">Cherche sur le web des indications de prix pour un produit — estimation indicative, jamais un prix garanti</div></div></div>
     <div class="card" style="margin-bottom:18px;">
       <div class="flex gap8">
         <input type="text" id="price-research-query" placeholder="Ex : mozzarella di bufala, filet de bœuf, huile de tournesol 5L…" style="flex:1;" onkeydown="if(event.key==='Enter') runPriceResearch();">
@@ -3083,12 +3083,13 @@ async function runPriceResearch(){
     });
     if(resultEl){
       resultEl.innerHTML = `
-        <div style="padding:12px 14px;background:var(--paper);border-radius:8px;margin-bottom:10px;line-height:1.6;">${escapeHtml(data.summary || "Aucune indication de prix fiable trouvée pour ce produit.")}</div>
-        ${data.sources && data.sources.length ? `
-          <div class="small muted" style="margin-bottom:6px;">Sources consultées :</div>
-          ${data.sources.map((s,i)=>`<div class="small" style="margin-bottom:2px;"><a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer">[${i+1}] ${escapeHtml(s.title)}</a></div>`).join('')}
-        ` : ''}
-        <div class="small muted" style="margin-top:10px;">⚠️ Estimation indicative basée sur une recherche web — à vérifier avant de commander : les vrais tarifs professionnels sont presque toujours derrière un compte pro, donc rarement publics.</div>
+        ${data.sources && data.sources.length ? data.sources.map(s=>`
+          <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+            <a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;">${escapeHtml(s.title)}</a>
+            ${s.snippet ? `<div class="small muted" style="margin-top:2px;">${escapeHtml(s.snippet)}</div>` : ''}
+          </div>
+        `).join('') : `<div class="small muted">Aucun résultat trouvé pour ce produit.</div>`}
+        <div class="small muted" style="margin-top:10px;">⚠️ Résultats de recherche web bruts — à vérifier avant de commander : les vrais tarifs professionnels sont presque toujours derrière un compte pro, donc rarement publics.</div>
       `;
     }
   } catch(err){
@@ -4067,8 +4068,8 @@ const FAQ_CATEGORIES = [
         a: "Dans le tableau des produits, cliquez sur l'icône de suppression (corbeille) à droite de la ligne concernée. Cette action est définitive.",
       },
       {
-        q: "Comment fonctionne la recherche de prix par IA ?",
-        a: "Depuis le Comparateur de prix, tapez le nom d'un produit dans la barre de recherche en haut : le site cherche sur le web des indications de prix professionnels et vous en fait un résumé, avec les sources consultées. C'est une aide à la recherche, pas un prix garanti — les catalogues des grossistes professionnels sont rarement publics, donc l'outil peut tout à fait répondre qu'il n'a rien trouvé de fiable plutôt que d'inventer un chiffre.",
+        q: "Comment fonctionne la recherche de prix ?",
+        a: "Depuis le Comparateur de prix, tapez le nom d'un produit dans la barre de recherche en haut : le site cherche sur le web via Google et affiche les résultats trouvés (titre, extrait, lien). C'est une aide à la recherche, pas un prix garanti — les catalogues des grossistes professionnels sont rarement publics, donc il arrive tout à fait qu'aucun résultat exploitable ne remonte.",
         img: '14-recherche-prix-ia',
       },
     ],
@@ -4091,7 +4092,7 @@ const FAQ_CATEGORIES = [
       },
       {
         q: "Comment trouver une indication de prix pour un produit que je ne commande pas encore ?",
-        a: "Depuis le Comparateur de prix (page Produits → « Comparer les prix »), utilisez la barre « Recherche de prix par IA » : tapez le nom du produit, le site cherche sur le web et Claude résume ce qu'il en ressort côté prix, avec les sources. C'est une estimation indicative pour vous aider à négocier — jamais un prix garanti, les catalogues des grossistes professionnels étant rarement publics.",
+        a: "Depuis le Comparateur de prix (page Produits → « Comparer les prix »), utilisez la barre « Recherche de prix » : tapez le nom du produit, le site cherche sur le web via Google et affiche les résultats trouvés (titre, extrait, lien). C'est une aide à la recherche pour vous aider à négocier — jamais un prix garanti, les catalogues des grossistes professionnels étant rarement publics.",
         img: '14-recherche-prix-ia',
       },
     ],
