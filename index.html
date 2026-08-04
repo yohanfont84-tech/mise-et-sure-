@@ -6767,6 +6767,15 @@ function initRestaurantScrollScene3D(canvas){
   const camera = new THREE.PerspectiveCamera(44, w()/h(), 0.1, 100);
   const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // Vraies ombres portées + un rendu "cinéma" plutôt que "rendu 3D plat" : c'est ce qui fait le
+  // plus de différence perçue en réalisme avec des formes simples, avant même d'ajouter des
+  // détails supplémentaires.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  if(THREE.ACESFilmicToneMapping) renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
+  if(THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
+  scene.fog = new THREE.Fog(0xF4F1E8, 15, 30);
 
   function fitCamera(){
     camera.aspect = w() / h();
@@ -6775,25 +6784,65 @@ function initRestaurantScrollScene3D(canvas){
   }
   fitCamera();
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xFFF6E8, 0.85);
   sun.position.set(6, 10, 4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.left = -9; sun.shadow.camera.right = 9;
+  sun.shadow.camera.top = 9; sun.shadow.camera.bottom = -9;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 22;
+  sun.shadow.bias = -0.0015;
+  sun.shadow.radius = 3;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.2);
+  const fill = new THREE.DirectionalLight(0xDCE8FF, 0.22);
   fill.position.set(-5, 4, -6);
   scene.add(fill);
 
   const DARK = 0x111111, ACCENT = 0xA93A2E, WOOD = 0xC9A876, WOOD_DK = 0xAD8B5E, LIGHT = 0xF7F7F4, STEEL = 0xC7C7C0, PAPER = 0xEFEFEA;
-  function box(w_,h_,d_,color,opts){ const m = new THREE.Mesh(new THREE.BoxGeometry(w_,h_,d_), new THREE.MeshStandardMaterial(Object.assign({color, roughness:0.8, transparent:true}, opts||{}))); return m; }
-  function cyl(r,h_,color,seg){ return new THREE.Mesh(new THREE.CylinderGeometry(r,r,h_,seg||16), new THREE.MeshStandardMaterial({color, roughness:0.8, transparent:true})); }
-  function cone(r,h_,color,seg){ return new THREE.Mesh(new THREE.ConeGeometry(r,h_,seg||10), new THREE.MeshStandardMaterial({color, roughness:0.9, transparent:true})); }
+  // Texture de bois générée par code (pas de fichier externe à charger) : quelques stries de
+  // couleur légèrement aléatoires sur un fond bois, avec un peu de brillance — bien plus
+  // convaincant qu'un aplat de couleur uni sur un comptoir ou une table.
+  function makeWoodTexture(base, streak){
+    const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = base; ctx.fillRect(0,0,256,256);
+    for(let i=0;i<46;i++){
+      ctx.strokeStyle = streak;
+      ctx.globalAlpha = 0.06 + Math.random()*0.12;
+      ctx.lineWidth = 1 + Math.random()*2.2;
+      ctx.beginPath();
+      const y = Math.random()*256;
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(85, y+(Math.random()*14-7), 170, y+(Math.random()*14-7), 256, y+(Math.random()*8-4));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+  const woodTexture = makeWoodTexture('#C9A876', '#8A6A3E');
+  const woodTextureDk = makeWoodTexture('#AD8B5E', '#6E5230');
+  function box(w_,h_,d_,color,opts){ const m = new THREE.Mesh(new THREE.BoxGeometry(w_,h_,d_), new THREE.MeshStandardMaterial(Object.assign({color, roughness:0.8, transparent:true}, opts||{}))); m.castShadow = true; m.receiveShadow = true; return m; }
+  function cyl(r,h_,color,seg,opts){ const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h_,seg||16), new THREE.MeshStandardMaterial(Object.assign({color, roughness:0.8, transparent:true}, opts||{}))); m.castShadow = true; m.receiveShadow = true; return m; }
+  function cone(r,h_,color,seg){ const m = new THREE.Mesh(new THREE.ConeGeometry(r,h_,seg||10), new THREE.MeshStandardMaterial({color, roughness:0.9, transparent:true})); m.castShadow = true; return m; }
   function setOpacity(obj, v){ obj.traverse(o=>{ if(o.material) o.material.opacity = v; }); }
+  // Ombre de contact au sol (un disque sombre et flou sous chaque meuble) : en plus des vraies
+  // ombres portées, ça ancre visuellement chaque objet au sol de façon fiable, même quand
+  // l'angle de la lumière rend l'ombre portée peu visible.
+  function contactShadow(radius, opacity){
+    const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 24), new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity: opacity||0.16, depthWrite:false }));
+    m.rotation.x = -Math.PI/2; m.position.y = 0.012;
+    return m;
+  }
 
   // ============================================================
   // LE BÂTIMENT — sol, zones au sol teintées et murs bas délimitant les pièces.
   // ============================================================
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), new THREE.MeshStandardMaterial({ color: PAPER, roughness:1, transparent:true }));
   floor.rotation.x = -Math.PI/2;
+  floor.receiveShadow = true;
   scene.add(floor);
   const grid = new THREE.GridHelper(12, 24, 0xDDDDD4, 0xE6E6DF);
   grid.material.transparent = true;
@@ -6820,58 +6869,87 @@ function initRestaurantScrollScene3D(canvas){
   const wallRightFront = box(0.14, 0.7, 3.0, 0xD8D8D0); wallRightFront.position.set(5.9, 0.35, 3.4); wallsGroup.add(wallRightFront);
   scene.add(wallsGroup);
 
-  // --- Le bar — comptoir deux tons, étagère à bouteilles, tabourets ---
+  // --- Le bar — comptoir en bois texturé, étagère à bouteilles, tabourets avec repose-pieds ---
   const barGroup = new THREE.Group();
   const barBase = box(3.4, 0.72, 0.8, DARK); barBase.position.set(0, 0.36, 0);
-  const barTop = box(3.5, 0.08, 0.86, WOOD_DK); barTop.position.set(0, 0.76, 0);
+  const barTop = box(3.5, 0.08, 0.86, 0xffffff, { map: woodTextureDk, roughness:0.35 }); barTop.position.set(0, 0.76, 0);
   barGroup.add(barBase, barTop);
   const backShelf = box(3.0, 1.2, 0.16, 0xE3E3DD); backShelf.position.set(0, 0.6, -0.85);
   barGroup.add(backShelf);
   for(let i=0;i<7;i++){
     const bottle = cyl(0.055, 0.34, i%2===0?ACCENT:0x3E6B4F, 8);
     bottle.position.set(-1.15 + i*0.38, 1.05, -0.85);
-    barGroup.add(bottle);
+    const cap = cyl(0.02, 0.06, STEEL, 6); cap.position.set(-1.15 + i*0.38, 1.25, -0.85);
+    barGroup.add(bottle, cap);
   }
+  [[-1.6],[-0.9]].forEach(([x],i)=>{
+    const glass = cyl(0.045, 0.1, 0xD9E7E3, 10, { roughness:0.1, metalness:0.1, opacity:0.55 }); glass.position.set(x, 1.72, -0.55);
+    barGroup.add(glass);
+  });
   [[-1.15],[0],[1.15]].forEach(([x])=>{
-    const seat = cyl(0.24, 0.06, WOOD, 16); seat.position.set(x, 0.62, 0.85);
-    const leg = cyl(0.05, 0.56, STEEL, 8); leg.position.set(x, 0.34, 0.85);
-    barGroup.add(seat, leg);
+    const seat = cyl(0.24, 0.07, 0xffffff, 16, { map: woodTexture, roughness:0.4 }); seat.position.set(x, 0.62, 0.85);
+    const leg = cyl(0.045, 0.56, STEEL, 8, { roughness:0.35, metalness:0.4 }); leg.position.set(x, 0.34, 0.85);
+    const footring = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.014, 8, 20), new THREE.MeshStandardMaterial({ color:STEEL, roughness:0.35, metalness:0.4, transparent:true }));
+    footring.rotation.x = Math.PI/2; footring.position.set(x, 0.46, 0.85); footring.castShadow = true;
+    barGroup.add(seat, leg, footring, contactShadow(0.3, 0.14));
   });
   barGroup.position.set(-3.2, 0, -1.8);
   scene.add(barGroup);
 
   // --- La cuisine — îlot, hotte suspendue, plaques, armoire froide ---
   const kitchenGroup = new THREE.Group();
-  const island = box(2.7, 0.85, 1.5, STEEL); island.position.set(-0.3, 0.42, 0.1);
-  kitchenGroup.add(island);
+  const island = box(2.7, 0.85, 1.5, STEEL, { roughness:0.35, metalness:0.55 }); island.position.set(-0.3, 0.42, 0.1);
+  kitchenGroup.add(island, contactShadow(1.5, 0.16));
   [[-1.0],[-0.3],[0.4]].forEach(([x])=>{
     const burner = cyl(0.16, 0.05, DARK, 16); burner.position.set(x, 0.875, 0.1);
-    kitchenGroup.add(burner);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 6, 16), new THREE.MeshStandardMaterial({ color:0x2B2B2B, roughness:0.5, transparent:true }));
+    ring.rotation.x = Math.PI/2; ring.position.set(x, 0.905, 0.1); ring.castShadow = true;
+    kitchenGroup.add(burner, ring);
   });
+  const pot = cyl(0.13, 0.16, 0xC7C7C0, 16, { roughness:0.3, metalness:0.6 }); pot.position.set(-1.0, 0.98, 0.1);
+  const potHandle = box(0.22,0.02,0.03, 0x2B2B2B); potHandle.position.set(-1.16, 1.0, 0.1);
+  kitchenGroup.add(pot, potHandle);
   const hood = box(1.6, 0.12, 1.0, DARK); hood.position.set(-0.3, 1.9, 0.1);
+  const hoodGrille = box(1.3, 0.02, 0.7, 0x2B2B2B, { roughness:0.4, metalness:0.5 }); hoodGrille.position.set(-0.3, 1.83, 0.1);
   const hoodPipe = box(0.5, 0.7, 0.3, 0xB7B7AE); hoodPipe.position.set(-0.3, 2.35, 0.1);
-  kitchenGroup.add(hood, hoodPipe);
+  kitchenGroup.add(hood, hoodGrille, hoodPipe);
   const fridge = box(0.9, 1.5, 0.75, 0xE9E9E3); fridge.position.set(1.55, 0.75, -0.7);
-  kitchenGroup.add(fridge);
+  const fridgeHandle = box(0.03, 0.5, 0.03, STEEL, { roughness:0.3, metalness:0.6 }); fridgeHandle.position.set(1.13, 0.85, -0.7);
+  kitchenGroup.add(fridge, fridgeHandle);
+  const fridgeShadow = contactShadow(0.7, 0.14); fridgeShadow.position.set(1.55, 0.012, -0.7);
+  kitchenGroup.add(fridgeShadow);
   kitchenGroup.position.set(3.2, 0, -1.8);
   scene.add(kitchenGroup);
 
-  // --- La salle — trois tables rondes garnies, plante en pot ---
+  // --- La salle — trois tables rondes garnies, plante fournie, dossiers de chaise à lattes ---
   const diningGroup = new THREE.Group();
   [[-2.0,-0.4],[0.4,1.1],[-2.0,1.9]].forEach(([x,z])=>{
-    const table = cyl(0.62, 0.06, WOOD, 24); table.position.set(x, 0.62, z);
-    const foot = cyl(0.07, 0.56, STEEL, 10); foot.position.set(x, 0.32, z);
-    diningGroup.add(table, foot);
+    const table = cyl(0.62, 0.06, 0xffffff, 24, { map: woodTexture, roughness:0.4 }); table.position.set(x, 0.62, z);
+    const foot = cyl(0.07, 0.56, STEEL, 10, { roughness:0.35, metalness:0.4 }); foot.position.set(x, 0.32, z);
+    diningGroup.add(table, foot, contactShadow(0.75, 0.13));
     [[0.85,0],[-0.85,0],[0,0.85],[0,-0.85]].forEach(([dx,dz])=>{
       const seat = box(0.3,0.06,0.3, LIGHT); seat.position.set(x+dx, 0.42, z+dz);
-      const back = box(0.3,0.34,0.05, LIGHT); back.position.set(x+dx+(dx!==0?(dx>0?0.12:-0.12):0), 0.58, z+dz+(dz!==0?(dz>0?0.12:-0.12):0));
       const leg = cyl(0.03,0.4, STEEL, 6); leg.position.set(x+dx, 0.2, z+dz);
-      diningGroup.add(seat, back, leg);
+      diningGroup.add(seat, leg);
+      // Dossier à trois lattes plutôt qu'un panneau plein — silhouette bien plus réaliste pour
+      // une chaise de salle.
+      const bx = dx!==0 ? (dx>0?0.13:-0.13) : 0, bz = dz!==0 ? (dz>0?0.13:-0.13) : 0;
+      for(let s=-1;s<=1;s++){
+        const slat = box(0.06,0.32,0.045, LIGHT);
+        slat.position.set(x+dx+bx+(dz===0?s*0.09:0), 0.58, z+dz+bz+(dx===0?s*0.09:0));
+        diningGroup.add(slat);
+      }
     });
   });
-  const potBase = cyl(0.24, 0.32, WOOD_DK, 12); potBase.position.set(2.6, 0.16, 2.6);
-  const leaf = cone(0.32, 0.7, 0x3E6B4F, 8); leaf.position.set(2.6, 0.65, 2.6);
-  diningGroup.add(potBase, leaf);
+  const potBase = cyl(0.24, 0.32, 0xffffff, 12, { map: woodTextureDk, roughness:0.45 }); potBase.position.set(2.6, 0.16, 2.6);
+  const potShadow = contactShadow(0.35, 0.15); potShadow.position.set(2.6, 0.012, 2.6);
+  diningGroup.add(potBase, potShadow);
+  [[0,0.62,0,0.30],[0.14,0.55,0.1,0.24],[-0.13,0.58,-0.08,0.26],[0.06,0.68,-0.12,0.22]].forEach(([dx,hgt,dz,r],i)=>{
+    const leaf = cone(r, hgt, i%2===0?0x3E6B4F:0x4B7A57, 8);
+    leaf.position.set(2.6+dx, 0.32+hgt/2, 2.6+dz);
+    leaf.rotation.z = dx*0.4; leaf.rotation.x = dz*-0.4;
+    diningGroup.add(leaf);
+  });
   diningGroup.position.set(-0.2, 0, 1.2);
   scene.add(diningGroup);
 
@@ -6883,9 +6961,18 @@ function initRestaurantScrollScene3D(canvas){
   const vanCab = box(0.7, 0.55, 0.95, 0xE3E3DD); vanCab.position.set(-1.05, 0.5, 0);
   const vanStripe = box(1.5, 0.14, 1.02, ACCENT); vanStripe.position.set(0, 0.5, 0);
   vanGroup.add(vanBody, vanCab, vanStripe);
+  const windshield = box(0.05, 0.32, 0.8, 0x9FC4D9, { roughness:0.1, metalness:0.3 }); windshield.position.set(-1.38, 0.62, 0);
+  const mirror = box(0.04, 0.1, 0.1, DARK); mirror.position.set(-1.32, 0.62, 0.52);
+  [[-1.4, 0.72, -0.35],[-1.4, 0.72, 0.35]].forEach(([x,y,z])=>{
+    const light = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), new THREE.MeshStandardMaterial({ color:0xFFE9B0, emissive:0xFFC94A, emissiveIntensity:0.6, roughness:0.3, transparent:true }));
+    light.position.set(x,y,z);
+    vanGroup.add(light);
+  });
+  vanGroup.add(windshield, mirror);
   [[-1.05,-0.45],[-1.05,0.45],[0.55,-0.45],[0.55,0.45]].forEach(([x,z])=>{
     const wheel = cyl(0.18, 0.16, 0x2B2B2B, 14); wheel.rotation.z = Math.PI/2; wheel.position.set(x, 0.18, z);
-    vanGroup.add(wheel);
+    const hub = cyl(0.06, 0.17, STEEL, 10, { roughness:0.3, metalness:0.5 }); hub.rotation.z = Math.PI/2; hub.position.set(x, 0.18, z);
+    vanGroup.add(wheel, hub);
   });
   // Position "garée" (une fois livrée) vs position de départ, plus loin dehors — la camionnette
   // roule littéralement de l'une à l'autre pendant que la caméra arrive à l'arrière-boutique,
@@ -6897,7 +6984,8 @@ function initRestaurantScrollScene3D(canvas){
   const pallet = box(1.3, 0.1, 1.0, WOOD); pallet.position.set(0.5, 0.05, 1.1);
   const crate1 = box(0.55,0.55,0.55, ACCENT); crate1.position.set(0.25, 0.37, 1.0);
   const crate2 = box(0.5,0.4,0.5, 0xC96A56); crate2.position.set(0.85, 0.30, 1.25);
-  deliveryGroup.add(pallet, crate1, crate2);
+  const deliveryShadow = contactShadow(0.9, 0.14); deliveryShadow.position.set(0.5, 0.012, 1.1);
+  deliveryGroup.add(pallet, crate1, crate2, deliveryShadow);
   deliveryGroup.position.set(4.4, 0, 3.0);
   scene.add(deliveryGroup);
 
