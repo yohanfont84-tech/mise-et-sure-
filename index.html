@@ -466,6 +466,25 @@ tr.group-row:hover td{background:var(--gray-100);}
 }
 
 /* ============================================================
+   CAS D'USAGE — grille d'icônes simples, avec une apparition en cascade (fondu + léger
+   glissement vers le haut) déclenchée une seule fois à l'arrivée dans la zone visible.
+   ============================================================ */
+.use-cases-section{max-width:1080px;margin:0 auto;padding:20px 24px 70px 24px;}
+.use-cases-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.use-case-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px 22px;
+  opacity:0;transform:translateY(16px);transition:opacity .5s ease, transform .5s ease;
+}
+.use-case-card.revealed{opacity:1;transform:translateY(0);}
+.use-case-title{font-weight:700;font-size:15px;margin:12px 0 5px 0;}
+@media(max-width:760px){
+  .use-cases-grid{grid-template-columns:1fr 1fr;}
+}
+@media(max-width:480px){
+  .use-cases-grid{grid-template-columns:1fr;}
+}
+
+/* ============================================================
    SHOWCASE FONCTIONNALITÉS — blocs alternés texte / capture d'écran réelle du site.
    ============================================================ */
 .site-showcase{max-width:1080px;margin:0 auto;padding:30px 24px 60px 24px;display:flex;flex-direction:column;gap:90px;}
@@ -698,6 +717,8 @@ const I = {
   download:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>`,
   building:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01"/></svg>`,
   clock:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3.5 2"/></svg>`,
+  cocktail:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16l-8 9-8-9z"/><path d="M12 13v6M8 19h8"/></svg>`,
+  bread:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 14c0-5.2 4-9.5 9-9.5s9 4.3 9 9.5-4 6-9 6-9-1-9-6z"/><path d="M9 10.2l1.6 3.2M13 9.2l1.6 3.6M17 10.6l1.1 2.6"/></svg>`,
   mobile:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>`,
   plug:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 0 1-10 0V8z"/><path d="M12 17v5"/></svg>`,
 };
@@ -6588,6 +6609,35 @@ function siteNav(active){
 // Volontairement simple : pas de forme à dessiner, pas de moteur 3D, donc rien qui puisse
 // "avoir l'air cassé" — seulement de vrais écrans du produit, réels et lisibles.
 // ============================================================
+// ============================================================
+// CAS D'USAGE — une grille d'icônes illustrées (pas de scène à composer, juste des pictos
+// simples), qui apparaissent en cascade au défilement. Volontairement simple et sûr.
+// ============================================================
+const USE_CASES = [
+  { icon:'chef', title:'Restaurant traditionnel', text:"Du bistrot de quartier à la table gastronomique, commandes et équipe au même endroit." },
+  { icon:'cocktail', title:'Bar & brasserie', text:"Le stock de boissons suivi et commandé sans feuille de calcul." },
+  { icon:'truck', title:'Food truck', text:"Un catalogue simple, des commandes rapides, même à une ou deux personnes." },
+  { icon:'bread', title:'Boulangerie-pâtisserie', text:"Matières premières et livraisons quotidiennes, centralisées." },
+  { icon:'building', title:'Hôtel-restaurant', text:"Plusieurs points de service, un seul compte pour tout piloter." },
+  { icon:'tray', title:'Traiteur & collectivités', text:"De grosses commandes, des écarts à ne pas rater." },
+];
+function initUseCasesReveal(){
+  const wrap = document.getElementById('use-cases-grid');
+  if(!wrap || wrap.dataset.bound) return;
+  wrap.dataset.bound = '1';
+  const cards = wrap.querySelectorAll('.use-case-card');
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        cards.forEach((card,i)=>{
+          setTimeout(()=>card.classList.add('revealed'), i*90);
+        });
+        observer.disconnect();
+      }
+    });
+  }, { threshold:0.2 });
+  observer.observe(wrap);
+}
 const PRODUCT_CAROUSEL = [
   { tag:'Commandes', title:'Vos commandes, centralisées', text:"Un panier par fournisseur, envoyé en un clic — plus besoin de jongler entre les emails et les appels.", img:'mkt-commandes.jpg', alt:'Page Commandes de Mise & Sûre' },
   { tag:'Équipe', title:'Un espace pour chacun', text:"Patron, manager, cuisine, salle : chaque personne a son accès, avec seulement les permissions dont elle a besoin.", img:'mkt-equipe.jpg', alt:'Page Équipe de Mise & Sûre' },
@@ -6814,6 +6864,22 @@ function renderMarketingPage(){
               ${PRODUCT_CAROUSEL.map((s,i)=>`<button class="carousel-dot ${i===0?'active':''}" data-idx="${i}" aria-label="${escapeHtml(s.tag)}"></button>`).join('')}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="use-cases-section">
+        <div class="product-carousel-head">
+          <div class="site-hero-tag">Pour qui ?</div>
+          <h2>Pensé pour tous les métiers de bouche</h2>
+        </div>
+        <div class="use-cases-grid" id="use-cases-grid">
+          ${USE_CASES.map(u=>`
+            <div class="use-case-card">
+              <div class="tile-icon">${I[u.icon]}</div>
+              <div class="use-case-title">${escapeHtml(u.title)}</div>
+              <div class="small muted">${escapeHtml(u.text)}</div>
+            </div>
+          `).join('')}
         </div>
       </section>
 
@@ -7423,6 +7489,7 @@ function renderInner(){
     document.getElementById('app').innerHTML = renderMarketingPage();
     requestAnimationFrame(initMarketing3D);
     requestAnimationFrame(initProductCarousel);
+    requestAnimationFrame(initUseCasesReveal);
     return;
   }
   if(state.site==='pricing'){
