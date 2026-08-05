@@ -438,54 +438,31 @@ tr.group-row:hover td{background:var(--gray-100);}
 .hero-logo-3d-wrap canvas{width:100%;height:100%;display:block;}
 
 /* ============================================================
-   SCÈNE 3D "LE RESTAURANT SE DÉPLOIE" — une longue section, avec le canvas et les légendes
-   fixés à l'écran (position:sticky) pendant que la scène évolue selon la progression du
-   défilement à l'intérieur de cette section.
+   CARROUSEL PRODUIT — de vraies captures d'écran qui défilent automatiquement, dans un cadre
+   de navigateur simplifié, façon petite vidéo de démonstration.
    ============================================================ */
-.restaurant-scroll-wrapper{position:relative;height:220vh;background:var(--surface);}
-.restaurant-scroll-sticky{
-  position:sticky;top:0;height:100vh;overflow:hidden;
-  display:flex;align-items:center;justify-content:center;
-}
-#resto-illustration{width:100%;height:100%;display:block;max-width:900px;max-height:80vh;margin:0 auto;}
-.iso-box, .iso-tile, .iso-round, .iso-wheel{transition:opacity .5s ease;}
-.resto-zone{opacity:0;transform:scale(0.94);transform-origin:center;transition:opacity .7s ease, transform .7s ease, filter .6s ease;filter:saturate(0.65) brightness(0.97);}
-.resto-zone.revealed{opacity:1;transform:scale(1);}
-.resto-zone.active{filter:saturate(1.18) brightness(1.04);}
-.resto-zone.settled{filter:saturate(0.92) brightness(1);}
-#resto-zone-walls.revealed{opacity:1;transform:none;filter:none;transition:opacity 1s ease;}
-[id^="zonepatch-"]{opacity:0;transition:opacity .7s ease;}
-#restaurant-illustration-wrap.built [id^="zonepatch-"]{opacity:1;}
-.iso-van{transition:opacity .6s ease;}
-.resto-logo-intro{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:5;transition:opacity .5s ease;pointer-events:none;}
-.resto-scroll-intro{
-  position:absolute;top:9%;left:50%;transform:translateX(-50%);text-align:center;z-index:3;
-  font-family:'Fraunces',serif;font-size:15px;color:var(--muted);letter-spacing:.3px;
-  opacity:1;transition:opacity .4s ease;pointer-events:none;
-}
-.resto-scroll-intro.hide{opacity:0;}
-.resto-callout{
-  position:absolute;max-width:280px;padding:18px 20px;background:var(--surface);
-  border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);
-  opacity:0;transform:translateY(14px);transition:opacity .5s ease, transform .5s ease;z-index:3;
-  pointer-events:none;
-}
-.resto-callout.visible{opacity:1;transform:translateY(0);}
-.resto-callout-title{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:5px;}
-.resto-callout-text{font-size:13px;color:var(--muted);line-height:1.5;}
-.resto-callout-1{top:16%;left:7%;}
-.resto-callout-2{top:64%;right:7%;}
-.resto-callout-3{top:16%;right:7%;}
-.resto-callout-4{top:64%;left:7%;}
-@media(max-width:760px){
-  .restaurant-scroll-wrapper{height:190vh;}
-  .resto-callout{left:9%!important;right:9%!important;max-width:none;padding:14px 16px;}
-  .resto-callout-title{font-size:14px;}
-  .resto-callout-text{font-size:12px;}
-  .resto-callout-1{top:6%;}
-  .resto-callout-2{top:25%;}
-  .resto-callout-3{top:44%;}
-  .resto-callout-4{top:auto;bottom:6%;}
+.product-carousel-section{max-width:1080px;margin:0 auto;padding:70px 24px;}
+.product-carousel-head{text-align:center;max-width:520px;margin:0 auto 40px auto;}
+.product-carousel-head h2{font-family:'Fraunces',serif;font-size:28px;margin:10px 0 0 0;}
+.product-carousel{display:flex;align-items:center;gap:48px;}
+.browser-frame{flex:1.4;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,0.1);overflow:hidden;}
+.browser-frame-bar{display:flex;gap:6px;padding:12px 14px;background:var(--paper);border-bottom:1px solid var(--border);}
+.browser-frame-bar span{width:10px;height:10px;border-radius:50%;background:var(--gray-300);display:block;}
+.browser-frame-body{position:relative;aspect-ratio:16/10;background:var(--paper);}
+.carousel-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top left;opacity:0;transition:opacity .6s ease;}
+.carousel-slide.active{opacity:1;}
+.carousel-caption{flex:1;min-width:0;}
+.carousel-caption-item{display:none;}
+.carousel-caption-item.active{display:block;animation:fadeInUp .45s ease;}
+.carousel-caption-item h3{font-family:'Fraunces',serif;font-size:23px;font-weight:700;margin:12px 0 10px 0;line-height:1.25;}
+.carousel-caption-item p{font-size:14.5px;color:var(--muted);line-height:1.65;margin:0;}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.carousel-dots{display:flex;gap:8px;margin-top:26px;}
+.carousel-dot{width:9px;height:9px;border-radius:50%;border:none;background:var(--gray-300);cursor:pointer;padding:0;transition:background .2s ease,transform .2s ease;}
+.carousel-dot.active{background:var(--black);transform:scale(1.15);}
+@media(max-width:860px){
+  .product-carousel{flex-direction:column;gap:26px;}
+  .browser-frame{width:100%;}
 }
 
 /* ============================================================
@@ -6606,6 +6583,50 @@ function siteNav(active){
     </header>
   `;
 }
+// ============================================================
+// CARROUSEL PRODUIT — de vraies captures d'écran du site qui défilent, façon petite vidéo.
+// Volontairement simple : pas de forme à dessiner, pas de moteur 3D, donc rien qui puisse
+// "avoir l'air cassé" — seulement de vrais écrans du produit, réels et lisibles.
+// ============================================================
+const PRODUCT_CAROUSEL = [
+  { tag:'Commandes', title:'Vos commandes, centralisées', text:"Un panier par fournisseur, envoyé en un clic — plus besoin de jongler entre les emails et les appels.", img:'mkt-commandes.jpg', alt:'Page Commandes de Mise & Sûre' },
+  { tag:'Équipe', title:'Un espace pour chacun', text:"Patron, manager, cuisine, salle : chaque personne a son accès, avec seulement les permissions dont elle a besoin.", img:'mkt-equipe.jpg', alt:'Page Équipe de Mise & Sûre' },
+  { tag:'Réception', title:'Les écarts détectés automatiquement', text:"Quantité ou prix différent de la commande ? Le site le repère et le signale tout seul.", img:'mkt-ecarts.jpg', alt:'Page Écarts de livraison de Mise & Sûre' },
+  { tag:'Livraisons', title:'Rien ne se perd en route', text:"Une livraison incomplète ? La commande reste ouverte et se complète dès que le reste arrive.", img:'mkt-livraisons.jpg', alt:'Page Livraisons de Mise & Sûre' },
+];
+function initProductCarousel(){
+  const wrap = document.getElementById('product-carousel');
+  if(!wrap || wrap.dataset.bound) return;
+  wrap.dataset.bound = '1';
+  const slides = wrap.querySelectorAll('.carousel-slide');
+  const captions = wrap.querySelectorAll('.carousel-caption-item');
+  const dots = wrap.querySelectorAll('.carousel-dot');
+  let idx = 0, timer = null;
+
+  function show(i){
+    idx = (i + slides.length) % slides.length;
+    slides.forEach((el,k)=>el.classList.toggle('active', k===idx));
+    captions.forEach((el,k)=>el.classList.toggle('active', k===idx));
+    dots.forEach((el,k)=>el.classList.toggle('active', k===idx));
+  }
+  function next(){ show(idx+1); }
+  function startAutoplay(){
+    if(timer) return;
+    timer = setInterval(next, 4200);
+  }
+  function stopAutoplay(){ clearInterval(timer); timer = null; }
+
+  dots.forEach(dot=>{
+    dot.addEventListener('click', ()=>{ show(parseInt(dot.dataset.idx,10)); stopAutoplay(); startAutoplay(); });
+  });
+
+  // Ne se lance qu'une fois la section réellement visible à l'écran — pas la peine de faire
+  // tourner un minuteur pour une section que personne n'a encore fait défiler jusqu'ici.
+  const observer = new IntersectionObserver((entries)=>{
+    entries.forEach(entry=>{ if(entry.isIntersecting) startAutoplay(); else stopAutoplay(); });
+  }, { threshold:0.3 });
+  observer.observe(wrap);
+}
 const SITE_SHOWCASE = [
   {
     tag: 'Commandes & fournisseurs',
@@ -6751,213 +6772,6 @@ function initHeroLogo3D(canvas){
   const onResize = () => { const s = size(); renderer.setSize(s, s); };
   window.addEventListener('resize', onResize);
 }
-// ============================================================
-// ILLUSTRATION ISOMÉTRIQUE DU RESTAURANT — en SVG pur (aucune texture, aucun moteur 3D) : un
-// rendu identique et fiable sur tous les navigateurs, que je peux vérifier moi-même précisément,
-// contrairement à une scène WebGL. Quatre espaces (bar, cuisine, salle, arrière-boutique) mis en
-// avant tour à tour au défilement, dans la même palette que le reste du site.
-// ============================================================
-const ISO_TILE_W = 58, ISO_TILE_H = 29, ISO_HEIGHT = 30;
-function isoProject(x, y, z){
-  return [ (x - y) * (ISO_TILE_W/2), (x + y) * (ISO_TILE_H/2) - (z||0) * ISO_HEIGHT ];
-}
-function shadeColor(hex, factor){
-  const r = Math.min(255, Math.round(((hex>>16)&255) * factor));
-  const g = Math.min(255, Math.round(((hex>>8)&255) * factor));
-  const b = Math.min(255, Math.round((hex&255) * factor));
-  return '#' + [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
-}
-function ptsToStr(pts){ return pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' '); }
-// Une "boîte" isométrique : trois faces visibles (dessus/gauche/droite), ombrées différemment à
-// partir d'UNE seule couleur de base — c'est ce triple ton qui donne l'illusion de volume.
-function isoBox(x0,y0,z0,w,d,h,color,extraClass){
-  const zTop = z0+h;
-  const A=isoProject(x0,y0,zTop), B=isoProject(x0+w,y0,zTop), C=isoProject(x0+w,y0+d,zTop), D=isoProject(x0,y0+d,zTop);
-  const A0=isoProject(x0,y0,z0), B0=isoProject(x0+w,y0,z0), C0=isoProject(x0+w,y0+d,z0), D0=isoProject(x0,y0+d,z0);
-  const top = ptsToStr([A,B,C,D]);
-  const right = ptsToStr([D,C,C0,D0]);
-  const left = ptsToStr([B,C,C0,B0]);
-  return `<g class="iso-box ${extraClass||''}">
-    <polygon points="${left}" fill="${shadeColor(color,0.62)}"/>
-    <polygon points="${right}" fill="${shadeColor(color,0.82)}"/>
-    <polygon points="${top}" fill="${shadeColor(color,1.14)}"/>
-  </g>`;
-}
-// Un disque plat (tuile de sol, assiette de table...) : juste la face du dessus, en losange.
-function isoTile(x0,y0,w,d,z,color,opacity){
-  const pts = [isoProject(x0,y0,z),isoProject(x0+w,y0,z),isoProject(x0+w,y0+d,z),isoProject(x0,y0+d,z)];
-  return `<polygon class="iso-tile" points="${ptsToStr(pts)}" fill="${color}" opacity="${opacity==null?1:opacity}"/>`;
-}
-// Objet rond simplifié (table, tabouret) : une ellipse "dessus" + un pied fin — plus simple
-// qu'un vrai cylindre projeté, mais parfaitement lisible dans ce style plat.
-function isoRound(cx,cy,h,r,color){
-  const [sx,sy] = isoProject(cx,cy,h);
-  const [fx,fy] = isoProject(cx,cy,0);
-  const rx = r*ISO_TILE_W/2, ry = r*ISO_TILE_H/2;
-  return `<g class="iso-round">
-    <line x1="${sx}" y1="${sy+4}" x2="${fx}" y2="${fy}" stroke="${shadeColor(color,0.5)}" stroke-width="3"/>
-    <ellipse cx="${fx}" cy="${fy}" rx="${rx*0.32}" ry="${ry*0.32}" fill="${shadeColor(color,0.5)}"/>
-    <ellipse cx="${sx}" cy="${sy}" rx="${rx}" ry="${ry}" fill="${shadeColor(color,1.1)}" stroke="${shadeColor(color,0.75)}" stroke-width="1.5"/>
-  </g>`;
-}
-function isoWheel(x,y,color){
-  const [sx,sy] = isoProject(x,y,0.22);
-  return `<circle class="iso-wheel" cx="${sx}" cy="${sy}" r="7" fill="${color}"/>`;
-}
-function buildBarSVG(){
-  const c = 0xC9A876;
-  let s = '';
-  s += isoBox(0.3,0.3,0, 4.6,1.1,0.95, 0x111111); // comptoir base
-  s += isoBox(0.3,0.3,0.95, 4.6,1.1,0.1, 0xAD8B5E); // plateau bois, aligné pile sur la base
-  s += isoBox(0.5,1.9,0, 4.0,0.35,1.3, 0xE3E3DD); // étagère arrière (meuble bas)
-  for(let i=0;i<5;i++) s += isoBox(0.75+i*0.75,2.02,1.3, 0.22,0.14,0.5, i%2===0?0x3E5C42:0x4A3A2A); // bouteilles posées dessus
-  [1.0,2.4,3.8].forEach(bx=>{ s += isoRound(bx, -0.55, 0.62, 0.62, c); });
-  return s;
-}
-function buildKitchenSVG(){
-  let s = '';
-  s += isoBox(0.3,0.3,0, 3.2,1.7,1.0, 0xC7C7C0); // îlot central
-  s += isoBox(0.9,0.6,1.0, 0.5,0.5,0.06, 0x111111); // plaque de cuisson
-  s += isoBox(1.7,0.6,1.0, 0.5,0.5,0.06, 0x111111);
-  s += isoBox(0.55,0.15,1.85, 2.2,1.15,0.18, 0x111111,'kitchen-hood'); // hotte suspendue, un vrai espace au-dessus de l'îlot
-  s += isoBox(1.05,1.85,1.0, 0.6,0.6,0.14, 0xB7B7AE); // petit appareil posé sur l'îlot
-  s += isoBox(2.7,0.2,0, 1.05,0.9,1.75, 0xE9E9E3); // armoire froide
-  return s;
-}
-function buildDiningSVG(){
-  let s = '';
-  const tables = [[1.0,1.0],[4.6,0.6],[1.4,3.4]];
-  tables.forEach(([tx,ty])=>{
-    s += isoRound(tx,ty,0.75,1.15,0xC9A876);
-    [[1.05,0],[-1.05,0],[0,1.0],[0,-1.0]].forEach(([dx,dy])=>{
-      s += isoBox(tx+dx-0.22,ty+dy-0.22,0, 0.42,0.42,0.44, 0xF7F7F4);
-    });
-  });
-  s += isoBox(5.6,3.0,0, 0.55,0.55,0.16, 0xAD8B5E);
-  s += isoRound(5.87,3.27,0.85,0.9,0x3E6B4F);
-  return s;
-}
-function buildDeliverySVG(){
-  let s = '';
-  s += isoBox(-3.6,0.9,0, 3.4,2.0,0.02, 0x9C9B93,'delivery-road'); // allée
-  s += `<g class="iso-van">`;
-  s += isoBox(0.1,0.55,0, 1.9,1.1,0.7, 0xF0F0EA);
-  s += isoBox(1.55,0.62,0, 0.75,0.98,0.5, 0xE3E3DD);
-  s += isoBox(0.1,0.55,0.32, 1.9,0.22,0.18, 0xA93A2E);
-  s += isoWheel(0.5,0.55,'#2B2B2B'); s += isoWheel(0.5,1.65,'#2B2B2B');
-  s += isoWheel(1.65,0.55,'#2B2B2B'); s += isoWheel(1.65,1.65,'#2B2B2B');
-  s += `</g>`;
-  s += isoBox(2.5,2.0,0, 1.15,0.85,0.14, 0xC9A876); // palette au sol
-  s += isoBox(2.65,2.15,0.14, 0.5,0.5,0.5, 0x8B93A0); // caisses posées sur la palette
-  s += isoBox(3.25,2.35,0.14, 0.45,0.4,0.36, 0xAD8B5E);
-  return s;
-}
-function buildRestaurantIllustrationSVG(){
-  const wallColor = 0xD8D8D0;
-  let walls = '';
-  walls += isoBox(-0.15,-0.15,0, 0.15,10.3,0.62,wallColor); // mur gauche
-  walls += isoBox(-0.15,-0.15,0, 15.3,0.15,0.62,wallColor); // mur du fond
-  walls += isoBox(-0.15,10.15,0, 6.2,0.15,0.62,wallColor); // mur façade gauche (entrée à droite de celui-ci)
-  walls += isoBox(8.5,10.15,0, 6.65,0.15,0.62,wallColor); // mur façade droite
-  walls += isoBox(15.0,-0.15,0, 0.15,6.4,0.62,wallColor); // mur droit (haut, avant l'ouverture livraison)
-  walls += isoBox(15.0,8.4,0, 0.15,1.9,0.62,wallColor); // mur droit (bas, après l'ouverture livraison)
-
-  const floorZones = [
-    isoTile(-0.15,-0.15,15.3,10.3,0,'#EFEFEA'),
-    `<g id="zonepatch-bar">${isoTile(0.1,0.1,5.2,3.3,0.01,'#EAE2D6',0.9)}</g>`,
-    `<g id="zonepatch-kitchen">${isoTile(8.7,0.1,4.4,3.1,0.01,'#E4E4DE',0.9)}</g>`,
-    `<g id="zonepatch-dining">${isoTile(0.4,4.6,7.6,5.3,0.01,'#F2EFE8',0.9)}</g>`,
-    `<g id="zonepatch-delivery">${isoTile(9.2,4.6,5.6,4.6,0.01,'#EFE3DE',0.9)}</g>`,
-  ].join('');
-
-  const [minX] = isoProject(-0.15,10.45,0);
-  const [maxX] = isoProject(15.15,-0.15,0.9);
-  const [minY] = isoProject(-0.15,-0.15,0.9);
-  const [maxY] = isoProject(15.15,10.45,0);
-  const pad = 40;
-  const viewX = minX - pad, viewY = minY - pad, viewW = (maxX-minX)+pad*2, viewH = (maxY-minY)+pad*2;
-
-  return `
-    <svg id="resto-illustration" viewBox="${viewX.toFixed(0)} ${viewY.toFixed(0)} ${viewW.toFixed(0)} ${viewH.toFixed(0)}" xmlns="http://www.w3.org/2000/svg">
-      ${floorZones}
-      <g id="resto-zone-walls" class="resto-zone">${walls}</g>
-      <g id="resto-zone-bar" class="resto-zone" transform="translate(${isoProject(0.6,0.6,0)[0]-isoProject(0,0,0)[0]},0)">${buildBarSVG()}</g>
-      <g id="resto-zone-kitchen" class="resto-zone">${(function(){ const off=isoProject(9.1,0.6,0); return `<g transform="translate(${off[0]},${off[1]})">${buildKitchenSVG()}</g>`; })()}</g>
-      <g id="resto-zone-dining" class="resto-zone">${(function(){ const off=isoProject(0.5,5.0,0); return `<g transform="translate(${off[0]},${off[1]})">${buildDiningSVG()}</g>`; })()}</g>
-      <g id="resto-zone-delivery" class="resto-zone">${(function(){ const off=isoProject(9.3,5.0,0); return `<g transform="translate(${off[0]},${off[1]})">${buildDeliverySVG()}</g>`; })()}</g>
-    </svg>
-  `;
-}
-function initRestaurantIllustrationAnim(){
-  const wrap = document.getElementById('restaurant-illustration-wrap');
-  if(!wrap || wrap.dataset.animBound) return;
-  wrap.dataset.animBound = '1';
-  const introEl = document.getElementById('resto-scroll-intro');
-  const callouts = Array.from(document.querySelectorAll('.resto-callout'));
-  const zoneEls = {
-    bar: document.getElementById('resto-zone-bar'),
-    kitchen: document.getElementById('resto-zone-kitchen'),
-    dining: document.getElementById('resto-zone-dining'),
-    delivery: document.getElementById('resto-zone-delivery'),
-  };
-  const wallsEl = document.getElementById('resto-zone-walls');
-  const logoEl = document.getElementById('resto-logo-intro');
-
-  // Séquence voulue : logo, puis la salle, le bar, la cuisine, et enfin la camionnette qui
-  // arrive à l'arrière-boutique — chaque étape reste "active" un long moment, et son texte,
-  // une fois apparu, ne disparaît plus (il s'accumule avec les suivants).
-  const STAGES = [
-    { key:'dining', start:0.16, activeEnd:0.34 },
-    { key:'bar', start:0.34, activeEnd:0.52 },
-    { key:'kitchen', start:0.52, activeEnd:0.70 },
-    { key:'delivery', start:0.70, activeEnd:1.00 },
-  ];
-
-  function applyProgress(progress){
-    if(introEl) introEl.classList.toggle('hide', progress > 0.03);
-    if(logoEl) logoEl.style.opacity = Math.max(0, 1 - progress/0.12);
-    const buildingRevealed = progress > 0.08;
-    wrap.classList.toggle('built', buildingRevealed);
-    if(wallsEl) wallsEl.classList.toggle('revealed', buildingRevealed);
-    Object.entries(zoneEls).forEach(([key, el])=>{
-      if(!el) return;
-      const stage = STAGES.find(s=>s.key===key);
-      // Chaque espace apparaît à SON tour (juste avant de devenir "actif"), pas tous en même
-      // temps que les murs — c'est ça qui donne l'effet "le restaurant se déploie" plutôt qu'un
-      // simple projecteur qui se déplace sur un décor déjà entièrement posé.
-      const isRevealed = progress >= stage.start - 0.03;
-      const isActive = progress >= stage.start && progress < stage.activeEnd;
-      const isPast = progress >= stage.activeEnd;
-      el.classList.toggle('revealed', isRevealed);
-      el.classList.toggle('active', isActive);
-      el.classList.toggle('settled', isPast);
-    });
-    callouts.forEach(el=>{
-      const [rs] = (el.dataset.range||'0,1').split(',').map(Number);
-      el.classList.toggle('visible', progress >= rs);
-    });
-  }
-
-  const AUTOPLAY_DURATION_MS = 15000;
-  let playing = false, played = false, playStart = null, raf = null;
-  function tick(){
-    raf = requestAnimationFrame(tick);
-    if(!document.body.contains(wrap)) return;
-    if(playing){
-      const elapsed = performance.now() - playStart;
-      const progress = Math.min(1, elapsed / AUTOPLAY_DURATION_MS);
-      applyProgress(progress);
-      if(progress >= 1) playing = false;
-    }
-  }
-  tick();
-  const observer = new IntersectionObserver((entries)=>{
-    entries.forEach(entry=>{
-      if(entry.isIntersecting && !played){ played = true; playing = true; playStart = performance.now(); }
-    });
-  }, { threshold:0.15 });
-  observer.observe(wrap);
-}
 function renderMarketingPage(){
   return `
     <div class="site-page">
@@ -6976,31 +6790,32 @@ function renderMarketingPage(){
         </div>
       </section>
 
-      <div class="restaurant-scroll-wrapper" id="restaurant-scroll-wrapper">
-        <div class="restaurant-scroll-sticky" id="restaurant-illustration-wrap">
-          <div class="resto-logo-intro" id="resto-logo-intro">
-            <div class="brand-mark" style="width:64px;height:64px;background:var(--black);margin:0 auto;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+      <section class="product-carousel-section">
+        <div class="product-carousel-head">
+          <div class="site-hero-tag">Le site en situation</div>
+          <h2>Concrètement, à quoi ça ressemble ?</h2>
+        </div>
+        <div class="product-carousel" id="product-carousel">
+          <div class="browser-frame">
+            <div class="browser-frame-bar"><span></span><span></span><span></span></div>
+            <div class="browser-frame-body">
+              ${PRODUCT_CAROUSEL.map((s,i)=>`<img src="${s.img}" alt="${escapeHtml(s.alt)}" class="carousel-slide ${i===0?'active':''}" loading="${i===0?'eager':'lazy'}">`).join('')}
+            </div>
           </div>
-          ${buildRestaurantIllustrationSVG()}
-          <div class="resto-scroll-intro" id="resto-scroll-intro">↓ Faites défiler pour voir où Mise &amp; Sûre s'intègre</div>
-          <div class="resto-callout resto-callout-1" data-range="0.16,1.00">
-            <div class="resto-callout-title">En salle</div>
-            <div class="resto-callout-text">Chaque serveur a son propre accès, avec seulement les permissions dont il a besoin.</div>
-          </div>
-          <div class="resto-callout resto-callout-2" data-range="0.34,1.00">
-            <div class="resto-callout-title">Au bar</div>
-            <div class="resto-callout-text">Le stock de boissons se commande en quelques clics, chez le bon fournisseur, au bon prix.</div>
-          </div>
-          <div class="resto-callout resto-callout-3" data-range="0.52,1.00">
-            <div class="resto-callout-title">En cuisine</div>
-            <div class="resto-callout-text">La brigade signale un manque, le patron valide, la commande part directement au fournisseur.</div>
-          </div>
-          <div class="resto-callout resto-callout-4" data-range="0.70,1.00">
-            <div class="resto-callout-title">À l'arrière-boutique</div>
-            <div class="resto-callout-text">Réception, écarts, historique des prix : tout est suivi automatiquement, livraison après livraison.</div>
+          <div class="carousel-caption">
+            ${PRODUCT_CAROUSEL.map((s,i)=>`
+              <div class="carousel-caption-item ${i===0?'active':''}">
+                <div class="site-hero-tag">${escapeHtml(s.tag)}</div>
+                <h3>${escapeHtml(s.title)}</h3>
+                <p>${escapeHtml(s.text)}</p>
+              </div>
+            `).join('')}
+            <div class="carousel-dots">
+              ${PRODUCT_CAROUSEL.map((s,i)=>`<button class="carousel-dot ${i===0?'active':''}" data-idx="${i}" aria-label="${escapeHtml(s.tag)}"></button>`).join('')}
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
       <section class="site-showcase">
         ${SITE_SHOWCASE.map((s,i)=>`
@@ -7607,7 +7422,7 @@ function renderInner(){
     document.title = 'Mise & Sûre — la gestion de restaurant, sans friction';
     document.getElementById('app').innerHTML = renderMarketingPage();
     requestAnimationFrame(initMarketing3D);
-    requestAnimationFrame(initRestaurantIllustrationAnim);
+    requestAnimationFrame(initProductCarousel);
     return;
   }
   if(state.site==='pricing'){
