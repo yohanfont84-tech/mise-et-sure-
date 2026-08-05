@@ -6840,13 +6840,22 @@ function initRestaurantScrollScene3D(canvas){
   // ============================================================
   // LE BÂTIMENT — sol, zones au sol teintées et murs bas délimitant les pièces.
   // ============================================================
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), new THREE.MeshStandardMaterial({ color: PAPER, roughness:1, transparent:true }));
+  function makeFloorTexture(){
+    const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#EFEFEA'; ctx.fillRect(0,0,512,512);
+    ctx.strokeStyle = '#DEDED6'; ctx.lineWidth = 1.5;
+    for(let i=0;i<=16;i++){ const y=i*32; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(512,y); ctx.stroke(); }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 2.5);
+    return tex;
+  }
+  const floorTexture = makeFloorTexture();
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), new THREE.MeshStandardMaterial({ map: floorTexture, roughness:0.95, transparent:true }));
   floor.rotation.x = -Math.PI/2;
   floor.receiveShadow = true;
   scene.add(floor);
-  const grid = new THREE.GridHelper(12, 24, 0xDDDDD4, 0xE6E6DF);
-  grid.material.transparent = true;
-  scene.add(grid);
 
   function zonePatch(w_,d_,x,z,color){
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w_,d_), new THREE.MeshStandardMaterial({ color, roughness:1, transparent:true, opacity:0 }));
@@ -6859,15 +6868,25 @@ function initRestaurantScrollScene3D(canvas){
   const zoneDining = zonePatch(6.6, 4.8, -0.2, 2.4, 0xF2EFE8);
   const zoneDelivery = zonePatch(3.6, 3.6, 4.6, 3.2, 0xEFE3DE);
 
-  // Murs bas, avec une ouverture façade (entrée) et une ouverture arrière (livraisons).
+  // Murs bas, avec une ouverture façade (entrée) et une ouverture arrière-droite (livraisons) —
+  // cette dernière est désormais alignée précisément avec la zone de livraison (avant, le mur
+  // était plein à cet endroit et le camion semblait surgir de nulle part, sans porte cohérente).
   const wallsGroup = new THREE.Group();
   const wallLeft = box(0.14, 0.7, 9.6, 0xD8D8D0); wallLeft.position.set(-5.9, 0.35, 0); wallsGroup.add(wallLeft);
   const wallBack = box(11.6, 0.7, 0.14, 0xD8D8D0); wallBack.position.set(0, 0.35, -4.9); wallsGroup.add(wallBack);
   const wallFrontL = box(3.6, 0.7, 0.14, 0xD8D8D0); wallFrontL.position.set(-4.1, 0.35, 4.9); wallsGroup.add(wallFrontL);
   const wallFrontR = box(4.6, 0.7, 0.14, 0xD8D8D0); wallFrontR.position.set(3.5, 0.35, 4.9); wallsGroup.add(wallFrontR);
-  const wallRightBack = box(0.14, 0.7, 3.2, 0xD8D8D0); wallRightBack.position.set(5.9, 0.35, -3.1); wallsGroup.add(wallRightBack);
-  const wallRightFront = box(0.14, 0.7, 3.0, 0xD8D8D0); wallRightFront.position.set(5.9, 0.35, 3.4); wallsGroup.add(wallRightFront);
+  // Mur droit : un long pan côté bar/cuisine, puis une ouverture (porte de service) juste en
+  // face de la zone de livraison, puis un petit retour d'angle.
+  const wallRightBack = box(0.14, 0.7, 6.4, 0xD8D8D0); wallRightBack.position.set(5.9, 0.35, -1.7); wallsGroup.add(wallRightBack);
+  const wallRightCorner = box(0.14, 0.7, 0.4, 0xD8D8D0); wallRightCorner.position.set(5.9, 0.35, 4.7); wallsGroup.add(wallRightCorner);
   scene.add(wallsGroup);
+
+  // Allée de livraison — une bande d'enrobé qui part de l'extérieur du bâtiment et traverse
+  // l'ouverture jusqu'à la zone de livraison : sans ça, rien n'indique d'où le camion arrive.
+  const driveway = box(3.6, 0.01, 2.6, 0x9C9B93, { roughness:1 });
+  driveway.rotation.x = -Math.PI/2; driveway.position.set(7.6, 0.006, 3.0);
+  wallsGroup.add(driveway);
 
   // --- Le bar — comptoir en bois texturé, étagère à bouteilles, tabourets avec repose-pieds ---
   const barGroup = new THREE.Group();
@@ -6877,7 +6896,7 @@ function initRestaurantScrollScene3D(canvas){
   const backShelf = box(3.0, 1.2, 0.16, 0xE3E3DD); backShelf.position.set(0, 0.6, -0.85);
   barGroup.add(backShelf);
   for(let i=0;i<7;i++){
-    const bottle = cyl(0.055, 0.34, i%2===0?ACCENT:0x3E6B4F, 8);
+    const bottle = cyl(0.055, 0.34, i%2===0?0x3E5C42:0x4A3A2A, 8);
     bottle.position.set(-1.15 + i*0.38, 1.05, -0.85);
     const cap = cyl(0.02, 0.06, STEEL, 6); cap.position.set(-1.15 + i*0.38, 1.25, -0.85);
     barGroup.add(bottle, cap);
@@ -6924,19 +6943,19 @@ function initRestaurantScrollScene3D(canvas){
   // --- La salle — trois tables rondes garnies, plante fournie, dossiers de chaise à lattes ---
   const diningGroup = new THREE.Group();
   [[-2.0,-0.4],[0.4,1.1],[-2.0,1.9]].forEach(([x,z])=>{
-    const table = cyl(0.62, 0.06, 0xffffff, 24, { map: woodTexture, roughness:0.4 }); table.position.set(x, 0.62, z);
-    const foot = cyl(0.07, 0.56, STEEL, 10, { roughness:0.35, metalness:0.4 }); foot.position.set(x, 0.32, z);
+    const table = cyl(0.62, 0.06, 0xffffff, 24, { map: woodTexture, roughness:0.4 }); table.position.set(x, 0.74, z);
+    const foot = cyl(0.07, 0.68, STEEL, 10, { roughness:0.35, metalness:0.4 }); foot.position.set(x, 0.4, z);
     diningGroup.add(table, foot, contactShadow(0.75, 0.13));
     [[0.85,0],[-0.85,0],[0,0.85],[0,-0.85]].forEach(([dx,dz])=>{
-      const seat = box(0.3,0.06,0.3, LIGHT); seat.position.set(x+dx, 0.42, z+dz);
-      const leg = cyl(0.03,0.4, STEEL, 6); leg.position.set(x+dx, 0.2, z+dz);
+      const seat = box(0.3,0.06,0.3, LIGHT); seat.position.set(x+dx, 0.46, z+dz);
+      const leg = cyl(0.03,0.44, STEEL, 6); leg.position.set(x+dx, 0.22, z+dz);
       diningGroup.add(seat, leg);
       // Dossier à trois lattes plutôt qu'un panneau plein — silhouette bien plus réaliste pour
       // une chaise de salle.
       const bx = dx!==0 ? (dx>0?0.13:-0.13) : 0, bz = dz!==0 ? (dz>0?0.13:-0.13) : 0;
       for(let s=-1;s<=1;s++){
         const slat = box(0.06,0.32,0.045, LIGHT);
-        slat.position.set(x+dx+bx+(dz===0?s*0.09:0), 0.58, z+dz+bz+(dx===0?s*0.09:0));
+        slat.position.set(x+dx+bx+(dz===0?s*0.09:0), 0.62, z+dz+bz+(dx===0?s*0.09:0));
         diningGroup.add(slat);
       }
     });
@@ -6977,13 +6996,15 @@ function initRestaurantScrollScene3D(canvas){
   // Position "garée" (une fois livrée) vs position de départ, plus loin dehors — la camionnette
   // roule littéralement de l'une à l'autre pendant que la caméra arrive à l'arrière-boutique,
   // plutôt que d'apparaître déjà sur place comme le reste du mobilier.
-  vanGroup.userData.parkedPos = new THREE.Vector3(0, 0, -0.7);
-  vanGroup.userData.arrivePos = new THREE.Vector3(0, 0, -5.2);
+  // Le camion arrive en ligne droite depuis l'extérieur, par l'allée qui traverse l'ouverture du
+  // mur — pas depuis un point arbitraire qui ne correspondait à aucune porte réelle.
+  vanGroup.userData.parkedPos = new THREE.Vector3(0.35, 0, 0.05);
+  vanGroup.userData.arrivePos = new THREE.Vector3(4.3, 0, 0.05);
   vanGroup.position.copy(vanGroup.userData.arrivePos);
   deliveryGroup.add(vanGroup);
   const pallet = box(1.3, 0.1, 1.0, WOOD); pallet.position.set(0.5, 0.05, 1.1);
-  const crate1 = box(0.55,0.55,0.55, ACCENT); crate1.position.set(0.25, 0.37, 1.0);
-  const crate2 = box(0.5,0.4,0.5, 0xC96A56); crate2.position.set(0.85, 0.30, 1.25);
+  const crate1 = box(0.55,0.55,0.55, 0x8B93A0); crate1.position.set(0.25, 0.37, 1.0);
+  const crate2 = box(0.5,0.4,0.5, WOOD_DK); crate2.position.set(0.85, 0.30, 1.25);
   const deliveryShadow = contactShadow(0.9, 0.14); deliveryShadow.position.set(0.5, 0.012, 1.1);
   deliveryGroup.add(pallet, crate1, crate2, deliveryShadow);
   deliveryGroup.position.set(4.4, 0, 3.0);
@@ -6992,7 +7013,6 @@ function initRestaurantScrollScene3D(canvas){
   const buildingParts = [wallsGroup, barGroup, kitchenGroup, diningGroup, deliveryGroup];
   buildingParts.forEach(p=>setOpacity(p, 0));
   setOpacity(floor, 0);
-  grid.material.opacity = 0;
 
   // Médaillon du logo, flottant devant la caméra au tout début — la caméra en repart pour
   // s'envoler ensuite vers le restaurant, comme un générique qui laisse place à la visite.
@@ -7065,7 +7085,6 @@ function initRestaurantScrollScene3D(canvas){
     buildOpacity = buildOpacity>0 && buildOpacity<1 ? (1-Math.pow(1-buildOpacity,3)) : buildOpacity;
     buildingParts.forEach(p=>setOpacity(p, buildOpacity));
     setOpacity(floor, buildOpacity);
-    grid.material.opacity = buildOpacity * 0.9;
 
     // La camionnette reste invisible tant qu'elle n'est pas en train d'arriver, indépendamment
     // du reste du bâtiment déjà révélé (elle "roule" jusqu'à sa place au lieu d'apparaître déjà
