@@ -685,6 +685,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .invoice-total-row{display:flex;justify-content:flex-end;align-items:baseline;gap:12px;border-top:2px solid var(--black);padding-top:10px;margin-bottom:16px;}
 .invoice-total-label{font-size:12.5px;font-weight:600;}
 .invoice-total-value{font-family:var(--heading-font);font-size:20px;font-weight:700;}
+.invoice-legal-note{background:var(--paper);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:16px;}
 .invoice-foot{border-top:1px solid var(--border);padding-top:12px;font-size:10.5px;color:var(--muted-2);text-align:center;}
 
 .flex{display:flex;}
@@ -980,7 +981,7 @@ function fmtMonthYear(d){ return MONTHS_LONG[d.getMonth()] + ' ' + d.getFullYear
 
 /* ============================================================
    PANIERS PAR FOURNISSEUR — on regroupe les besoins avant d'envoyer
-   une seule commande (et donc une seule facture) par fournisseur.
+   une seule commande par fournisseur.
 ============================================================ */
 async function addToBasket(supplierId, productId, qty){
   qty = Math.round(qty);
@@ -1216,9 +1217,9 @@ const state = {
 let ACCOUNT = null; // { email, plan, billing, via } une fois le compte connecté pendant la session (vient du vrai serveur)
 const PLANS = [
   { id:'solo', name:'Solo', monthly:19, tagline:"Pour un restaurateur qui travaille seul",
-    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Factures et historique d’achats','Notifications par email'] },
+    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Bons de commande et historique d’achats','Notifications par email'] },
   { id:'essentiel', name:'Essentiel', monthly:39, tagline:"Pour un restaurant qui démarre",
-    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Factures et historique d’achats','Notifications par email'] },
+    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Bons de commande et historique d’achats','Notifications par email'] },
   { id:'pro', name:'Pro', monthly:79, tagline:"Pour les groupes multi-établissements",
     features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Support prioritaire'] },
 ];
@@ -1231,7 +1232,7 @@ const PRICING_COMPARISON = [
   { label:'Commandes fournisseurs', solo:'Illimitées', essentiel:'Illimitées', pro:'Illimitées' },
   { label:'Achats personnalisés', solo:true, essentiel:true, pro:true },
   { label:'Export PDF des commandes', solo:false, essentiel:true, pro:true },
-  { label:'Factures et historique d’achats', solo:true, essentiel:true, pro:true },
+  { label:'Bons de commande et historique d’achats', solo:true, essentiel:true, pro:true },
   { label:'Notifications par email', solo:true, essentiel:true, pro:true },
   { label:'Support', solo:'Par email', essentiel:'Par email', pro:'Prioritaire' },
 ];
@@ -1242,9 +1243,9 @@ const PRICING_FAQ = [
   { q:"Le forfait Solo me convient si je travaille seul ?", a:"Oui — le mode Solo masque toute la gestion d'équipe et les demandes internes, pour un outil épuré si vous n'avez pas d'équipe à gérer. Vous pourrez passer à un forfait avec équipe si besoin, sans rien perdre." },
 ];
 const SITE_FEATURES = [
-  { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, une seule facture." },
+  { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, un seul bon de commande." },
   { icon:'team', title:'Un accès par personne', desc:"Patron, manager, cuisine, salle : chacun son espace, ses permissions, son mot de passe." },
-  { icon:'invoice', title:'Factures professionnelles', desc:"Bons de commande et factures générés automatiquement, prêts à télécharger." },
+  { icon:'invoice', title:'Bons de commande professionnels', desc:"Générés automatiquement, prêts à télécharger ou à envoyer au fournisseur." },
   { icon:'building', title:'Multi-établissements', desc:"Gérez plusieurs restaurants depuis un même compte, sans jamais mélanger les données." },
 ];
 
@@ -2717,7 +2718,7 @@ function viewCommandes(role){
       <button class="btn btn-primary" onclick="openNewOrderModal()">${iconSm(I.plus)} Ajouter au panier</button>
     </div>
     ${basketSupplierIds.length ? `
-      <div class="section-head" style="margin-top:0;"><div><h2 style="font-size:15px;">Paniers en attente d'envoi</h2><div class="sub">Un panier = une commande = une facture, par fournisseur</div></div></div>
+      <div class="section-head" style="margin-top:0;"><div><h2 style="font-size:15px;">Paniers en attente d'envoi</h2><div class="sub">Un panier = une commande = un bon de commande, par fournisseur</div></div></div>
       <div class="grid grid-2b" style="margin-bottom:8px;">
         ${basketSupplierIds.map(sid=>renderBasketCard(sid, role)).join('')}
       </div>
@@ -3632,6 +3633,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.fontStyle = data.restaurant.font_style;
     resto.colorTheme = data.restaurant.color_theme;
     resto.defaultDarkMode = data.restaurant.default_dark_mode;
+    resto.siret = data.restaurant.siret;
     applyAppearance(resto);
   } catch(err){}
 }
@@ -3776,6 +3778,11 @@ function viewParametres(){
           <div class="field"><label>Ville</label><input id="set-city" value="${escapeHtml(resto.city)}"></div>
         </div>
         <div class="field"><label>Devise</label><select id="set-currency"><option ${resto.currency==='EUR'?'selected':''}>EUR</option><option ${resto.currency==='CHF'?'selected':''}>CHF</option><option ${resto.currency==='USD'?'selected':''}>USD</option></select></div>
+        <div class="field">
+          <label>Numéro SIRET (facultatif)</label>
+          <input id="set-siret" value="${escapeHtml(resto.siret||'')}" placeholder="123 456 789 00012" maxlength="20">
+          <div class="small muted" style="margin-top:4px;">Affiché sur vos bons de commande téléchargeables, pour vous identifier en tant qu'acheteur.</div>
+        </div>
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
       </div>
       <div class="card">
@@ -4109,9 +4116,10 @@ async function saveRestoInfo(){
   const postalCode = document.getElementById('set-postal').value.trim();
   const city = document.getElementById('set-city').value.trim();
   const currency = document.getElementById('set-currency').value;
+  const siret = document.getElementById('set-siret').value.trim();
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, {
-      method:'PATCH', body:{ name: name||undefined, address, postalCode, city: city||undefined, currency },
+      method:'PATCH', body:{ name: name||undefined, address, postalCode, city: city||undefined, currency, siret },
     });
     resto.name = data.restaurant.name;
     resto.address = data.restaurant.address;
@@ -4120,6 +4128,7 @@ async function saveRestoInfo(){
     resto.currency = data.restaurant.currency;
     resto.latitude = data.restaurant.latitude;
     resto.longitude = data.restaurant.longitude;
+    resto.siret = data.restaurant.siret;
     toast('Paramètres enregistrés');
     render();
   } catch(err){
@@ -5891,8 +5900,12 @@ function orderDocLines(o){
 function buildOrderDocumentHTML(o){
   const resto = RESTOS.find(r=>r.id===state.resto) || {name:'—', city:''};
   const supplier = SUPPLIERS.find(s=>s.id===o.supplier) || {name:'—', cat:''};
-  const isDelivered = o.status==='livree';
-  const docType = isDelivered ? 'Facture' : 'Bon de commande';
+  const isDelivered = o.status==='livree' || o.status==='partiellement_recue';
+  // Important : ce document est émis par le RESTAURANT (l'acheteur), pas par le fournisseur —
+  // seul le fournisseur (le vendeur) a le droit d'émettre une véritable "facture" au sens
+  // légal du terme. On l'appelle donc toujours "Bon de commande", y compris une fois la
+  // marchandise reçue, avec un avertissement explicite en bas de page.
+  const docType = isDelivered ? 'Bon de commande — réceptionné' : 'Bon de commande';
   const lines = orderDocLines(o);
   const total = lines.reduce((a,l)=>a+l.total,0);
   const when = o.createdAt ? fmtDateLong(new Date(o.createdAt)) + ' à ' + fmtTime(new Date(o.createdAt)) : o.date;
@@ -5902,6 +5915,7 @@ function buildOrderDocumentHTML(o){
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
           <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
           <div class="invoice-doctype-label">${docType}</div>
@@ -5916,7 +5930,7 @@ function buildOrderDocumentHTML(o){
           ${supplier.email ? `<div class="invoice-meta-sub">${escapeHtml(supplier.email)}</div>` : ''}
         </div>
         <div>
-          <div class="invoice-meta-label">Date</div>
+          <div class="invoice-meta-label">Date de commande</div>
           <div class="invoice-meta-value">${when}</div>
         </div>
         <div>
@@ -5932,9 +5946,14 @@ function buildOrderDocumentHTML(o){
       </table>
       ${financialsHidden() ? '' : `
       <div class="invoice-total-row">
-        <div class="invoice-total-label">Total ${isDelivered?'facturé':'commandé'}</div>
+        <div class="invoice-total-label">Total ${isDelivered?'facturé par le fournisseur':'commandé'}</div>
         <div class="invoice-total-value">${fmtEUR(total)}</div>
       </div>`}
+      <div class="invoice-legal-note">
+        Ce document est un récapitulatif de commande établi par ${escapeHtml(resto.name)} pour son
+        suivi interne — il ne constitue pas une facture au sens légal et ne remplace pas la
+        facture officielle émise par le fournisseur, à conserver pour votre comptabilité.
+      </div>
       <div class="invoice-foot">
         <div>${escapeHtml(resto.name)} — ${escapeHtml(resto.city)}</div>
         <div>Document généré automatiquement par Mise &amp; Sûre</div>
@@ -5965,6 +5984,7 @@ const INVOICE_STANDALONE_CSS = `
   .invoice-total-row{display:flex;justify-content:flex-end;align-items:baseline;gap:14px;border-top:2px solid #141414;padding-top:12px;margin-bottom:20px;}
   .invoice-total-label{font-size:13px;font-weight:600;}
   .invoice-total-value{font-family:'Fraunces',serif;font-size:22px;font-weight:700;}
+  .invoice-legal-note{background:#F7F7F4;border:1px solid #E1E1DA;border-radius:8px;padding:10px 12px;font-size:11px;color:#6B6B65;line-height:1.5;margin-bottom:16px;}
   .invoice-foot{border-top:1px solid #E1E1DA;padding-top:14px;font-size:11px;color:#9A9A94;text-align:center;}
 `;
 function downloadHtmlFile(filename, innerHtml){
@@ -5987,7 +6007,7 @@ function openOrderDocumentModal(orderId){
 }
 function downloadOrderDocument(orderId){
   const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
-  const filename = (o.status==='livree'?'facture-':'commande-') + o.id + '.html';
+  const filename = 'bon-de-commande-' + o.id + '.html';
   downloadHtmlFile(filename, buildOrderDocumentHTML(o));
 }
 
@@ -6015,6 +6035,7 @@ function buildHistoryDocumentHTML(period){
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
           <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
           <div class="invoice-doctype-label">Historique des achats</div>
@@ -6455,6 +6476,7 @@ function buildOrderPdf(o){
   y += 7;
   if(resto && resto.address){ doc.text(resto.address, marginX, y); y += 5; }
   if(resto && (resto.postalCode || resto.city)){ doc.text(`${escapeHtml(resto.postalCode||'')} ${escapeHtml(resto.city||'')}`.trim(), marginX, y); y += 5; }
+  if(resto && resto.siret){ doc.text(`SIRET : ${resto.siret}`, marginX, y); y += 5; }
 
   doc.setFont('helvetica','bold'); doc.setFontSize(14);
   doc.text('BON DE COMMANDE', 195, 20, { align:'right' });
@@ -6496,6 +6518,10 @@ function buildOrderPdf(o){
     doc.setFont('helvetica','bold'); doc.setFontSize(12);
     doc.text(`Total : ${fmtEUR(o.amount)}`, 195, finalY, { align:'right' });
   }
+
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,145);
+  doc.text("Ce document est un bon de commande émis par l'acheteur — il ne constitue pas une facture et ne remplace pas celle émise par le fournisseur.", marginX, pageHeight-12, { maxWidth:180 });
 
   return doc;
 }
@@ -6539,8 +6565,16 @@ async function emailOrderPdf(id){
 let charts = {};
 function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
 function drawCharts(){
+  // Avant : les couleurs des graphiques étaient codées en dur pour le mode clair (#141414 pour
+  // les barres/courbes) — exactement la même couleur que le fond en mode sombre (--ink), donc
+  // invisibles dessus. Désormais recalculées à chaque appel selon le thème actif.
+  const isDark = document.documentElement.classList.contains('theme-dark');
+  const ink = isDark ? '#EDEDE6' : '#141414';
+  const mutedText = isDark ? '#A3A399' : '#6B6B65';
+  const gridColor = isDark ? '#333330' : '#EEEEE7';
+  const fillTint = isDark ? 'rgba(237,237,230,0.08)' : 'rgba(20,20,20,0.06)';
   Chart.defaults.font.family = "'Inter',sans-serif";
-  Chart.defaults.color = '#6B6B65';
+  Chart.defaults.color = mutedText;
 
   const stockValCanvas = document.getElementById('chartStockValue');
   if(stockValCanvas){
@@ -6549,12 +6583,12 @@ function drawCharts(){
       type:'bar',
       data:{
         labels: data.map(d=>d.label),
-        datasets:[{data:data.map(d=>d.value), backgroundColor:'#141414', borderRadius:5, maxBarThickness:26}]
+        datasets:[{data:data.map(d=>d.value), backgroundColor:ink, borderRadius:5, maxBarThickness:26}]
       },
       options:{
         indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins:{legend:{display:false}},
-        scales:{x:{grid:{color:'#EEEEE7'}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
+        scales:{x:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
       }
     });
   }
@@ -6565,12 +6599,12 @@ function drawCharts(){
       type:'bar',
       data:{
         labels: suppliersWithReliability.map(x=>x.s.name.split(' ')[0]),
-        datasets:[{label:'Fiabilité %', data:suppliersWithReliability.map(x=>x.r.score), backgroundColor: suppliersWithReliability.map(x=>x.r.score>=95?'#141414':x.r.score>=90?'#8A8A84':'#A93A2E'), borderRadius:5, maxBarThickness:26}]
+        datasets:[{label:'Fiabilité %', data:suppliersWithReliability.map(x=>x.r.score), backgroundColor: suppliersWithReliability.map(x=>x.r.score>=95?ink:x.r.score>=90?'#8A8A84':'#A93A2E'), borderRadius:5, maxBarThickness:26}]
       },
       options:{
         indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins:{legend:{display:false}},
-        scales:{x:{min:70,max:100, grid:{color:'#EEEEE7'}}, y:{grid:{display:false}}}
+        scales:{x:{min:70,max:100, grid:{color:gridColor}}, y:{grid:{display:false}}}
       }
     });
   }
@@ -6581,12 +6615,12 @@ function drawCharts(){
       type:'line',
       data:{
         labels: data.map(d=>d.label),
-        datasets:[{data:data.map(d=>d.value), borderColor:'#141414', backgroundColor:'rgba(20,20,20,0.06)', fill:true, tension:0.3, pointRadius:3}]
+        datasets:[{data:data.map(d=>d.value), borderColor:ink, backgroundColor:fillTint, fill:true, tension:0.3, pointRadius:3}]
       },
       options:{
         responsive:true, maintainAspectRatio:false,
         plugins:{legend:{display:false}},
-        scales:{x:{grid:{display:false}}, y:{grid:{color:'#EEEEE7'}, ticks:{callback:v=>v+' €'}}}
+        scales:{x:{grid:{display:false}}, y:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}}
       }
     });
   }
@@ -6595,18 +6629,18 @@ function drawCharts(){
     const data = achatsBySupplier();
     charts.spendSupp = new Chart(spendSuppCanvas, {
       type:'bar',
-      data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor:'#141414', borderRadius:5, maxBarThickness:26}] },
+      data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor:ink, borderRadius:5, maxBarThickness:26}] },
       options:{
         indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins:{legend:{display:false}},
-        scales:{x:{grid:{color:'#EEEEE7'}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
+        scales:{x:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
       }
     });
   }
   const spendCatCanvas = document.getElementById('chartSpendCategory');
   if(spendCatCanvas){
     const data = spendByCategoryData();
-    const palette = ['#141414','#5B5B55','#8A8A84','#A93A2E','#BDBDB5','#2E4A3A'];
+    const palette = [ink,'#5B5B55','#8A8A84','#A93A2E','#BDBDB5','#2E4A3A'];
     charts.spendCat = new Chart(spendCatCanvas, {
       type:'doughnut',
       data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor: data.map((_,i)=>palette[i%palette.length])}] },
@@ -6894,7 +6928,7 @@ function renderMarketingPage(){
           <canvas id="hero-logo-3d"></canvas>
         </div>
         <h1>La gestion de votre restaurant,<br>sans friction.</h1>
-        <p>Commandes fournisseurs, équipe, factures — un espace pour le patron, un espace pour chacun des vôtres.</p>
+        <p>Commandes fournisseurs, équipe, bons de commande — un espace pour le patron, un espace pour chacun des vôtres.</p>
         <div class="flex gap8" style="justify-content:center;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="goToSite('pricing')">Voir les tarifs</button>
           ${ACCOUNT ? '' : `<button class="btn btn-ghost" onclick="goToLogin()">J'ai déjà un compte</button>`}
