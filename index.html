@@ -748,6 +748,7 @@ const I = {
   download:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>`,
   building:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01"/></svg>`,
   clock:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3.5 2"/></svg>`,
+  camera:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>`,
   cocktail:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16l-8 9-8-9z"/><path d="M12 13v6M8 19h8"/></svg>`,
   bread:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 14c0-5.2 4-9.5 9-9.5s9 4.3 9 9.5-4 6-9 6-9-1-9-6z"/><path d="M9 10.2l1.6 3.2M13 9.2l1.6 3.6M17 10.6l1.1 2.6"/></svg>`,
   mobile:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>`,
@@ -3719,6 +3720,44 @@ async function confirmDeleteResto(id){
 }
 
 
+// ============================================================
+// SIRET — formatage automatique (espaces tous les 3 chiffres) et validation par clé de
+// contrôle (algorithme de Luhn, la même méthode utilisée officiellement pour vérifier un
+// SIREN/SIRET). Un SIRET mal recopié à la main est une erreur fréquente et difficile à
+// repérer à l'œil nu ; autant le signaler tout de suite plutôt qu'une fois le document envoyé
+// à un tiers.
+// ============================================================
+function formatSiretInput(el){
+  const digits = el.value.replace(/\D/g,'').slice(0,14);
+  const groups = [digits.slice(0,3), digits.slice(3,6), digits.slice(6,9), digits.slice(9,14)].filter(Boolean);
+  el.value = groups.join(' ');
+  const hint = document.getElementById('siret-hint');
+  if(hint){ hint.textContent = siretHintText(el.value); hint.style.color = siretHintColor(el.value); }
+}
+function isValidSiretChecksum(digits){
+  if(digits.length !== 14) return false;
+  // Exception connue et sans danger : les établissements de La Poste (SIREN 356000000) ne
+  // suivent pas cette règle pour des raisons historiques — on ne les pénalise pas pour ça.
+  if(digits.startsWith('356000000')) return true;
+  let sum = 0;
+  for(let i=0;i<14;i++){
+    let d = parseInt(digits[digits.length-1-i], 10);
+    if(i % 2 === 1){ d *= 2; if(d > 9) d -= 9; }
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+function siretHintText(rawValue){
+  const digits = (rawValue||'').replace(/\D/g,'');
+  if(!digits) return "Affiché sur vos bons de commande téléchargeables, pour identifier l'acheteur. 14 chiffres — les espaces s'ajoutent automatiquement.";
+  if(digits.length < 14) return `${digits.length}/14 chiffres`;
+  return isValidSiretChecksum(digits) ? '✓ Numéro valide' : "⚠️ Ce numéro ne semble pas correct — vérifiez qu'il n'y a pas d'erreur de saisie.";
+}
+function siretHintColor(rawValue){
+  const digits = (rawValue||'').replace(/\D/g,'');
+  if(!digits || digits.length < 14) return 'var(--muted)';
+  return isValidSiretChecksum(digits) ? '#2E7D32' : 'var(--urgent)';
+}
 function viewParametres(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   // Le brouillon retient les changements d'apparence en cours d'édition, séparément de ce qui
@@ -3780,8 +3819,8 @@ function viewParametres(){
         <div class="field"><label>Devise</label><select id="set-currency"><option ${resto.currency==='EUR'?'selected':''}>EUR</option><option ${resto.currency==='CHF'?'selected':''}>CHF</option><option ${resto.currency==='USD'?'selected':''}>USD</option></select></div>
         <div class="field">
           <label>Numéro SIRET (facultatif)</label>
-          <input id="set-siret" value="${escapeHtml(resto.siret||'')}" placeholder="123 456 789 00012" maxlength="20">
-          <div class="small muted" style="margin-top:4px;">Affiché sur vos bons de commande téléchargeables, pour vous identifier en tant qu'acheteur.</div>
+          <input id="set-siret" value="${escapeHtml(resto.siret||'')}" placeholder="123 456 789 00012" maxlength="17" inputmode="numeric" oninput="formatSiretInput(this)">
+          <div class="small" id="siret-hint" style="margin-top:4px;color:${siretHintColor(resto.siret)};">${siretHintText(resto.siret)}</div>
         </div>
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
       </div>
@@ -4117,6 +4156,15 @@ async function saveRestoInfo(){
   const city = document.getElementById('set-city').value.trim();
   const currency = document.getElementById('set-currency').value;
   const siret = document.getElementById('set-siret').value.trim();
+  const siretDigits = siret.replace(/\D/g,'');
+  if(siret && siretDigits.length !== 14){
+    toast('Le SIRET doit contenir 14 chiffres — complétez-le ou laissez le champ vide.', 'alert');
+    return;
+  }
+  if(siret && !isValidSiretChecksum(siretDigits)){
+    toast("Ce numéro SIRET ne semble pas correct — vérifiez la saisie avant d'enregistrer.", 'alert');
+    return;
+  }
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, {
       method:'PATCH', body:{ name: name||undefined, address, postalCode, city: city||undefined, currency, siret },
@@ -4812,9 +4860,11 @@ function openReceiveOrderModal(id){
       <div class="flex between" style="margin-top:4px;" id="rcv-diff-row"></div>
     </div>`}
     <div class="field">
-      <label>Photo du bon de livraison / facture (facultatif)</label>
-      <div id="rcv-photo-preview"></div>
-      <input type="file" accept="image/*" onchange="handleProductPhotoUpload(this,'rcv')">
+      <label>Bon de livraison / facture (facultatif)</label>
+      <div id="rcv-photo-preview" style="margin-bottom:8px;"></div>
+      <button type="button" class="btn btn-ghost btn-block" onclick="document.getElementById('rcv-scan-input').click()">${iconSm(I.camera)} Scanner un document</button>
+      <input type="file" id="rcv-scan-input" accept="image/*" capture="environment" style="display:none;" onchange="handleDocumentScan(this,'rcv')">
+      <div class="small muted" style="margin-top:6px;">Ouvre directement l'appareil photo — posez le document bien à plat, dans un endroit lumineux.</div>
     </div>
     ${hideFin ? '' : `<label class="flex center gap8" style="margin:10px 0 16px 0;"><input type="checkbox" id="rcv-update-catalog" checked> Mettre à jour le prix au catalogue si un prix facturé diffère</label>`}
     <button class="btn btn-primary btn-block" onclick="confirmReceiveOrder('${id}')">Confirmer la réception</button>
@@ -5401,6 +5451,57 @@ function addZoneInline(prefix){
       toast(err.message, 'alert');
     }
   })();
+}
+// Contrairement à une simple photo, un "scan" doit rester lisible même pris à la va-vite, sur
+// un ticket ou un bon de livraison souvent mal imprimé : on booste le contraste et on
+// désature légèrement, pour se rapprocher du rendu d'une vraie appli de scan — sans dépendre
+// d'une appli tierce que tout le monde ne sait pas forcément utiliser.
+function scanDocumentFile(file, callback){
+  if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const img = new Image();
+    img.onload = function(){
+      const maxDim = 1600; // plus grand qu'une photo classique : un document doit rester lisible en zoomant
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const ratio = Math.min(maxDim/width, maxDim/height);
+        width = Math.round(width*ratio);
+        height = Math.round(height*ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if('filter' in ctx) ctx.filter = 'contrast(1.35) brightness(1.08) saturate(0.35)';
+      ctx.drawImage(img, 0, 0, width, height);
+      callback(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function handleDocumentScan(input, prefix){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const preview = document.getElementById(prefix+'-photo-preview');
+  if(preview) preview.innerHTML = `<div class="small muted">Traitement du document…</div>`;
+  scanDocumentFile(file, (scanned) => {
+    if(preview){
+      preview.innerHTML = `
+        <div style="position:relative;display:inline-block;">
+          <img src="${scanned}" alt="Document scanné" style="width:110px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
+          <button type="button" onclick="clearDocumentScan('${prefix}')" title="Retirer" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--black);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;">×</button>
+        </div>
+        <div class="small muted" style="margin-top:6px;">Document scanné — pas assez lisible ? Reprenez la photo ci-dessous.</div>
+      `;
+      preview.dataset.value = scanned;
+    }
+    input.value = ''; // permet de reprendre la même photo si besoin, le champ file ne "retient" pas la valeur
+  });
+}
+function clearDocumentScan(prefix){
+  const preview = document.getElementById(prefix+'-photo-preview');
+  if(preview){ preview.innerHTML = ''; delete preview.dataset.value; }
 }
 function compressImageFile(file, maxDim, quality, callback){
   if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image','alert'); return; }
