@@ -6658,14 +6658,40 @@ function buildOrderPdf(o){
 function openOrderPdfOptions(id){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
   const supplier = SUPPLIERS.find(s=>s.id===o.supplier);
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const contactName = supplier ? [supplier.contactFirstName, supplier.contactLastName].filter(Boolean).join(' ') : '';
+  const hasSupplierEmail = !!(supplier && supplier.email);
+  const hasContactEmail = !!(supplier && supplier.contactEmail);
+  const defaultBody = `Bonjour,
+
+Veuillez trouver ci-joint notre bon de commande ${o.id} (à joindre depuis le fichier téléchargé).
+
+Merci de nous confirmer sa bonne réception.
+
+Cordialement,
+${resto ? resto.name : ''}
+
+— Envoyé via Mise & Sûre`;
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Bon de commande ${o.id}</h3>
     <div class="modal-sub">${escapeHtml(supplier?supplier.name:'')}</div>
-    <button class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="downloadOrderPdf('${id}')">${iconSm(I.doc)} Télécharger le PDF</button>
-    ${supplier && supplier.email
-      ? `<button class="btn btn-ghost btn-block" onclick="emailOrderPdf('${id}')">${iconSm(I.mail)} Envoyer par email à ${escapeHtml(supplier.email)}</button>`
-      : `<div class="small muted">Ajoutez un email à ce fournisseur pour pouvoir le lui envoyer directement.</div>`}
+    <button class="btn btn-ghost btn-block" style="margin-bottom:14px;" onclick="downloadOrderPdf('${id}')">${iconSm(I.doc)} Télécharger le PDF</button>
+    <div class="divider"></div>
+    <div class="card-title">Envoyer par email</div>
+    <div class="small muted" style="margin-bottom:10px;">Ouvre votre application mail habituelle (Gmail, Outlook…) avec tout déjà rempli — c'est vous qui vérifiez et envoyez. Le PDF se télécharge à part : pensez à le joindre avant d'envoyer.</div>
+    <div class="field">
+      <label>Destinataire</label>
+      <select id="pdf-send-to" onchange="document.getElementById('pdf-send-to-custom').style.display = this.value==='__custom__' ? 'block' : 'none';">
+        ${hasSupplierEmail ? `<option value="${escapeHtml(supplier.email)}">Fournisseur — ${escapeHtml(supplier.email)}</option>` : ''}
+        ${hasContactEmail ? `<option value="${escapeHtml(supplier.contactEmail)}">${contactName ? escapeHtml(contactName)+' (commercial)' : 'Contact commercial'} — ${escapeHtml(supplier.contactEmail)}</option>` : ''}
+        <option value="__custom__" ${(!hasSupplierEmail && !hasContactEmail)?'selected':''}>Autre adresse…</option>
+      </select>
+      <input id="pdf-send-to-custom" type="email" placeholder="autre@email.fr" style="margin-top:8px;display:${(!hasSupplierEmail && !hasContactEmail)?'block':'none'};">
+    </div>
+    <div class="field"><label>Objet</label><input id="pdf-send-subject" value="Bon de commande ${o.id} — ${resto ? escapeHtml(resto.name) : ''}"></div>
+    <div class="field"><label>Message</label><textarea id="pdf-send-body" rows="7">${defaultBody}</textarea></div>
+    <button class="btn btn-primary btn-block" onclick="downloadAndComposeOrderEmail('${id}')">${iconSm(I.mail)} Télécharger le PDF et ouvrir mon email</button>
   `);
 }
 function downloadOrderPdf(id){
@@ -6674,23 +6700,22 @@ function downloadOrderPdf(id){
   doc.save(`bon-de-commande-${o.id}.pdf`);
   closeModal();
 }
-async function emailOrderPdf(id){
+function downloadAndComposeOrderEmail(id){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
-  const supplier = SUPPLIERS.find(s=>s.id===o.supplier);
-  if(!supplier || !supplier.email){ toast("Ce fournisseur n'a pas d'adresse email enregistrée",'alert'); return; }
+  const selectEl = document.getElementById('pdf-send-to');
+  const customEl = document.getElementById('pdf-send-to-custom');
+  const to = (selectEl.value === '__custom__' ? customEl.value.trim() : selectEl.value);
+  if(!to){ toast('Merci de renseigner une adresse email', 'alert'); return; }
+  const subject = document.getElementById('pdf-send-subject').value.trim();
+  const body = document.getElementById('pdf-send-body').value;
+  // On télécharge le PDF d'abord — un lien mailto: ne peut techniquement joindre aucun fichier
+  // (aucun navigateur ne le permet, c'est une limite de sécurité du web, pas de Mise & Sûre),
+  // donc la personne doit le glisser elle-même dans l'email qui s'ouvre juste après.
   const doc = buildOrderPdf(o);
-  const base64 = doc.output('datauristring').split(',')[1];
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  try{
-    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/send-pdf`, {
-      method:'POST',
-      body:{ to: supplier.email, filename:`bon-de-commande-${o.id}.pdf`, pdfBase64: base64 },
-    });
-    toast('Bon de commande envoyé à '+supplier.email);
-    closeModal();
-  } catch(err){
-    toast(err.message, 'alert');
-  }
+  doc.save(`bon-de-commande-${o.id}.pdf`);
+  window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  closeModal();
+  toast('PDF téléchargé — joignez-le dans l\'email qui vient de s\'ouvrir avant d\'envoyer');
 }
 let charts = {};
 function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
