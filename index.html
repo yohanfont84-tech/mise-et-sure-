@@ -189,7 +189,7 @@ a{text-decoration:none;color:inherit;}
   overflow:hidden;flex-shrink:0;
 }
 .avatar img{width:100%;height:100%;object-fit:cover;}
-.avatar-btn{border:none;padding:0;background:none;cursor:pointer;}
+.avatar-btn{border:none;padding:0;cursor:pointer;}
 @media(max-width:900px){
   /* Sur mobile, le sélecteur de rôle (aperçu patron des autres espaces) prend trop de place et
      pousse les boutons importants (actualiser, notifications, thème, déconnexion) hors de
@@ -1220,9 +1220,9 @@ const PLANS = [
   { id:'solo', name:'Solo', monthly:19, tagline:"Pour un restaurateur qui travaille seul",
     features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Bons de commande et historique d’achats','Notifications par email'] },
   { id:'essentiel', name:'Essentiel', monthly:39, tagline:"Pour un restaurant qui démarre",
-    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Bons de commande et historique d’achats','Notifications par email'] },
+    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Notifications par email'] },
   { id:'pro', name:'Pro', monthly:79, tagline:"Pour les groupes multi-établissements",
-    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Support prioritaire'] },
+    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Support prioritaire'] },
 ];
 function planAnnualPrice(monthly){ return monthly*10; }
 // Comparatif ligne par ligne — reflète exactement les fonctionnalités listées dans PLANS
@@ -1234,6 +1234,7 @@ const PRICING_COMPARISON = [
   { label:'Achats personnalisés', solo:true, essentiel:true, pro:true },
   { label:'Export PDF des commandes', solo:false, essentiel:true, pro:true },
   { label:'Bons de commande et historique d’achats', solo:true, essentiel:true, pro:true },
+  { label:'Carte des fournisseurs à proximité', solo:false, essentiel:true, pro:true },
   { label:'Notifications par email', solo:true, essentiel:true, pro:true },
   { label:'Support', solo:'Par email', essentiel:'Par email', pro:'Prioritaire' },
 ];
@@ -2063,13 +2064,13 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
    SHELL
 ============================================================ */
 function renderShell(){
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats') && !(soloModeEnabled() && ['equipe','demandes','multi'].includes(n.id)));
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats') && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
     ? { label: ROLE_META[state.role].label, initials: initialsFor(loggedInMember.name), name: loggedInMember.name + ' — ' + loggedInMember.role }
     : (isOwnSpace && state.identity==='patron')
-      ? { label: 'Patron', initials: initialsFor(patronDisplayName()), name: patronDisplayName() + ' — Patron' }
+      ? { label: 'Patron', initials: initialsFor(patronDisplayName()), name: (ACCOUNT && ACCOUNT.firstName) ? (patronDisplayName() + ' — Patron') : 'Patron' }
       : ROLE_META[state.role];
   const resto = RESTOS.find(r=>r.id===state.resto) || {name:'Mon restaurant', city:'', accentColor:null, logoDataUrl:null};
   applyAppearance(resto);
@@ -6524,7 +6525,7 @@ function renderContent(){
   const {role, view} = state;
   if(view==='notifications') return viewNotifications(role);
   if(view==='aide') return viewAide();
-  if(view==='carte-fournisseurs') return viewSupplierMap();
+  if(view==='carte-fournisseurs') return soloModeEnabled() ? viewPatronDashboard() : viewSupplierMap();
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
     if(view==='demandes') return soloModeEnabled() ? viewPatronDashboard() : viewPatronDemandes();
