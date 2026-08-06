@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Mise&Sûre — plateforme de gestion pour restaurants</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="description" content="Mise & Sûre, la plateforme de gestion pour restaurants : commandes fournisseurs, gestion d'équipe, suivi des écarts de livraison et statistiques, sans friction.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Mise & Sûre — la gestion de restaurant, sans friction">
@@ -165,6 +165,13 @@ a{text-decoration:none;color:inherit;}
      un enfant flex refuse par défaut de rétrécir sous sa taille de contenu). */
   .topbar-left{min-width:0;flex:1;}
   .page-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* Les boutons icônes (actualiser, notifications, thème, avatar, déconnexion) prenaient
+     beaucoup de place sur un petit écran, obligeant le titre à se tronquer plus vite que
+     nécessaire ("Multi-établ..." dès 390px). On les resserre légèrement pour lui laisser
+     plus de respiration. */
+  .topbar-right{gap:6px;}
+  .topbar-right .btn-sm{padding:6px 8px;}
+  .avatar{width:30px;height:30px;font-size:11px;}
 }
 
 .main{flex:1;min-width:0;display:flex;flex-direction:column;}
@@ -282,6 +289,27 @@ tr.group-row:hover td{background:var(--gray-100);}
      "Nouveau produit") ne doit jamais forcer toute la page à déborder
      horizontalement — on l'autorise à passer sur plusieurs lignes plutôt que de dépasser. */
   .section-head .flex{flex-wrap:wrap;}
+  .grid-3, .grid-4{grid-template-columns:1fr;}
+}
+@media(max-width:640px){
+  /* Tableaux larges (Équipe, Produits, Commandes...) : au lieu de forcer plein de colonnes
+     étroites côte à côte (ce qui, avec des noms courts comme "Camille", finissait par les
+     couper lettre par lettre faute de place), chaque ligne devient une petite fiche empilée
+     verticalement, avec le libellé de la colonne rappelé devant chaque valeur. C'est la
+     technique standard pour rendre un tableau vraiment lisible sur mobile sans avoir à zoomer
+     ni à faire défiler horizontalement.
+     Ne s'applique qu'aux tableaux marqués .stack-mobile — les tableaux déjà à l'aise avec peu
+     de colonnes ne sont pas concernés. */
+  table.stack-mobile, table.stack-mobile tbody, table.stack-mobile tr, table.stack-mobile td{display:block;width:100%;}
+  table.stack-mobile thead, table.stack-mobile tbody>tr:first-child{display:none;}
+  table.stack-mobile tr{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;}
+  table.stack-mobile tr.group-row{padding:9px 8px;}
+  table.stack-mobile td{border:none!important;padding:7px 0!important;text-align:left!important;overflow-wrap:break-word;word-break:normal;}
+  table.stack-mobile td[data-label]:before{
+    content:attr(data-label);display:block;font-size:10px;font-weight:700;letter-spacing:.3px;
+    text-transform:uppercase;color:var(--muted-2);margin-bottom:2px;
+  }
+  table.stack-mobile td:empty, table.stack-mobile td:not([data-label]):not(.group-row td){padding:4px 0!important;}
 }
 
 .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;}
@@ -2613,7 +2641,7 @@ function viewStocks(){
       <button class="btn btn-ghost btn-sm" onclick="setAllCategoryGroups(false)">${iconXs(I.chevronDown)} Tout développer</button>
     </div>` : ''}
     <div class="card">
-      ${filtered.length ? `<table>
+      ${filtered.length ? `<table class="stack-mobile">
         <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th>${financialsHidden()?'':`<th>Prix d'achat</th>`}<th></th></tr>
         ${groups.map(g=>{
           const isCollapsed = groups.length>1 && !!collapsed[g.category];
@@ -2628,14 +2656,14 @@ function viewStocks(){
               </td>
             </tr>` : '';
           const itemRows = isCollapsed ? '' : g.items.map(p=>`<tr class="tr-hover">
-            <td style="font-weight:600;">${escapeHtml(p.name)}${p.supplierReference?`<div class="small muted mono">${escapeHtml(p.supplierReference)}</div>`:''}</td>
-            <td class="muted small">${escapeHtml(p.cat||'—')}</td>
-            <td>${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
-            <td><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
-            <td class="muted">${supplierName(p.supplier)}</td>
-            <td class="muted small">${escapeHtml(p.packaging||'—')}</td>
-            <td class="mono">${p.qtyCommande} ${p.unit}</td>
-            ${financialsHidden()?'':`<td class="mono">${(p.price||0).toFixed(2)} € / ${p.unit}</td>`}
+            <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}${p.supplierReference?`<div class="small muted mono">${escapeHtml(p.supplierReference)}</div>`:''}</td>
+            <td data-label="Catégorie" class="muted small">${escapeHtml(p.cat||'—')}</td>
+            <td data-label="Lieux">${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
+            <td data-label="Département"><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
+            <td data-label="Fournisseur" class="muted">${supplierName(p.supplier)}</td>
+            <td data-label="Conditionnement" class="muted small">${escapeHtml(p.packaging||'—')}</td>
+            <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${p.unit}</td>
+            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${(p.price||0).toFixed(2)} € / ${p.unit}</td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
               <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
@@ -2757,15 +2785,15 @@ function viewCommandes(role){
       ${(f.dept!=='tous'||f.supplier!=='tous'||f.month!=='tous'||f.year!=='tous') ? `<button class="btn btn-ghost btn-sm" onclick="resetOrderFilters()">${iconXs(I.x)} Réinitialiser</button>` : ''}
     </div>
     <div class="card">
-      ${rows.length ? `<table>
+      ${rows.length ? `<table class="stack-mobile">
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th><th>Date</th><th></th></tr>
         ${rows.map(o=>`<tr class="tr-hover">
-          <td class="mono">${o.id}</td>
-          <td style="font-weight:600;">${supplierName(o.supplier)}</td>
-          <td class="muted small">${escapeHtml(o.items)}</td>
-          ${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}
-          <td>${orderStatusTag(o)}</td>
-          <td class="muted small">${o.date}</td>
+          <td data-label="Réf." class="mono">${o.id}</td>
+          <td data-label="Fournisseur" style="font-weight:600;">${supplierName(o.supplier)}</td>
+          <td data-label="Contenu" class="muted small">${escapeHtml(o.items)}</td>
+          ${financialsHidden()?'':`<td data-label="Montant" class="mono">${fmtEUR(o.amount)}</td>`}
+          <td data-label="Statut">${orderStatusTag(o)}</td>
+          <td data-label="Date" class="muted small">${o.date}</td>
           <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document">${iconXs(I.doc)}</button><button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
         </tr>`).join('')}
       </table>` : emptyState(ORDERS.length ? 'Aucune commande ne correspond à ces filtres' : 'Aucune commande pour le moment — créez votre première commande fournisseur')}
@@ -3265,27 +3293,27 @@ function viewEquipe(){
       <button class="btn btn-primary" onclick="openNewEmployeeModal()">${iconSm(I.plus)} Ajouter un employé</button>
     </div>
     <div class="card">
-      ${TEAM.length ? `<table>
+      ${TEAM.length ? `<table class="stack-mobile">
         <tr><th>Nom</th><th>Rôle</th><th>Horaires</th><th>Statut</th><th>Permissions</th><th></th></tr>
         ${TEAM.map(t=>`<tr class="tr-hover">
-          <td style="font-weight:600;"><div class="flex center gap8"><div class="avatar" style="width:28px;height:28px;font-size:11px;">${avatarInner(t.photoDataUrl, t.name)}</div>${escapeHtml(t.name)}</div></td>
-          <td class="muted">${escapeHtml(t.role)}</td>
-          <td class="muted small">${t.shift}</td>
-          <td><span class="tag ${t.status==='actif'?'tag-subtle':'tag-neutral'}">${t.status==='actif'?'En service':'Repos'}</span></td>
-          <td class="muted small">${permsForRole(t.role)}</td>
+          <td data-label="Nom" style="font-weight:600;"><div class="flex center gap8"><div class="avatar" style="width:28px;height:28px;font-size:11px;">${avatarInner(t.photoDataUrl, t.name)}</div>${escapeHtml(t.name)}</div></td>
+          <td data-label="Rôle" class="muted">${escapeHtml(t.role)}</td>
+          <td data-label="Horaires" class="muted small">${t.shift}</td>
+          <td data-label="Statut"><span class="tag ${t.status==='actif'?'tag-subtle':'tag-neutral'}">${t.status==='actif'?'En service':'Repos'}</span></td>
+          <td data-label="Permissions" class="muted small">${permsForRole(t.role)}</td>
           <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button>${t.inviteToken?`<button class="btn btn-ghost btn-sm" onclick="showEmployeeCredentialsModal('${escapeHtml(t.name)}','${escapeHtml(t.username||'')}','—',  '${t.inviteToken}','${t.id}')" title="Retrouver le lien de connexion">${iconSm(I.mail)}</button>`:''}<button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
     <div class="section-head"><div><h2>Autorisation de commande directe</h2><div class="sub">Ces personnes peuvent envoyer une commande au fournisseur sans attendre la validation du patron</div></div></div>
     <div class="card">
-      ${TEAM.length ? `<table>
+      ${TEAM.length ? `<table class="stack-mobile">
         <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th><th>Plafond avant validation</th></tr>
         ${TEAM.map(t=>`<tr class="tr-hover">
-          <td style="font-weight:600;">${escapeHtml(t.name)}</td>
-          <td class="muted">${escapeHtml(t.role)}</td>
-          <td><label class="flex center gap8" style="cursor:pointer;"><input type="checkbox" ${t.canOrderDirectly?'checked':''} onchange="toggleCanOrderDirectly('${t.id}', this.checked)"> ${t.canOrderDirectly?'Autorisé':'Non autorisé'}</label></td>
-          <td>
+          <td data-label="Nom" style="font-weight:600;">${escapeHtml(t.name)}</td>
+          <td data-label="Rôle" class="muted">${escapeHtml(t.role)}</td>
+          <td data-label="Peut commander directement"><label class="flex center gap8" style="cursor:pointer;"><input type="checkbox" ${t.canOrderDirectly?'checked':''} onchange="toggleCanOrderDirectly('${t.id}', this.checked)"> ${t.canOrderDirectly?'Autorisé':'Non autorisé'}</label></td>
+          <td data-label="Plafond avant validation">
             <div class="flex center gap8">
               <input type="number" min="0" step="10" placeholder="Illimité" value="${t.orderSpendingLimit!=null?t.orderSpendingLimit:''}" style="width:100px;" ${t.canOrderDirectly?'':'disabled'} onchange="updateOrderSpendingLimit('${t.id}', this.value)">
               <span class="small muted">€</span>
