@@ -605,7 +605,8 @@ tr.group-row:hover td{background:var(--gray-100);}
 .pricing-compare{max-width:900px;margin:0 auto;padding:0 24px 80px 24px;}
 .pricing-compare h2{font-family:'Fraunces',serif;font-size:24px;text-align:center;margin:0 0 30px 0;}
 .pricing-compare-table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
-.pricing-compare-table th, .pricing-compare-table td{padding:13px 16px;text-align:center;border-bottom:1px solid var(--border);font-size:13.5px;}
+.pricing-compare-table th, .pricing-compare-table td{padding:13px 16px;text-align:center;border-bottom:1px solid var(--border);font-size:13.5px;white-space:nowrap;}
+.pricing-compare-table td:first-child, .pricing-compare-table th:first-child{white-space:normal;min-width:150px;}
 .pricing-compare-table th{background:var(--paper);font-weight:700;font-family:'Fraunces',serif;font-size:14.5px;}
 .pricing-compare-table td:first-child, .pricing-compare-table th:first-child{text-align:left;color:var(--muted);font-weight:500;}
 .pricing-compare-table tr:last-child td{border-bottom:none;}
@@ -621,6 +622,12 @@ tr.group-row:hover td{background:var(--gray-100);}
   .trust-strip{grid-template-columns:1fr 1fr;}
   .pricing-compare-table{font-size:12px;}
   .pricing-compare-table th, .pricing-compare-table td{padding:10px 8px;}
+  /* Un tableau de comparaison (contrairement à une simple liste) doit garder ses 3 forfaits
+     côte à côte pour rester utile — on le laisse donc défiler horizontalement plutôt que de
+     l'empiler, ce qui mélangerait les colonnes à comparer. Les largeurs minimales empêchent
+     "Illimités" ou "Mode solo, sans équipe" de se couper au milieu d'un mot. */
+  .pricing-compare-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;}
+  .pricing-compare-table{min-width:560px;border-radius:0;}
 }
 .payment-summary{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin:2px 0 20px 0;font-size:13.5px;}
 @media(max-width:1000px) and (min-width:761px){
@@ -1412,8 +1419,15 @@ async function notifyByEmail(roleKey, message, eventKey){
 function openModal(html){
   document.getElementById('modalContent').innerHTML = html;
   document.getElementById('modalBg').classList.add('open');
+  // Empêche de faire défiler la page derrière la modale — sans ça, sur mobile, un geste de
+  // défilement démarré sur l'arrière-plan (même visuellement masqué par la modale) pouvait
+  // faire défiler le contenu du dessous, ce qui est déstabilisant.
+  document.body.style.overflow = 'hidden';
 }
-function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
+function closeModal(){
+  document.getElementById('modalBg').classList.remove('open');
+  document.body.style.overflow = '';
+}
 document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.id==='modalBg') closeModal(); });
 
 /* ============================================================
@@ -2367,6 +2381,39 @@ function buildAIInsights(){
   if(insights.length===0) insights.push('Aucune information disponible pour le moment.');
   return insights.slice(0,5);
 }
+function onboardingChecklist(){
+  // N'apparaît que tant que l'essentiel n'est pas en place — une fois les bases posées, cette
+  // carte disparaît d'elle-même et ne revient jamais gêner un usage déjà installé.
+  const hasSuppliers = SUPPLIERS.length > 0;
+  const hasProducts = PRODUCTS.length > 0;
+  const hasTeam = TEAM.length > 0;
+  const isSolo = soloModeEnabled();
+  if(hasSuppliers && hasProducts && (isSolo || hasTeam)) return '';
+  const steps = [
+    { done: hasSuppliers, label: "Ajoutez votre premier fournisseur", action: "setView('fournisseurs')" },
+    { done: hasProducts, label: "Ajoutez vos produits au catalogue", action: "setView('stocks')" },
+  ];
+  if(!isSolo) steps.push({ done: hasTeam, label: "Invitez votre équipe (cuisine, salle…)", action: "setView('equipe')" });
+  const doneCount = steps.filter(s=>s.done).length;
+  return `
+    <div class="card" style="border:1.5px solid var(--black);margin-bottom:18px;">
+      <div class="flex between center" style="margin-bottom:4px;">
+        <div class="card-title" style="margin-bottom:0;">Bien démarrer avec Mise &amp; Sûre</div>
+        <span class="small muted">${doneCount}/${steps.length}</span>
+      </div>
+      <div class="small muted" style="margin-bottom:14px;">Quelques étapes rapides avant de pouvoir passer votre première commande.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${steps.map((s,i)=>`
+          <div class="flex center gap8" style="padding:10px 12px;background:${s.done?'var(--paper)':'var(--surface)'};border:1px solid var(--border);border-radius:8px;">
+            <span style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${s.done?'var(--black)':'var(--gray-100)'};color:${s.done?'#fff':'var(--muted)'};font-size:11px;font-weight:700;">${s.done?iconXs(I.check):i+1}</span>
+            <span style="flex:1;font-size:13.5px;${s.done?'color:var(--muted);text-decoration:line-through;':''}">${s.label}</span>
+            ${!s.done ? `<button class="btn btn-primary btn-sm" onclick="${s.action}">Commencer</button>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
 function viewPatronDashboard(){
   const achatsTotal = ORDERS.reduce((a,o)=>a+o.amount,0);
   const pendingOrders = ORDERS.filter(o=>o.status==='en_attente_validation').length;
@@ -2374,6 +2421,7 @@ function viewPatronDashboard(){
   const urgentCuisine = cuisineAttente.filter(r=>r.urgent).length;
 
   return `
+    ${onboardingChecklist()}
     <div class="grid grid-4">
       <div class="card kpi">
         <div class="kpi-icon">${I.invoice}</div>
@@ -7337,6 +7385,7 @@ function renderPricingPage(){
 
       <section class="pricing-compare">
         <h2>Comparer les forfaits en détail</h2>
+        <div class="pricing-compare-scroll">
         <table class="pricing-compare-table">
           <tr><th>&nbsp;</th><th>Solo</th><th class="recommended-col">Essentiel</th><th>Pro</th></tr>
           ${PRICING_COMPARISON.map(row=>`
@@ -7351,6 +7400,7 @@ function renderPricingPage(){
             </tr>
           `).join('')}
         </table>
+        </div>
       </section>
 
       <section class="pricing-faq">
