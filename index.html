@@ -2506,12 +2506,14 @@ function onboardingChecklist(){
   // N'apparaît que tant que l'essentiel n'est pas en place — une fois les bases posées, cette
   // carte disparaît d'elle-même et ne revient jamais gêner un usage déjà installé.
   const hasSuppliers = SUPPLIERS.length > 0;
+  const hasOrganisation = CATEGORIES.length > 0 || ZONES.length > 0;
   const hasProducts = PRODUCTS.length > 0;
   const hasTeam = TEAM.length > 0;
   const isSolo = soloModeEnabled();
-  if(hasSuppliers && hasProducts && (isSolo || hasTeam)) return '';
+  if(hasSuppliers && hasOrganisation && hasProducts && (isSolo || hasTeam)) return '';
   const steps = [
     { done: hasSuppliers, label: "Ajoutez votre premier fournisseur", action: "setView('fournisseurs')" },
+    { done: hasOrganisation, label: "Paramétrez vos catégories et lieux/zones", action: "setView('parametres')" },
     { done: hasProducts, label: "Ajoutez vos produits au catalogue", action: "setView('stocks')" },
   ];
   if(!isSolo) steps.push({ done: hasTeam, label: "Invitez votre équipe (cuisine, salle…)", action: "setView('equipe')" });
