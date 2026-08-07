@@ -144,6 +144,15 @@ a{text-decoration:none;color:inherit;}
   .menu-toggle{display:flex;align-items:center;}
   .sidebar{
     position:fixed;left:0;top:0;z-index:100;
+    /* En portrait, 100vh est largement assez haut pour que tous les éléments du menu tiennent
+       sans qu'on remarque le souci — mais en paysage (écran bien plus court), le contenu du
+       menu dépasse largement cette hauteur. Comme la règle de base ne fixe qu'une hauteur
+       MINIMALE (min-height), la barre s'étirait alors au-delà de l'écran visible, sans aucun
+       moyen d'atteindre les derniers éléments (Paramètres, Aide...) : ni scroll, ni visibilité.
+       Ici, une vraie hauteur (height, pas min-height) capée à l'écran permet à .nav
+       (overflow-y:auto, déjà en place) de défiler réellement en interne, dans les deux
+       orientations. */
+    height:100vh;height:100dvh;min-height:0;
     transform:translateX(-100%);
     transition:transform .22s ease;
     box-shadow:0 0 40px rgba(0,0,0,0.3);
