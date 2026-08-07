@@ -1033,11 +1033,15 @@ function supplierSpend(id){ return ORDERS.filter(o=>o.supplier===id && o.status!
 // réception — plus une valeur figée ou modifiable à la main comme c'était le cas avant.
 // Retourne null si pas encore assez de commandes reçues pour que ce soit significatif.
 function calculateSupplierReliability(id){
-  const received = ORDERS.filter(o=>o.supplier===id && o.status==='livree');
-  if(received.length === 0) return null;
-  const withDiscrepancy = received.filter(o=>o.hasDiscrepancy).length;
-  const score = Math.round(((received.length - withDiscrepancy) / received.length) * 100);
-  return { score, totalOrders: received.length, discrepancyCount: withDiscrepancy };
+  // Avant : seules les commandes entièrement "livrées" comptaient — une commande souvent
+  // livrée incomplète (statut "partiellement reçue") n'apparaissait jamais dans le calcul,
+  // ce qui pouvait afficher 100% de fiabilité pour un fournisseur qui manque pourtant
+  // régulièrement des articles. On les inclut désormais, comptées comme un écart.
+  const relevant = ORDERS.filter(o=>o.supplier===id && (o.status==='livree' || o.status==='partiellement_recue'));
+  if(relevant.length === 0) return null;
+  const withIssue = relevant.filter(o=>o.hasDiscrepancy || o.status==='partiellement_recue').length;
+  const score = Math.round(((relevant.length - withIssue) / relevant.length) * 100);
+  return { score, totalOrders: relevant.length, discrepancyCount: withIssue };
 }
 function supplierLastOrderDate(id){
   const withDates = ORDERS.filter(o=>o.supplier===id && o.createdAt);
@@ -4318,7 +4322,20 @@ async function addCategoryFromSettings(){
     toast(err.message, 'alert');
   }
 }
-async function deleteCategory(id){
+function deleteCategory(id){
+  const c = CATEGORIES.find(x=>x.id===id); if(!c) return;
+  const linkedCount = PRODUCTS.filter(p=>p.cat===c.name).length;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Supprimer « ${escapeHtml(c.name)} » ?</h3>
+    <div class="modal-sub">${linkedCount>0 ? linkedCount+' produit'+(linkedCount>1?'s':'')+' de votre catalogue utilisent cette catégorie et resteront à réassigner.' : 'Cette action est irréversible.'}</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteCategory('${id}')">Supprimer</button>
+    </div>
+  `);
+}
+async function confirmDeleteCategory(id){
   const idx = CATEGORIES.findIndex(c=>c.id===id);
   if(idx===-1) return;
   const c = CATEGORIES[idx];
@@ -4326,6 +4343,7 @@ async function deleteCategory(id){
   try{
     await apiRequest(`/api/restaurants/${resto.remoteId}/categories/${c.remoteId}`, { method:'DELETE' });
     CATEGORIES.splice(idx,1);
+    closeModal();
     toast('Catégorie supprimée');
     render();
   } catch(err){
@@ -4345,7 +4363,20 @@ async function addZoneFromSettings(){
     toast(err.message, 'alert');
   }
 }
-async function deleteZone(id){
+function deleteZone(id){
+  const z = ZONES.find(x=>x.id===id); if(!z) return;
+  const linkedCount = PRODUCTS.filter(p=>(p.zoneIds||[]).includes(id)).length;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Supprimer « ${escapeHtml(z.name)} » ?</h3>
+    <div class="modal-sub">${linkedCount>0 ? linkedCount+' produit'+(linkedCount>1?'s':'')+' de votre catalogue sont associés à ce lieu et seront simplement dissociés.' : 'Cette action est irréversible.'}</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteZone('${id}')">Supprimer</button>
+    </div>
+  `);
+}
+async function confirmDeleteZone(id){
   const idx = ZONES.findIndex(z=>z.id===id);
   if(idx===-1) return;
   const z = ZONES[idx];
@@ -4354,6 +4385,7 @@ async function deleteZone(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/zones/${z.remoteId}`, { method:'DELETE' });
     ZONES.splice(idx,1);
     PRODUCTS.forEach(p=>{ if(p.zoneIds) p.zoneIds = p.zoneIds.filter(zid=>zid!==id); });
+    closeModal();
     toast('Lieu supprimé');
     render();
   } catch(err){
@@ -5377,7 +5409,19 @@ async function saveMyRequestEdit(id){
     toast(err.message, 'alert');
   }
 }
-async function deleteMyRequest(id){
+function deleteMyRequest(id){
+  const r = REQUESTS.find(x=>x.id===id); if(!r) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Supprimer cette demande ?</h3>
+    <div class="modal-sub">« ${escapeHtml(r.item)} » — cette action est irréversible.</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" onclick="confirmDeleteMyRequest('${id}')">Supprimer</button>
+    </div>
+  `);
+}
+async function confirmDeleteMyRequest(id){
   const idx = REQUESTS.findIndex(x=>x.id===id);
   if(idx===-1) return;
   const r = REQUESTS[idx];
@@ -5385,6 +5429,7 @@ async function deleteMyRequest(id){
   try{
     await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, { method:'DELETE' });
     REQUESTS.splice(idx,1);
+    closeModal();
     toast('Demande supprimée');
     render();
   } catch(err){
@@ -6071,7 +6116,13 @@ async function saveProduct(id){
   const packaging = document.getElementById('ep-packaging').value.trim();
   const supplierReference = document.getElementById('ep-reference').value.trim();
   const priceEl = document.getElementById('ep-price');
-  const price = priceEl ? (parseNum(priceEl.value) || p.price) : p.price;
+  // Avant : `parseNum(...) || p.price` — un piège classique de JavaScript, où 0 est
+  // "faux" au même titre qu'une valeur vide : impossible de remettre un produit à 0,00 €,
+  // le prix précédent revenait silencieusement à la place. On teste maintenant explicitement
+  // si le nombre est valide, plutôt que de se fier à sa "vérité" au sens JS. On refuse aussi
+  // un prix négatif (aucun sens pour un prix d'achat), en gardant l'ancien prix dans ce cas.
+  const priceParsed = priceEl ? parseNum(priceEl.value) : NaN;
+  const price = (Number.isFinite(priceParsed) && priceParsed >= 0) ? priceParsed : p.price;
   const supplier = document.getElementById('ep-supplier').value;
   const department = document.getElementById('ep-department').value;
   const zoneIds = Array.from(document.querySelectorAll('.ep-zone-chk:checked')).map(el=>el.value);
