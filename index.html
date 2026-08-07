@@ -665,6 +665,24 @@ tr.group-row:hover td{background:var(--gray-100);}
 .empty svg{width:38px;height:38px;color:var(--muted-2);margin-bottom:10px;}
 
 .modal-bg{position:fixed;inset:0;background:rgba(10,10,10,0.5);display:none;align-items:center;justify-content:center;z-index:100;}
+/* ============================================================
+   VISITE GUIDÉE — un halo lumineux (technique du box-shadow géant) qui assombrit tout l'écran
+   sauf l'élément ciblé, plus une info-bulle avec le texte d'explication à côté.
+   ============================================================ */
+.tour-overlay{position:fixed;inset:0;z-index:250;pointer-events:none;}
+.tour-spotlight{
+  position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(10,10,10,0.68);
+  transition:left .25s ease,top .25s ease,width .25s ease,height .25s ease;pointer-events:none;
+}
+.tour-tooltip{
+  position:fixed;background:var(--surface);border-radius:12px;padding:18px 20px;
+  box-shadow:0 16px 44px rgba(0,0,0,0.3);max-width:300px;pointer-events:auto;
+  border:1px solid var(--border);
+}
+.tour-tooltip-title{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:6px;}
+.tour-tooltip-text{font-size:13.5px;color:var(--muted);line-height:1.55;margin-bottom:14px;}
+.tour-tooltip-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.tour-progress{font-size:11px;color:var(--muted-2);font-weight:600;white-space:nowrap;}
 .modal-bg.open{display:flex;}
 .modal{background:var(--surface);border-radius:14px;padding:26px;width:460px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:86vh;overflow-y:auto;}
 .modal h3{margin:0 0 4px 0;font-size:18px;}
@@ -1892,6 +1910,108 @@ function toggleSidebar(){
 function closeSidebar(){
   if(state.sidebarOpen){ state.sidebarOpen = false; render(); }
 }
+// ============================================================
+// VISITE GUIDÉE — une suite de courtes info-bulles qui pointent les vrais éléments du menu
+// (pas une vidéo : plus simple à maintenir à jour, et on apprend en repérant les vrais boutons
+// plutôt qu'en regardant un enregistrement qui peut vite devenir obsolète). Se lance seule au
+// tout premier login sur un établissement encore vide, et peut être relancée à tout moment
+// depuis la page Aide.
+// ============================================================
+const GUIDED_TOUR_STEPS = [
+  { target: null, title: "Bienvenue sur Mise & Sûre 👋", text: "Une visite rapide de l'essentiel — 30 secondes, 7 étapes. Vous pourrez la revoir à tout moment depuis la page Aide." },
+  { target: 'dashboard', title: 'Votre tableau de bord', text: "Vue d'ensemble : ce qui attend votre validation, vos dépenses récentes, les alertes importantes." },
+  { target: 'stocks', title: 'Vos produits', text: "Le catalogue de tout ce que vous commandez — organisé par catégorie, avec fournisseur et prix pour chacun." },
+  { target: 'commandes', title: 'Vos commandes', text: "Un panier par fournisseur : vous ajoutez vos produits, vous envoyez — le bon de commande part directement." },
+  { target: 'fournisseurs', title: 'Vos fournisseurs', text: "Coordonnées, délais, et une fiabilité de livraison calculée toute seule à partir des écarts constatés." },
+  { target: 'equipe', title: 'Votre équipe', text: "Chacun son accès : manager, cuisine, salle. Vous décidez qui peut commander directement, et jusqu'à quel montant.", skipIf: 'solo' },
+  { target: 'aide', title: "Besoin d'aide plus tard ?", text: "Toutes les réponses sont ici — et vous pourrez relancer cette visite quand vous voulez, juste en dessous." },
+];
+let TOUR_STATE = { active:false, stepIndex:0, wasSidebarOpen:false };
+function tourStepsForContext(){
+  return GUIDED_TOUR_STEPS.filter(s => !(s.skipIf==='solo' && soloModeEnabled()));
+}
+function maybeAutoStartTour(){
+  // Ne se déclenche qu'une fois, pour un établissement encore entièrement vide (le même signal
+  // que le guide de démarrage du tableau de bord) — inutile de rejouer la visite à quelqu'un
+  // qui utilise déjà le site depuis des semaines.
+  if(localStorage.getItem('mise_et_sure_tour_seen')) return;
+  if(state.role!=='patron' || state.view!=='dashboard') return;
+  if(SUPPLIERS.length>0 || PRODUCTS.length>0) return;
+  setTimeout(()=>{ if(!TOUR_STATE.active) startGuidedTour(); }, 600);
+}
+function startGuidedTour(){
+  TOUR_STATE.active = true;
+  TOUR_STATE.stepIndex = 0;
+  TOUR_STATE.wasSidebarOpen = state.sidebarOpen;
+  if(window.innerWidth <= 900 && !state.sidebarOpen){ state.sidebarOpen = true; render(); }
+  renderTourStep();
+}
+function endTour(){
+  TOUR_STATE.active = false;
+  const el = document.getElementById('tour-overlay');
+  if(el) el.remove();
+  localStorage.setItem('mise_et_sure_tour_seen', '1');
+  if(window.innerWidth <= 900 && state.sidebarOpen && !TOUR_STATE.wasSidebarOpen){ state.sidebarOpen = false; render(); }
+}
+function nextTourStep(){
+  const steps = tourStepsForContext();
+  if(TOUR_STATE.stepIndex >= steps.length-1){ endTour(); return; }
+  TOUR_STATE.stepIndex++;
+  renderTourStep();
+}
+function prevTourStep(){
+  if(TOUR_STATE.stepIndex<=0) return;
+  TOUR_STATE.stepIndex--;
+  renderTourStep();
+}
+function renderTourStep(){
+  const steps = tourStepsForContext();
+  const step = steps[TOUR_STATE.stepIndex];
+  if(!step){ endTour(); return; }
+  let overlay = document.getElementById('tour-overlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'tour-overlay';
+    overlay.className = 'tour-overlay';
+    document.body.appendChild(overlay);
+  }
+  const targetEl = step.target ? document.querySelector(`[data-nav-id="${step.target}"]`) : null;
+  const isMobile = window.innerWidth <= 900;
+  let spotlightHtml = '';
+  let tooltipStyle;
+  if(targetEl){
+    const r = targetEl.getBoundingClientRect();
+    const pad = 6;
+    spotlightHtml = `<div class="tour-spotlight" style="left:${r.left-pad}px;top:${r.top-pad}px;width:${r.width+pad*2}px;height:${r.height+pad*2}px;"></div>`;
+  }
+  if(isMobile){
+    // Sur mobile, la sidebar prend presque tout l'écran — plutôt que de calculer une position
+    // à côté d'un menu très étroit (risque de débordement), l'info-bulle se pose simplement en
+    // bas de l'écran, dans une zone fixe et confortable.
+    tooltipStyle = `left:14px;right:14px;bottom:14px;max-width:none;`;
+  } else if(targetEl){
+    const r = targetEl.getBoundingClientRect();
+    const top = Math.max(16, Math.min(r.top, window.innerHeight - 220));
+    tooltipStyle = `left:${Math.min(r.right + 18, window.innerWidth - 316)}px;top:${top}px;`;
+  } else {
+    tooltipStyle = `left:50%;top:50%;transform:translate(-50%,-50%);`;
+  }
+  const isLast = TOUR_STATE.stepIndex === steps.length-1;
+  overlay.innerHTML = `
+    ${spotlightHtml}
+    <div class="tour-tooltip" style="${tooltipStyle}">
+      <div class="tour-tooltip-title">${escapeHtml(step.title)}</div>
+      <div class="tour-tooltip-text">${escapeHtml(step.text)}</div>
+      <div class="tour-tooltip-footer">
+        <span class="tour-progress">${TOUR_STATE.stepIndex+1}/${steps.length}</span>
+        <div class="flex gap8">
+          <button class="btn btn-ghost btn-sm" onclick="endTour()">Passer</button>
+          <button class="btn btn-primary btn-sm" onclick="nextTourStep()">${isLast?'Terminer':'Suivant'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
 function toggleTheme(){
   state.theme = state.theme==='dark' ? 'light' : 'dark';
   if(state.loggedInEmployeeId){
@@ -2137,7 +2257,7 @@ function renderShell(){
             const count = state.role==='patron' ? pendingDemandes() : pendingDemandesFor('Salle');
             if(count>0) badge = `<span class="nav-badge">${count}</span>`;
           }
-          return `<button class="nav-item ${state.view===item.id?'active':''}" onclick="setView('${item.id}');closeSidebar();">${item.icon}<span>${item.label}</span>${badge}</button>`;
+          return `<button class="nav-item ${state.view===item.id?'active':''}" data-nav-id="${item.id}" onclick="setView('${item.id}');closeSidebar();">${item.icon}<span>${item.label}</span>${badge}</button>`;
         }).join('')}
       </div>
       <div class="sidebar-foot">
@@ -4515,6 +4635,16 @@ function viewAide(){
     <div class="section-head" style="margin-top:0;">
       <div><h2>Aide</h2><div class="sub">Toutes les réponses aux questions les plus fréquentes sur le site, organisées par thème.</div></div>
     </div>
+    ${state.role==='patron' ? `
+    <div class="card" style="margin-bottom:22px;">
+      <div class="flex between center" style="flex-wrap:wrap;gap:12px;">
+        <div>
+          <div class="card-title" style="margin-bottom:2px;">Visite guidée de l'interface</div>
+          <div class="small muted">Une info-bulle à la fois, sur les vrais menus — 30 secondes.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="startGuidedTour()">${iconSm(I.spark)} Relancer la visite</button>
+      </div>
+    </div>` : ''}
     <div class="field" style="max-width:420px;margin-bottom:22px;">
       <input type="text" placeholder="🔎 Rechercher une question…" value="${escapeHtml(state.aideSearch||'')}" oninput="filterAideFaq(this.value)">
     </div>
@@ -7909,6 +8039,7 @@ function renderInner(){
   `;
   requestAnimationFrame(drawCharts);
   requestAnimationFrame(initSupplierMap);
+  if(TOUR_STATE.active) renderTourStep(); else maybeAutoStartTour();
 }
 
 async function loadTeamInvite(token){
