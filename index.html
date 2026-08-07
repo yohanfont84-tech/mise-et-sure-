@@ -6682,17 +6682,37 @@ ${resto ? resto.name : ''}
     <div class="small muted" style="margin-bottom:10px;">Ouvre votre application mail habituelle (Gmail, Outlook…) avec tout déjà rempli — c'est vous qui vérifiez et envoyez. Le PDF se télécharge à part : pensez à le joindre avant d'envoyer.</div>
     <div class="field">
       <label>Destinataire</label>
-      <select id="pdf-send-to" onchange="document.getElementById('pdf-send-to-custom').style.display = this.value==='__custom__' ? 'block' : 'none';">
+      <select id="pdf-send-to" onchange="onPdfSendFieldsChange('${id}')">
         ${hasSupplierEmail ? `<option value="${escapeHtml(supplier.email)}">Fournisseur — ${escapeHtml(supplier.email)}</option>` : ''}
         ${hasContactEmail ? `<option value="${escapeHtml(supplier.contactEmail)}">${contactName ? escapeHtml(contactName)+' (commercial)' : 'Contact commercial'} — ${escapeHtml(supplier.contactEmail)}</option>` : ''}
         <option value="__custom__" ${(!hasSupplierEmail && !hasContactEmail)?'selected':''}>Autre adresse…</option>
       </select>
-      <input id="pdf-send-to-custom" type="email" placeholder="autre@email.fr" style="margin-top:8px;display:${(!hasSupplierEmail && !hasContactEmail)?'block':'none'};">
+      <input id="pdf-send-to-custom" type="email" placeholder="autre@email.fr" oninput="onPdfSendFieldsChange('${id}')" style="margin-top:8px;display:${(!hasSupplierEmail && !hasContactEmail)?'block':'none'};">
     </div>
-    <div class="field"><label>Objet</label><input id="pdf-send-subject" value="Bon de commande ${o.id} — ${resto ? escapeHtml(resto.name) : ''}"></div>
-    <div class="field"><label>Message</label><textarea id="pdf-send-body" rows="7">${defaultBody}</textarea></div>
+    <div class="field"><label>Objet</label><input id="pdf-send-subject" oninput="onPdfSendFieldsChange('${id}')" value="Bon de commande ${o.id} — ${resto ? escapeHtml(resto.name) : ''}"></div>
+    <div class="field"><label>Message</label><textarea id="pdf-send-body" rows="7" oninput="onPdfSendFieldsChange('${id}')">${defaultBody}</textarea></div>
     <button class="btn btn-primary btn-block" onclick="downloadAndComposeOrderEmail('${id}')">${iconSm(I.mail)} Télécharger le PDF et ouvrir mon email</button>
+    <a id="pdf-send-fallback-link" href="#" style="display:block;text-align:center;margin-top:10px;font-size:12.5px;">Rien ne s'est ouvert ? Cliquez ici pour ouvrir votre email manuellement</a>
   `);
+  onPdfSendFieldsChange(id);
+}
+// Reconstruit en direct le lien de secours (un vrai <a href="mailto:...">, la façon la plus
+// fiable de déclencher un client mail) à chaque modification d'un des champs — pour qu'il soit
+// toujours prêt et à jour si le déclenchement automatique ne fonctionne pas sur cet appareil
+// (aucune application mail définie par défaut, par exemple — un cas que le site ne peut pas
+// détecter ni forcer, ça dépend entièrement des réglages de l'appareil de la personne).
+function onPdfSendFieldsChange(id){
+  const link = document.getElementById('pdf-send-fallback-link');
+  if(!link) return;
+  link.href = buildOrderMailtoUrl();
+}
+function buildOrderMailtoUrl(){
+  const selectEl = document.getElementById('pdf-send-to');
+  const customEl = document.getElementById('pdf-send-to-custom');
+  const to = (selectEl.value === '__custom__' ? (customEl.value||'').trim() : selectEl.value);
+  const subject = document.getElementById('pdf-send-subject').value.trim();
+  const body = document.getElementById('pdf-send-body').value;
+  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 function downloadOrderPdf(id){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
@@ -6706,16 +6726,25 @@ function downloadAndComposeOrderEmail(id){
   const customEl = document.getElementById('pdf-send-to-custom');
   const to = (selectEl.value === '__custom__' ? customEl.value.trim() : selectEl.value);
   if(!to){ toast('Merci de renseigner une adresse email', 'alert'); return; }
-  const subject = document.getElementById('pdf-send-subject').value.trim();
-  const body = document.getElementById('pdf-send-body').value;
-  // On télécharge le PDF d'abord — un lien mailto: ne peut techniquement joindre aucun fichier
-  // (aucun navigateur ne le permet, c'est une limite de sécurité du web, pas de Mise & Sûre),
-  // donc la personne doit le glisser elle-même dans l'email qui s'ouvre juste après.
+  const mailtoUrl = buildOrderMailtoUrl();
+  // Ordre important, trouvé après un premier essai qui ne s'ouvrait pas correctement : on
+  // déclenche le mail EN PREMIER, via un clic simulé sur un vrai lien <a href="mailto:...">
+  // (plus fiable qu'une simple redirection par script) — car une fois le téléchargement du PDF
+  // lancé, certains navigateurs ne considèrent plus l'action suivante comme venant vraiment
+  // d'un geste de la personne, et bloquent alors l'ouverture du mail.
+  const tempLink = document.createElement('a');
+  tempLink.href = mailtoUrl;
+  tempLink.style.display = 'none';
+  document.body.appendChild(tempLink);
+  tempLink.click();
+  document.body.removeChild(tempLink);
+  // Le PDF se télécharge juste après — un lien mailto: ne peut techniquement joindre aucun
+  // fichier (aucun navigateur ne le permet, c'est une limite de sécurité du web, pas de Mise &
+  // Sûre), donc la personne doit le glisser elle-même dans l'email qui vient de s'ouvrir.
   const doc = buildOrderPdf(o);
   doc.save(`bon-de-commande-${o.id}.pdf`);
-  window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  closeModal();
   toast('PDF téléchargé — joignez-le dans l\'email qui vient de s\'ouvrir avant d\'envoyer');
+  closeModal();
 }
 let charts = {};
 function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
