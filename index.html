@@ -279,6 +279,17 @@ th{
    (.btn) et les badges (.tag) le font plus bas avec white-space:nowrap — sans ça, leur texte se
    casse lettre par lettre dès que la colonne devient un peu étroite. */
 td{padding:11px 8px;border-bottom:1px solid var(--border);vertical-align:middle;word-break:break-word;overflow-wrap:anywhere;}
+/* Avec beaucoup de colonnes dans un tableau (Produit, Catégorie, Lieux, Département,
+   Fournisseur, Conditionnement, Qté, Prix...), le navigateur doit réduire certaines colonnes
+   pour que tout tienne dans la largeur disponible — et comme overflow-wrap:anywhere autorise
+   une colonne à se compresser SANS LIMITE (en coupant les mots n'importe où), c'est justement
+   la colonne avec le texte le plus long (le nom du produit) qui finissait écrasée à presque
+   rien, se retrouvant coupée lettre par lettre sur des dizaines de lignes. On lui réserve une
+   largeur minimale, comme au nom du fournisseur (souvent long lui aussi), pour que ce soit
+   plutôt les colonnes courtes (catégorie, quantité...) qui cèdent la place si besoin.
+   S'applique via l'attribut data-label déjà posé sur ces cellules pour les fiches mobiles. */
+td[data-label="Produit"]{min-width:170px;}
+td[data-label="Fournisseur"]{min-width:130px;}
 tr:last-child td{border-bottom:none;}
 tr.tr-hover:hover{background:var(--paper);}
 /* Lignes de groupe réductibles (catégories dans le tableau produits, façon Excel) */
