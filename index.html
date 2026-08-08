@@ -6512,15 +6512,52 @@ function openNewSupplierModal(){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Ajouter un fournisseur</h3>
     <div class="field"><label>Nom</label><input id="ns-name" placeholder="Ex : Fromagerie Lambert"></div>
-    <div class="field-row"><div class="field"><label>Catégorie</label><input id="ns-cat" placeholder="Crémerie"></div><div class="field"><label>Délai moyen</label><input id="ns-delay" placeholder="24h"></div></div>
-    <div class="field"><label>Adresse</label><input id="ns-address" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
-    <div class="field"><label>Email</label><input id="ns-email" type="email" placeholder="contact@fournisseur.fr"></div>
-    <div class="divider"></div>
-    <div class="card-title">Contact commercial (facultatif)</div>
-    <div class="field-row"><div class="field"><label>Prénom</label><input id="ns-contact-firstname" placeholder="Jean"></div><div class="field"><label>Nom</label><input id="ns-contact-lastname" placeholder="Martin"></div></div>
-    <div class="field-row"><div class="field"><label>Email</label><input id="ns-contact-email" type="email" placeholder="j.martin@fournisseur.fr"></div><div class="field"><label>Téléphone</label><input id="ns-contact-phone" placeholder="06 12 34 56 78"></div></div>
+    <div class="field-row"><div class="field"><label>Catégorie (facultatif)</label><input id="ns-cat" placeholder="Crémerie"></div><div class="field"><label>Délai moyen (facultatif)</label><input id="ns-delay" placeholder="24h"></div></div>
+    <div class="field"><label>Adresse (facultatif)</label><input id="ns-address" placeholder="Ex : 22 avenue du Marché, 69003 Lyon"></div>
+    <div class="field"><label>Email (facultatif)</label><input id="ns-email" type="email" placeholder="contact@fournisseur.fr"></div>
+    <button type="button" class="btn btn-ghost btn-sm" style="margin-bottom:12px;" onclick="document.getElementById('ns-contact-section').style.display='block'; this.style.display='none';">+ Ajouter un contact commercial (facultatif)</button>
+    <div id="ns-contact-section" style="display:none;">
+      <div class="field-row"><div class="field"><label>Prénom</label><input id="ns-contact-firstname" placeholder="Jean"></div><div class="field"><label>Nom</label><input id="ns-contact-lastname" placeholder="Martin"></div></div>
+      <div class="field-row"><div class="field"><label>Email</label><input id="ns-contact-email" type="email" placeholder="j.martin@fournisseur.fr"></div><div class="field"><label>Téléphone</label><input id="ns-contact-phone" placeholder="06 12 34 56 78"></div></div>
+    </div>
     <button class="btn btn-primary btn-block" onclick="addSupplier()">Ajouter</button>
+    <button type="button" class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="openQuickAddSuppliersModal()">Ajouter plusieurs fournisseurs d'un coup →</button>
   `);
+}
+function openQuickAddSuppliersModal(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Ajouter plusieurs fournisseurs d'un coup</h3>
+    <div class="modal-sub">Un nom par ligne — le reste (catégorie, délai, coordonnées) se complète ensuite, fournisseur par fournisseur, quand vous avez cinq minutes.</div>
+    <div class="field">
+      <textarea id="qas-names" rows="8" placeholder="Fromagerie Lambert&#10;Boucherie Centrale&#10;Primeur des Halles&#10;Boissons Générales&#10;..."></textarea>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="confirmQuickAddSuppliers(this)">Ajouter ces fournisseurs</button>
+    <button type="button" class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="openNewSupplierModal()">← Revenir au formulaire détaillé</button>
+  `);
+}
+async function confirmQuickAddSuppliers(btn){
+  const raw = document.getElementById('qas-names').value;
+  const names = raw.split('\n').map(n=>n.trim()).filter(Boolean);
+  if(!names.length){ toast('Tapez au moins un nom de fournisseur', 'alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(btn){ btn.disabled = true; btn.textContent = 'Ajout en cours…'; }
+  let created = 0, failed = 0;
+  // Envoyées une par une (pas en parallèle) pour rester à l'abri d'une limite de débit sur
+  // l'API si quelqu'un colle une très longue liste d'un coup.
+  for(const name of names){
+    try{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers`, {
+        method:'POST', body:{ name, category:'Divers', delay:'48h' },
+      });
+      SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:'', email:'', reliability:90, spend:0});
+      created++;
+    } catch(err){ failed++; }
+  }
+  closeModal();
+  render();
+  if(failed===0) toast(`${created} fournisseur${created>1?'s':''} ajouté${created>1?'s':''} — complétez les coordonnées quand vous voulez, depuis leur fiche`);
+  else toast(`${created} ajouté${created>1?'s':''}, ${failed} en échec — réessayez pour ceux qui manquent`, 'alert');
 }
 async function addSupplier(){
   const name = document.getElementById('ns-name').value.trim();
