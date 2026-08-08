@@ -4085,7 +4085,7 @@ function viewParametres(){
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
             ${CATEGORIES.map(c=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameCategory('${c.id}')" title="Renommer">${escapeHtml(c.name)}</button><button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
           </div>
-          <div class="flex gap8"><input id="new-category-name" placeholder="Ex : Fromages" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addCategoryFromSettings()">Ajouter</button></div>
+          <div class="flex gap8"><input id="new-category-name" placeholder="Ex : Fromages, Légumes, Épicerie" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addCategoryFromSettings()">Ajouter</button></div>
         </div>
         <div class="field">
           <label>Lieux / zones</label>
@@ -4093,7 +4093,7 @@ function viewParametres(){
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
             ${ZONES.map(z=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameZone('${z.id}')" title="Renommer">${escapeHtml(z.name)}</button><button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
           </div>
-          <div class="flex gap8"><input id="new-zone-name" placeholder="Ex : Terrasse" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addZoneFromSettings()">Ajouter</button></div>
+          <div class="flex gap8"><input id="new-zone-name" placeholder="Ex : Terrasse, Bar, Cave" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addZoneFromSettings()">Ajouter</button></div>
         </div>
       </div>
       <div class="card">
@@ -4321,17 +4321,22 @@ async function renameZone(id){
   }
 }
 async function addCategoryFromSettings(){
-  const name = document.getElementById('new-category-name').value.trim();
-  if(!name){ toast('Nom requis','alert'); return; }
+  // Accepte plusieurs noms séparés par des virgules ("Fromages, Légumes, Épicerie") pour éviter
+  // de répéter la manip une à une lors de la mise en place initiale.
+  const raw = document.getElementById('new-category-name').value.trim();
+  if(!raw){ toast('Nom requis','alert'); return; }
+  const names = raw.split(',').map(n=>n.trim()).filter(Boolean);
   const resto = RESTOS.find(r=>r.id===state.resto);
-  try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
-    CATEGORIES.push({id:'cat'+data.category.id, remoteId:data.category.id, name:data.category.name});
-    toast('Catégorie « '+escapeHtml(name)+' » ajoutée');
-    render();
-  } catch(err){
-    toast(err.message, 'alert');
+  let created = 0;
+  for(const name of names){
+    try{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
+      CATEGORIES.push({id:'cat'+data.category.id, remoteId:data.category.id, name:data.category.name});
+      created++;
+    } catch(err){ toast(err.message, 'alert'); }
   }
+  if(created) toast(created>1 ? `${created} catégories ajoutées` : 'Catégorie « '+escapeHtml(names[0])+' » ajoutée');
+  render();
 }
 function deleteCategory(id){
   const c = CATEGORIES.find(x=>x.id===id); if(!c) return;
@@ -4362,17 +4367,20 @@ async function confirmDeleteCategory(id){
   }
 }
 async function addZoneFromSettings(){
-  const name = document.getElementById('new-zone-name').value.trim();
-  if(!name){ toast('Nom requis','alert'); return; }
+  const raw = document.getElementById('new-zone-name').value.trim();
+  if(!raw){ toast('Nom requis','alert'); return; }
+  const names = raw.split(',').map(n=>n.trim()).filter(Boolean);
   const resto = RESTOS.find(r=>r.id===state.resto);
-  try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`, { method:'POST', body:{ name } });
-    ZONES.push({id:'zone'+data.zone.id, remoteId:data.zone.id, name:data.zone.name});
-    toast('Lieu « '+escapeHtml(name)+' » ajouté');
-    render();
-  } catch(err){
-    toast(err.message, 'alert');
+  let created = 0;
+  for(const name of names){
+    try{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/zones`, { method:'POST', body:{ name } });
+      ZONES.push({id:'zone'+data.zone.id, remoteId:data.zone.id, name:data.zone.name});
+      created++;
+    } catch(err){ toast(err.message, 'alert'); }
   }
+  if(created) toast(created>1 ? `${created} lieux ajoutés` : 'Lieu « '+escapeHtml(names[0])+' » ajouté');
+  render();
 }
 function deleteZone(id){
   const z = ZONES.find(x=>x.id===id); if(!z) return;
