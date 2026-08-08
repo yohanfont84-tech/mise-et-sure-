@@ -776,6 +776,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 <body>
 <div id="app"></div>
 <div id="cookie-banner-zone"></div>
+<div id="offline-banner-zone"></div>
 <div id="toast-zone"></div>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modalContent"></div></div>
 
@@ -1219,12 +1220,22 @@ async function apiRequest(path, options={}){
   const headers = { 'Content-Type': 'application/json' };
   if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
   if(TEAM_TOKEN) headers['X-Team-Token'] = TEAM_TOKEN;
-  const res = await fetch(API_URL + path, {
-    method: options.method || 'GET',
-    headers,
-    credentials: 'include', // gardé en plus, pour les navigateurs qui acceptent bien le cookie
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let res;
+  try{
+    res = await fetch(API_URL + path, {
+      method: options.method || 'GET',
+      headers,
+      credentials: 'include', // gardé en plus, pour les navigateurs qui acceptent bien le cookie
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch(networkErr){
+    // `fetch` lève une erreur technique très générique quand la connexion est coupée (wifi qui
+    // tombe en plein service, coupure réseau...) — "Failed to fetch" ne veut rien dire pour un
+    // restaurateur. On la remplace par un message clair sur ce qui s'est vraiment passé.
+    const err = new Error("Impossible de contacter le serveur — vérifiez votre connexion internet et réessayez.");
+    err.code = 'NETWORK_ERROR';
+    throw err;
+  }
   let data = {};
   try { data = await res.json(); } catch(e) {}
   if(!res.ok){
@@ -8285,6 +8296,24 @@ async function checkExistingSession(){
   render();
 }
 checkExistingSession();
+
+// ============================================================
+// CONNEXION INTERNET — un bandeau discret dès que la connexion tombe, plutôt que de laisser
+// la personne découvrir le problème seulement quand une action échoue avec un message
+// technique. Redisparaît tout seul dès que la connexion revient.
+// ============================================================
+function renderOfflineBanner(){
+  const zone = document.getElementById('offline-banner-zone');
+  if(!zone) return;
+  zone.innerHTML = navigator.onLine ? '' : `
+    <div style="position:fixed;bottom:0;left:0;right:0;z-index:300;background:#141414;color:#fff;padding:11px 16px;text-align:center;font-size:13px;font-weight:600;box-shadow:0 -4px 16px rgba(0,0,0,0.2);">
+      📡 Pas de connexion internet — vos dernières actions n'ont peut-être pas été enregistrées. Reconnectez-vous pour continuer.
+    </div>
+  `;
+}
+window.addEventListener('online', renderOfflineBanner);
+window.addEventListener('offline', renderOfflineBanner);
+renderOfflineBanner();
 showIOSInstallBanner();
 if('serviceWorker' in navigator){
   // Nécessaire pour que le navigateur propose vraiment d'installer le site comme une
