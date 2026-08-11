@@ -3054,25 +3054,54 @@ function viewHaccpTemperatures(role){
     </table>` : emptyState('Aucun relevé pour le moment')}
   `;
 }
+// Le début de la période en cours pour une fréquence donnée — sert à savoir si une tâche a
+// déjà été faite "aujourd'hui" (quotidien), "cette semaine" (hebdomadaire) ou "ce mois-ci"
+// (mensuel), plutôt que de simplement réafficher le bouton sans jamais tenir compte de ce qui
+// a déjà été fait.
+function haccpPeriodStart(frequency){
+  const now = new Date();
+  if(frequency==='hebdomadaire'){
+    const day = now.getDay(); // 0 = dimanche
+    const diffToMonday = (day===0 ? 6 : day-1);
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()-diffToMonday);
+  }
+  if(frequency==='mensuel') return new Date(now.getFullYear(), now.getMonth(), 1);
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()); // quotidien, par défaut
+}
+function haccpTaskDoneInCurrentPeriod(task){
+  const periodStart = haccpPeriodStart(task.frequency);
+  return HACCP_CLEANING_LOGS.filter(l=>l.taskId===task.id && l.createdAt>=periodStart).sort((a,b)=>b.createdAt-a.createdAt)[0] || null;
+}
+function haccpMomentLabel(moment){
+  if(moment==='avant_service') return 'Avant service';
+  if(moment==='apres_service') return 'Après service';
+  return null; // "journée" — pas de précision nécessaire, cas le plus courant
+}
 function viewHaccpNettoyage(role){
   const canConfigure = CAN_CONFIGURE_HACCP_ROLES.includes(role);
   const recentLogs = [...HACCP_CLEANING_LOGS].sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
   const freqLabel = f => f==='quotidien' ? 'Quotidien' : f==='hebdomadaire' ? 'Hebdomadaire' : 'Mensuel';
   return `
     <div class="section-head" style="margin-top:0;">
-      <div><h3 style="font-size:15px;">Tâches de nettoyage</h3></div>
+      <div><h3 style="font-size:15px;">Tâches de nettoyage</h3><div class="sub">Une tâche à faire avant ET après le service ? Créez-la deux fois, une par moment — chacune garde son propre suivi.</div></div>
       ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="openAddHaccpCleaningTaskModal()">${iconXs(I.plus)} Ajouter une tâche</button>` : ''}
     </div>
     ${HACCP_CLEANING_TASKS.length ? `<div class="grid grid-3" style="margin-bottom:24px;">
       ${HACCP_CLEANING_TASKS.map(t=>{
-        const lastDone = HACCP_CLEANING_LOGS.filter(l=>l.taskId===t.id).sort((a,b)=>b.createdAt-a.createdAt)[0];
+        const doneEntry = haccpTaskDoneInCurrentPeriod(t);
+        const momentLabel = haccpMomentLabel(t.moment);
         return `<div class="card">
-          <div class="flex between center" style="margin-bottom:8px;">
+          <div class="flex between center" style="margin-bottom:6px;">
             <div style="font-weight:600;">${escapeHtml(t.name)}</div>
             ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpCleaningTask('${t.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
           </div>
-          <div class="small muted" style="margin-bottom:12px;">${freqLabel(t.frequency)}${lastDone ? ` · dernière fois le ${fmtDateLong(lastDone.createdAt)}` : ' · jamais encore fait'}</div>
-          <button class="btn btn-primary btn-block btn-sm" onclick="markHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait aujourd'hui</button>
+          <div class="small muted" style="margin-bottom:12px;">${freqLabel(t.frequency)}${momentLabel ? ` · ${momentLabel}` : ''}</div>
+          ${doneEntry ? `
+            <div class="small" style="color:#2E7D32;font-weight:600;margin-bottom:8px;">${iconXs(I.check)} Fait à ${fmtTime(doneEntry.createdAt)} par ${escapeHtml(doneEntry.doneByName||'—')}</div>
+            <button class="btn btn-ghost btn-block btn-sm" onclick="markHaccpCleaningDone('${t.id}')">Marquer une nouvelle fois</button>
+          ` : `
+            <button class="btn btn-primary btn-block btn-sm" onclick="markHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait</button>
+          `}
         </div>`;
       }).join('')}
     </div>` : emptyState(canConfigure ? "Ajoutez une première tâche récurrente (ex : nettoyage de la plonge, désinfection des plans de travail...)" : "Aucune tâche de nettoyage définie pour le moment — demandez à votre patron ou manager d'en ajouter une")}
@@ -3153,24 +3182,35 @@ function openAddHaccpCleaningTaskModal(){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Ajouter une tâche de nettoyage</h3>
     <div class="field"><label>Nom</label><input id="hct-name" placeholder="Ex : Désinfection des plans de travail"></div>
-    <div class="field"><label>Fréquence</label>
-      <select id="hct-frequency">
-        <option value="quotidien">Quotidien</option>
-        <option value="hebdomadaire">Hebdomadaire</option>
-        <option value="mensuel">Mensuel</option>
-      </select>
+    <div class="field-row">
+      <div class="field"><label>Fréquence</label>
+        <select id="hct-frequency">
+          <option value="quotidien">Quotidien</option>
+          <option value="hebdomadaire">Hebdomadaire</option>
+          <option value="mensuel">Mensuel</option>
+        </select>
+      </div>
+      <div class="field"><label>À quel moment ?</label>
+        <select id="hct-moment">
+          <option value="journee">N'importe quand dans la journée</option>
+          <option value="avant_service">Avant le service</option>
+          <option value="apres_service">Après le service</option>
+        </select>
+      </div>
     </div>
+    <div class="small muted" style="margin-bottom:14px;">Besoin de la même tâche avant ET après le service ? Créez-la deux fois avec un moment différent à chaque fois — chacune garde son propre suivi, sans se mélanger.</div>
     <button class="btn btn-primary btn-block" onclick="saveHaccpCleaningTask()">Ajouter</button>
   `);
 }
 async function saveHaccpCleaningTask(){
   const name = document.getElementById('hct-name').value.trim();
   const frequency = document.getElementById('hct-frequency').value;
+  const moment = document.getElementById('hct-moment').value;
   if(!name){ toast('Le nom est requis', 'alert'); return; }
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-tasks`, { method:'POST', body:{ name, frequency } });
-    HACCP_CLEANING_TASKS.push({ id:'ct'+data.cleaningTask.id, remoteId:data.cleaningTask.id, name:data.cleaningTask.name, frequency:data.cleaningTask.frequency });
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-tasks`, { method:'POST', body:{ name, frequency, moment } });
+    HACCP_CLEANING_TASKS.push({ id:'ct'+data.cleaningTask.id, remoteId:data.cleaningTask.id, name:data.cleaningTask.name, frequency:data.cleaningTask.frequency, moment:data.cleaningTask.moment||'journee' });
     closeModal();
     toast('Tâche ajoutée');
     render();
@@ -4083,7 +4123,7 @@ async function syncHaccpFromServer(localId){
   try{
     const taskData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-tasks`);
     d.haccpCleaningTasks = taskData.cleaningTasks.map(t => ({
-      id:'ct'+t.id, remoteId:t.id, name:t.name, frequency:t.frequency,
+      id:'ct'+t.id, remoteId:t.id, name:t.name, frequency:t.frequency, moment:t.moment||'journee',
     }));
   } catch(err){}
   try{
