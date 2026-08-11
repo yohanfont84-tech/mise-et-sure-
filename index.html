@@ -4074,6 +4074,11 @@ function viewParametres(){
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
       </div>
       <div class="card">
+        <div class="card-title">Vos données</div>
+        <div class="small muted" style="margin-bottom:14px;">Le site l'annonce sur la page tarifs : vos données vous appartiennent, exportables à tout moment. Ce bouton télécharge tout ce qui concerne cet établissement — produits, fournisseurs, catégories, lieux, équipe (hors mots de passe), historique des commandes — dans un seul fichier que vous pouvez rouvrir dans un tableur ou garder de côté.</div>
+        <button class="btn btn-ghost" onclick="exportAllRestaurantData()">${iconSm(I.doc)} Exporter toutes les données de cet établissement</button>
+      </div>
+      <div class="card">
         <div class="card-title">Suivi financier</div>
         <div class="small muted" style="margin-bottom:14px;">Certains restaurateurs préfèrent un outil purement opérationnel, sans prix ni montants affichés nulle part.</div>
         <label class="flex center gap8" style="cursor:pointer;">
@@ -4432,6 +4437,51 @@ async function toggleHideFinancials(checked){
   } catch(err){
     toast(err.message, 'alert');
   }
+}
+// Rend vraie la promesse affichée sur la page tarifs ("vos données vous appartiennent,
+// exportables à tout moment") — jusqu'ici, seul l'historique des commandes pouvait s'exporter
+// (CSV, page Commandes), pas l'ensemble catalogue/fournisseurs/équipe. Tout est déjà chargé
+// côté site pour l'établissement courant, donc aucun aller-retour serveur n'est nécessaire :
+// on sérialise directement en JSON, lisible par n'importe qui (même hors tableur) et
+// ré-important à la main si besoin un jour de changer d'outil.
+function exportAllRestaurantData(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto) return;
+  const data = {
+    exporte_le: new Date().toISOString(),
+    etablissement: { nom: resto.name, adresse: resto.address||null, code_postal: resto.postalCode||null, ville: resto.city||null, siret: resto.siret||null, devise: resto.currency },
+    produits: PRODUCTS.map(p => ({
+      nom: p.name, categorie: p.cat||null, unite: p.unit, quantite_commande_habituelle: p.qtyCommande,
+      prix_achat: p.price, fournisseur: (SUPPLIERS.find(s=>s.id===p.supplier)||{}).name || null,
+      departement: p.department||null, lieux: (p.zoneIds||[]).map(zid=>(ZONES.find(z=>z.id===zid)||{}).name).filter(Boolean),
+      conditionnement: p.packaging||null, reference_fournisseur: p.supplierReference||null,
+    })),
+    fournisseurs: SUPPLIERS.map(s => ({
+      nom: s.name, categorie: s.cat||null, delai_moyen: s.delay||null, email: s.email||null, adresse: s.address||null,
+      contact_commercial: [s.contactFirstName, s.contactLastName].filter(Boolean).join(' ') || null,
+      contact_email: s.contactEmail||null, contact_telephone: s.contactPhone||null,
+    })),
+    categories: CATEGORIES.map(c => c.name),
+    lieux: ZONES.map(z => z.name),
+    equipe: TEAM.map(t => ({
+      nom: t.name, role: t.role, horaires: t.shift||null, statut: t.status,
+      peut_commander_directement: !!t.canOrderDirectly, plafond_commande_avant_validation: t.orderSpendingLimit ?? null,
+    })),
+    historique_commandes: ORDERS.map(o => ({
+      reference: o.id, fournisseur: (SUPPLIERS.find(s=>s.id===o.supplier)||{}).name || null,
+      contenu: o.items, montant: o.amount, statut: o.status, date: o.date,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mise-et-sure-export-${(resto.name||'etablissement').replace(/[^a-z0-9]+/gi,'-').toLowerCase()}-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Export téléchargé');
 }
 async function saveRestoInfo(){
   const resto = RESTOS.find(r=>r.id===state.resto);
