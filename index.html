@@ -837,6 +837,7 @@ const I = {
   building:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01"/></svg>`,
   clock:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3.5 2"/></svg>`,
   camera:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>`,
+  thermometer:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 8v6"/></svg>`,
   cocktail:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16l-8 9-8-9z"/><path d="M12 13v6M8 19h8"/></svg>`,
   bread:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 14c0-5.2 4-9.5 9-9.5s9 4.3 9 9.5-4 6-9 6-9-1-9-6z"/><path d="M9 10.2l1.6 3.2M13 9.2l1.6 3.6M17 10.6l1.1 2.6"/></svg>`,
   mobile:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>`,
@@ -977,11 +978,20 @@ let CUSTOM_REQUESTS = []; // propositions d'achat libres (hors catalogue), appro
 
 let TEAM = []; // aucun employé pré-créé — chaque établissement démarre avec une équipe vide
 
+// Module HACCP (facultatif, désactivé par défaut par établissement — voir resto.haccpEnabled)
+let HACCP_EQUIPMENT = []; // {id, remoteId, name, minTemp, maxTemp}
+let HACCP_TEMP_LOGS = []; // {id, remoteId, equipmentId, equipmentName, minTemp, maxTemp, temperature, inRange, note, loggedByName, createdAt}
+let HACCP_CLEANING_TASKS = []; // {id, remoteId, name, frequency}
+let HACCP_CLEANING_LOGS = []; // {id, remoteId, taskId, taskName, frequency, doneByName, createdAt}
+
 // Chaque établissement a son propre catalogue : fournisseurs, produits, commandes, demandes, paniers et équipe
 // ne sont jamais partagés entre deux restaurants d'un même compte patron.
 let RESTO_DATA = {};
 function ensureRestoData(id){
-  if(!RESTO_DATA[id]) RESTO_DATA[id] = { suppliers: [], products: [], requests: [], orders: [], baskets: {}, customRequests: [], team: [], categories: [], zones: [] };
+  if(!RESTO_DATA[id]) RESTO_DATA[id] = {
+    suppliers: [], products: [], requests: [], orders: [], baskets: {}, customRequests: [], team: [], categories: [], zones: [],
+    haccpEquipment: [], haccpTempLogs: [], haccpCleaningTasks: [], haccpCleaningLogs: [],
+  };
   return RESTO_DATA[id];
 }
 function loadRestoData(id){
@@ -995,6 +1005,10 @@ function loadRestoData(id){
   TEAM = d.team;
   CATEGORIES = d.categories;
   ZONES = d.zones;
+  HACCP_EQUIPMENT = d.haccpEquipment;
+  HACCP_TEMP_LOGS = d.haccpTempLogs;
+  HACCP_CLEANING_TASKS = d.haccpCleaningTasks;
+  HACCP_CLEANING_LOGS = d.haccpCleaningLogs;
 }
 
 function identityForTeamRole(role){
@@ -1320,11 +1334,11 @@ const state = {
 let ACCOUNT = null; // { email, plan, billing, via } une fois le compte connecté pendant la session (vient du vrai serveur)
 const PLANS = [
   { id:'solo', name:'Solo', monthly:19, tagline:"Pour un restaurateur qui travaille seul",
-    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Bons de commande et historique d’achats','Notifications par email'] },
+    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Bons de commande et historique d’achats','Suivi HACCP inclus','Notifications par email'] },
   { id:'essentiel', name:'Essentiel', monthly:39, tagline:"Pour un restaurant qui démarre",
-    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Notifications par email'] },
+    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Suivi HACCP inclus','Notifications par email'] },
   { id:'pro', name:'Pro', monthly:79, tagline:"Pour les groupes multi-établissements",
-    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Support prioritaire'] },
+    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Suivi HACCP inclus','Support prioritaire'] },
 ];
 function planAnnualPrice(monthly){ return monthly*10; }
 // Comparatif ligne par ligne — reflète exactement les fonctionnalités listées dans PLANS
@@ -1337,6 +1351,7 @@ const PRICING_COMPARISON = [
   { label:'Export PDF des commandes', solo:false, essentiel:true, pro:true },
   { label:'Bons de commande et historique d’achats', solo:true, essentiel:true, pro:true },
   { label:'Carte des fournisseurs à proximité', solo:false, essentiel:true, pro:true },
+  { label:'Suivi HACCP (lots, températures, nettoyage)', solo:true, essentiel:true, pro:true },
   { label:'Notifications par email', solo:true, essentiel:true, pro:true },
   { label:'Support', solo:'Par email', essentiel:'Par email', pro:'Prioritaire' },
 ];
@@ -1345,11 +1360,12 @@ const PRICING_FAQ = [
   { q:"Y a-t-il un engagement ou des frais cachés ?", a:"Aucun engagement : c'est un abonnement mensuel ou annuel, résiliable à tout moment. Le prix affiché est le prix payé, sans frais additionnels surprise." },
   { q:"Que se passe-t-il si je résilie ?", a:"Vous gardez l'accès jusqu'à la fin de la période déjà payée. Vos données restent disponibles ; contactez-nous si vous souhaitez les récupérer avant suppression." },
   { q:"Le forfait Solo me convient si je travaille seul ?", a:"Oui — le mode Solo masque toute la gestion d'équipe et les demandes internes, pour un outil épuré si vous n'avez pas d'équipe à gérer. Vous pourrez passer à un forfait avec équipe si besoin, sans rien perdre." },
+  { q:"Le suivi HACCP est-il vraiment inclus, à tous les forfaits ?", a:"Oui, y compris en Solo à 19€/mois — c'est une obligation légale, pas un confort qui devrait dépendre de la taille de votre établissement. Il est désactivé par défaut : vous l'activez en un clic dans Paramètres seulement si vous en avez besoin." },
 ];
 const SITE_FEATURES = [
   { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, un seul bon de commande." },
   { icon:'team', title:'Un accès par personne', desc:"Patron, manager, cuisine, salle : chacun son espace, ses permissions, son mot de passe." },
-  { icon:'invoice', title:'Bons de commande professionnels', desc:"Générés automatiquement, prêts à télécharger ou à envoyer au fournisseur." },
+  { icon:'thermometer', title:'Suivi HACCP inclus', desc:"Numéro de lot, relevés de température, suivi du nettoyage — à tous les forfaits, activable en un clic." },
   { icon:'building', title:'Multi-établissements', desc:"Gérez plusieurs restaurants depuis un même compte, sans jamais mélanger les données." },
 ];
 
@@ -1371,6 +1387,7 @@ const NAV = {
     {id:'stocks', label:'Produits', icon:I.doc},
     {id:'commandes', label:'Commandes', icon:I.cart},
     {id:'ecarts', label:'Écarts de livraison', icon:I.alertTriangle},
+    {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
     {id:'stats', label:'Statistiques', icon:I.chart},
     {id:'fournisseurs', label:'Fournisseurs', icon:I.truck},
     {id:'carte-fournisseurs', label:'Carte des fournisseurs', icon:I.mapPin},
@@ -1386,6 +1403,7 @@ const NAV = {
     {id:'commandes', label:'Commandes fournisseurs', icon:I.cart},
     {id:'stocks', label:'Produits', icon:I.doc},
     {id:'livraisons', label:'Livraisons', icon:I.truck},
+    {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
     {id:'notifications', label:'Notifications', icon:I.mail},
     {id:'aide', label:'Aide', icon:I.help},
   ],
@@ -1394,6 +1412,7 @@ const NAV = {
     {id:'signaler', label:'Signaler un manque', icon:I.warn},
     {id:'stocks', label:'Catalogue', icon:I.doc},
     {id:'livraisons', label:'Livraisons', icon:I.truck},
+    {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
     {id:'demandes', label:'Mes demandes', icon:I.tray},
     {id:'notifications', label:'Notifications', icon:I.mail},
     {id:'aide', label:'Aide', icon:I.help},
@@ -1967,7 +1986,8 @@ function closeSidebar(){
 // depuis la page Aide.
 // ============================================================
 const GUIDED_TOUR_STEPS = [
-  { target: null, title: "Bienvenue sur Mise & Sûre 👋", text: "Une visite rapide de l'essentiel — 30 secondes, 8 étapes. Vous pourrez la revoir à tout moment depuis la page Aide." },
+  { target: null, title: "Bienvenue sur Mise & Sûre 👋", text: "Une visite rapide de l'essentiel — 30 secondes, 9 étapes. Vous pourrez la revoir à tout moment depuis la page Aide." },
+  { target: 'parametres', title: 'Suivi HACCP (facultatif)', text: "Numéro de lot, relevés de température, suivi du nettoyage — inclus à tous les forfaits. Désactivé par défaut : activez-le dans Paramètres seulement si vous en avez besoin, sinon vous ne le verrez jamais." },
   { target: 'dashboard', title: 'Votre tableau de bord', text: "Vue d'ensemble : ce qui attend votre validation, vos dépenses récentes, les alertes importantes." },
   { target: 'stocks', title: 'Vos produits', text: "Le catalogue de tout ce que vous commandez — organisé par catégorie, avec fournisseur et prix pour chacun." },
   { target: 'parametres', title: 'Catégories et lieux', text: "Dans Paramètres, définissez vos catégories de marchandise (Boissons, Viande…) et vos lieux/zones (Bar, Terrasse…) — ça garde le catalogue lisible même avec beaucoup de produits." },
@@ -2276,7 +2296,8 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
    SHELL
 ============================================================ */
 function renderShell(){
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats') && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)));
+  const restoForNav = RESTOS.find(r=>r.id===state.resto);
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && n.id==='stats') && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -2957,6 +2978,229 @@ function viewEcarts(){
       `).join('') : emptyState(withDiscrepancy.length ? 'Aucun écart sur cette période/ce fournisseur' : 'Aucun écart détecté — tout correspond aux commandes')}
     </div>
   `;
+}
+// ============================================================
+// MODULE HACCP — désactivé par défaut par établissement. Deux onglets : Températures et
+// Nettoyage. Qui peut ajouter un équipement/une tâche (configuration) est restreint côté
+// serveur au patron et au manager ; qui peut ENREGISTRER un relevé ou cocher un nettoyage fait
+// est ouvert à tous ceux qui ont accès au module (souvent la cuisine, au plus près du terrain).
+// ============================================================
+function currentActorName(){
+  const employeeId = state.loggedInEmployeeId;
+  const member = employeeId ? TEAM.find(t=>t.id===employeeId) : null;
+  return member ? member.name : patronDisplayName();
+}
+function viewHaccp(role){
+  const tab = state.haccpTab || 'temperatures';
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Suivi HACCP</h2><div class="sub">Températures et nettoyage — la trace à garder en cas de contrôle sanitaire</div></div>
+    </div>
+    <div class="flex gap8" style="margin-bottom:22px;">
+      <button class="btn ${tab==='temperatures'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('temperatures')">${iconXs(I.thermometer)} Températures</button>
+      <button class="btn ${tab==='nettoyage'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('nettoyage')">${iconXs(I.check)} Nettoyage</button>
+    </div>
+    ${tab==='temperatures' ? viewHaccpTemperatures(role) : viewHaccpNettoyage(role)}
+  `;
+}
+function setHaccpTab(tab){ state.haccpTab = tab; render(); }
+const CAN_CONFIGURE_HACCP_ROLES = ['patron','manager'];
+
+function viewHaccpTemperatures(role){
+  const canConfigure = CAN_CONFIGURE_HACCP_ROLES.includes(role);
+  const recentLogs = [...HACCP_TEMP_LOGS].sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
+  return `
+    ${HACCP_EQUIPMENT.length ? `
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Relever une température</div>
+      <div class="field-row">
+        <div class="field"><label>Équipement</label>
+          <select id="haccp-temp-equipment">
+            ${HACCP_EQUIPMENT.map(e=>`<option value="${e.id}">${escapeHtml(e.name)} (${e.minTemp}° à ${e.maxTemp}°)</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Température relevée (°C)</label><input id="haccp-temp-value" type="number" step="0.1" placeholder="4.0"></div>
+      </div>
+      <div class="field"><label>Note (facultatif)</label><input id="haccp-temp-note" placeholder="Ex : porte restée ouverte pendant le service"></div>
+      <button class="btn btn-primary" onclick="submitHaccpTemperatureLog()">Enregistrer le relevé</button>
+    </div>
+    ` : emptyState(canConfigure ? "Ajoutez un premier équipement (frigo, chambre froide...) pour commencer à relever ses températures" : "Aucun équipement enregistré pour le moment — demandez à votre patron ou manager d'en ajouter un")}
+
+    <div class="section-head">
+      <div><h3 style="font-size:15px;">Équipements suivis</h3></div>
+      ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="openAddHaccpEquipmentModal()">${iconXs(I.plus)} Ajouter un équipement</button>` : ''}
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      ${HACCP_EQUIPMENT.length ? `<div style="display:flex;flex-direction:column;gap:8px;">
+        ${HACCP_EQUIPMENT.map(e=>`
+          <div class="flex between center" style="padding:8px 4px;border-bottom:1px solid var(--border);">
+            <div><strong style="font-weight:600;">${escapeHtml(e.name)}</strong><span class="muted small"> — seuils ${e.minTemp}° à ${e.maxTemp}°</span></div>
+            ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpEquipment('${e.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+          </div>
+        `).join('')}
+      </div>` : `<div class="small muted">Aucun équipement pour le moment.</div>`}
+    </div>
+
+    <h3 style="font-size:15px;margin-bottom:10px;">Historique des relevés</h3>
+    ${recentLogs.length ? `<table class="stack-mobile">
+      <tr><th>Équipement</th><th>Température</th><th>Statut</th><th>Relevé par</th><th>Quand</th></tr>
+      ${recentLogs.map(l=>`<tr class="tr-hover">
+        <td data-label="Équipement" style="font-weight:600;">${escapeHtml(l.equipmentName)}</td>
+        <td data-label="Température" class="mono">${l.temperature}°C</td>
+        <td data-label="Statut">${l.inRange ? `<span class="tag tag-subtle">${iconXs(I.check)} Conforme</span>` : `<span class="tag tag-red">${iconXs(I.alertTriangle)} Hors seuils</span>`}</td>
+        <td data-label="Relevé par" class="muted small">${escapeHtml(l.loggedByName||'—')}</td>
+        <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
+      </tr>`).join('')}
+    </table>` : emptyState('Aucun relevé pour le moment')}
+  `;
+}
+function viewHaccpNettoyage(role){
+  const canConfigure = CAN_CONFIGURE_HACCP_ROLES.includes(role);
+  const recentLogs = [...HACCP_CLEANING_LOGS].sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
+  const freqLabel = f => f==='quotidien' ? 'Quotidien' : f==='hebdomadaire' ? 'Hebdomadaire' : 'Mensuel';
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h3 style="font-size:15px;">Tâches de nettoyage</h3></div>
+      ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="openAddHaccpCleaningTaskModal()">${iconXs(I.plus)} Ajouter une tâche</button>` : ''}
+    </div>
+    ${HACCP_CLEANING_TASKS.length ? `<div class="grid grid-3" style="margin-bottom:24px;">
+      ${HACCP_CLEANING_TASKS.map(t=>{
+        const lastDone = HACCP_CLEANING_LOGS.filter(l=>l.taskId===t.id).sort((a,b)=>b.createdAt-a.createdAt)[0];
+        return `<div class="card">
+          <div class="flex between center" style="margin-bottom:8px;">
+            <div style="font-weight:600;">${escapeHtml(t.name)}</div>
+            ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpCleaningTask('${t.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+          </div>
+          <div class="small muted" style="margin-bottom:12px;">${freqLabel(t.frequency)}${lastDone ? ` · dernière fois le ${fmtDateLong(lastDone.createdAt)}` : ' · jamais encore fait'}</div>
+          <button class="btn btn-primary btn-block btn-sm" onclick="markHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait aujourd'hui</button>
+        </div>`;
+      }).join('')}
+    </div>` : emptyState(canConfigure ? "Ajoutez une première tâche récurrente (ex : nettoyage de la plonge, désinfection des plans de travail...)" : "Aucune tâche de nettoyage définie pour le moment — demandez à votre patron ou manager d'en ajouter une")}
+
+    <h3 style="font-size:15px;margin-bottom:10px;">Historique du nettoyage</h3>
+    ${recentLogs.length ? `<table class="stack-mobile">
+      <tr><th>Tâche</th><th>Fréquence</th><th>Fait par</th><th>Quand</th></tr>
+      ${recentLogs.map(l=>`<tr class="tr-hover">
+        <td data-label="Tâche" style="font-weight:600;">${escapeHtml(l.taskName)}</td>
+        <td data-label="Fréquence" class="muted small">${freqLabel(l.frequency)}</td>
+        <td data-label="Fait par" class="muted small">${escapeHtml(l.doneByName||'—')}</td>
+        <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
+      </tr>`).join('')}
+    </table>` : emptyState('Aucun nettoyage enregistré pour le moment')}
+  `;
+}
+function openAddHaccpEquipmentModal(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Ajouter un équipement</h3>
+    <div class="field"><label>Nom</label><input id="heq-name" placeholder="Ex : Chambre froide positive"></div>
+    <div class="field-row">
+      <div class="field"><label>Seuil minimum (°C)</label><input id="heq-min" type="number" step="0.1" placeholder="0"></div>
+      <div class="field"><label>Seuil maximum (°C)</label><input id="heq-max" type="number" step="0.1" placeholder="4"></div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveHaccpEquipment()">Ajouter</button>
+  `);
+}
+async function saveHaccpEquipment(){
+  const name = document.getElementById('heq-name').value.trim();
+  const minTemp = parseFloat(document.getElementById('heq-min').value);
+  const maxTemp = parseFloat(document.getElementById('heq-max').value);
+  if(!name){ toast('Le nom est requis', 'alert'); return; }
+  if(Number.isNaN(minTemp) || Number.isNaN(maxTemp) || minTemp > maxTemp){ toast('Merci de renseigner des seuils min/max valides', 'alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/equipment`, { method:'POST', body:{ name, minTemp, maxTemp } });
+    HACCP_EQUIPMENT.push({ id:'eq'+data.equipment.id, remoteId:data.equipment.id, name:data.equipment.name, minTemp:parseFloat(data.equipment.min_temp), maxTemp:parseFloat(data.equipment.max_temp) });
+    closeModal();
+    toast('Équipement ajouté');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+async function deleteHaccpEquipment(id){
+  const eq = HACCP_EQUIPMENT.find(e=>e.id===id); if(!eq) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/equipment/${eq.remoteId}`, { method:'DELETE' });
+    HACCP_EQUIPMENT = HACCP_EQUIPMENT.filter(e=>e.id!==id);
+    ensureRestoData(state.resto).haccpEquipment = HACCP_EQUIPMENT;
+    toast('Équipement supprimé');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+async function submitHaccpTemperatureLog(){
+  const equipmentId = document.getElementById('haccp-temp-equipment').value;
+  const temperature = parseFloat(document.getElementById('haccp-temp-value').value);
+  const note = document.getElementById('haccp-temp-note').value.trim();
+  if(Number.isNaN(temperature)){ toast('Merci de renseigner la température relevée', 'alert'); return; }
+  const eq = HACCP_EQUIPMENT.find(e=>e.id===equipmentId); if(!eq) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/temperature-logs`, {
+      method:'POST', body:{ equipmentId: eq.remoteId, temperature, note, loggedByName: currentActorName() },
+    });
+    HACCP_TEMP_LOGS.push({
+      id:'tl'+data.temperatureLog.id, remoteId:data.temperatureLog.id, equipmentId:eq.id, equipmentName:eq.name,
+      minTemp:eq.minTemp, maxTemp:eq.maxTemp, temperature:parseFloat(data.temperatureLog.temperature),
+      inRange:data.temperatureLog.in_range, note:data.temperatureLog.note, loggedByName:data.temperatureLog.logged_by_name,
+      createdAt:new Date(data.temperatureLog.created_at),
+    });
+    toast(data.temperatureLog.in_range ? 'Relevé enregistré — conforme' : 'Relevé enregistré — hors seuils, à surveiller', data.temperatureLog.in_range ? undefined : 'alert');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+function openAddHaccpCleaningTaskModal(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Ajouter une tâche de nettoyage</h3>
+    <div class="field"><label>Nom</label><input id="hct-name" placeholder="Ex : Désinfection des plans de travail"></div>
+    <div class="field"><label>Fréquence</label>
+      <select id="hct-frequency">
+        <option value="quotidien">Quotidien</option>
+        <option value="hebdomadaire">Hebdomadaire</option>
+        <option value="mensuel">Mensuel</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveHaccpCleaningTask()">Ajouter</button>
+  `);
+}
+async function saveHaccpCleaningTask(){
+  const name = document.getElementById('hct-name').value.trim();
+  const frequency = document.getElementById('hct-frequency').value;
+  if(!name){ toast('Le nom est requis', 'alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-tasks`, { method:'POST', body:{ name, frequency } });
+    HACCP_CLEANING_TASKS.push({ id:'ct'+data.cleaningTask.id, remoteId:data.cleaningTask.id, name:data.cleaningTask.name, frequency:data.cleaningTask.frequency });
+    closeModal();
+    toast('Tâche ajoutée');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+async function deleteHaccpCleaningTask(id){
+  const t = HACCP_CLEANING_TASKS.find(x=>x.id===id); if(!t) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-tasks/${t.remoteId}`, { method:'DELETE' });
+    HACCP_CLEANING_TASKS = HACCP_CLEANING_TASKS.filter(x=>x.id!==id);
+    ensureRestoData(state.resto).haccpCleaningTasks = HACCP_CLEANING_TASKS;
+    toast('Tâche supprimée');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+async function markHaccpCleaningDone(taskId){
+  const t = HACCP_CLEANING_TASKS.find(x=>x.id===taskId); if(!t) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-logs`, {
+      method:'POST', body:{ taskId: t.remoteId, doneByName: currentActorName() },
+    });
+    HACCP_CLEANING_LOGS.push({
+      id:'cl'+data.cleaningLog.id, remoteId:data.cleaningLog.id, taskId:t.id, taskName:t.name, frequency:t.frequency,
+      doneByName:data.cleaningLog.done_by_name, createdAt:new Date(data.cleaningLog.created_at),
+    });
+    toast('Nettoyage enregistré');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
 }
 function viewCommandes(role){
   const basketSupplierIds = Object.keys(BASKETS).filter(sid=>BASKETS[sid] && BASKETS[sid].length>0);
@@ -3812,6 +4056,50 @@ async function syncOrdersFromServer(localId){
     if(state.resto === localId) ORDERS = d.orders;
   } catch(err){}
 }
+// ============================================================
+// MODULE HACCP — synchronisation des 4 types de données (équipements, relevés de température,
+// tâches de nettoyage, journal de nettoyage). N'est appelée que si le module est activé pour
+// l'établissement (voir toggleHaccpEnabled et le chargement initial de l'établissement) —
+// sinon, ces tableaux restent simplement vides, sans même solliciter le serveur pour rien.
+// ============================================================
+async function syncHaccpFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId || !resto.haccpEnabled) return;
+  const d = ensureRestoData(localId);
+  try{
+    const eqData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/equipment`);
+    d.haccpEquipment = eqData.equipment.map(e => ({
+      id:'eq'+e.id, remoteId:e.id, name:e.name, minTemp:parseFloat(e.min_temp), maxTemp:parseFloat(e.max_temp),
+    }));
+  } catch(err){}
+  try{
+    const tempData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/temperature-logs`);
+    d.haccpTempLogs = tempData.temperatureLogs.map(l => ({
+      id:'tl'+l.id, remoteId:l.id, equipmentId:'eq'+l.equipment_id, equipmentName:l.equipment_name,
+      minTemp:parseFloat(l.min_temp), maxTemp:parseFloat(l.max_temp), temperature:parseFloat(l.temperature),
+      inRange:l.in_range, note:l.note, loggedByName:l.logged_by_name, createdAt:new Date(l.created_at),
+    }));
+  } catch(err){}
+  try{
+    const taskData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-tasks`);
+    d.haccpCleaningTasks = taskData.cleaningTasks.map(t => ({
+      id:'ct'+t.id, remoteId:t.id, name:t.name, frequency:t.frequency,
+    }));
+  } catch(err){}
+  try{
+    const logData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-logs`);
+    d.haccpCleaningLogs = logData.cleaningLogs.map(l => ({
+      id:'cl'+l.id, remoteId:l.id, taskId:'ct'+l.task_id, taskName:l.task_name, frequency:l.frequency,
+      doneByName:l.done_by_name, createdAt:new Date(l.created_at),
+    }));
+  } catch(err){}
+  if(state.resto === localId){
+    HACCP_EQUIPMENT = d.haccpEquipment;
+    HACCP_TEMP_LOGS = d.haccpTempLogs;
+    HACCP_CLEANING_TASKS = d.haccpCleaningTasks;
+    HACCP_CLEANING_LOGS = d.haccpCleaningLogs;
+  }
+}
 async function syncRequestsFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
   if(!resto || !resto.remoteId) return;
@@ -3884,6 +4172,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.colorTheme = data.restaurant.color_theme;
     resto.defaultDarkMode = data.restaurant.default_dark_mode;
     resto.siret = data.restaurant.siret;
+    resto.haccpEnabled = data.restaurant.haccp_enabled;
     applyAppearance(resto);
   } catch(err){}
 }
@@ -3906,7 +4195,7 @@ async function syncRestoOperationalData(localId){
   // Chaque étape est isolée : si l'une d'elles échoue (réseau, ou un imprévu à l'affichage), les
   // suivantes s'exécutent quand même, plutôt que de laisser le reste des données périmées.
   const steps = [
-    syncRestaurantInfoFromServer, syncNotificationSettingsFromServer, syncCategoriesFromServer,
+    syncRestaurantInfoFromServer, syncHaccpFromServer, syncNotificationSettingsFromServer, syncCategoriesFromServer,
     syncZonesFromServer, syncSuppliersFromServer, syncProductsFromServer, syncOrdersFromServer,
     syncBasketsFromServer, syncRequestsFromServer, syncCustomRequestsFromServer, syncTeamFromServer,
   ];
@@ -4077,6 +4366,14 @@ function viewParametres(){
         <div class="card-title">Vos données</div>
         <div class="small muted" style="margin-bottom:14px;">Le site l'annonce sur la page tarifs : vos données vous appartiennent, exportables à tout moment. Ce bouton télécharge tout ce qui concerne cet établissement — produits, fournisseurs, catégories, lieux, équipe (hors mots de passe), historique des commandes — dans un seul fichier que vous pouvez rouvrir dans un tableur ou garder de côté.</div>
         <button class="btn btn-ghost" onclick="exportAllRestaurantData()">${iconSm(I.doc)} Exporter toutes les données de cet établissement</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Suivi HACCP</div>
+        <div class="small muted" style="margin-bottom:14px;">Numéro de lot à la réception, relevés de température, suivi du nettoyage — inclus à tous les forfaits, entièrement facultatif. Activez-le seulement si vous en avez besoin ; sans ça, rien n'apparaît nulle part.</div>
+        <label class="flex center gap8" style="cursor:pointer;">
+          <input type="checkbox" id="haccp-toggle" ${resto.haccpEnabled?'checked':''} onchange="toggleHaccpEnabled(this.checked)">
+          <span>Activer le suivi HACCP pour cet établissement</span>
+        </label>
       </div>
       <div class="card">
         <div class="card-title">Suivi financier</div>
@@ -4433,6 +4730,25 @@ async function toggleHideFinancials(checked){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ hideFinancials: checked } });
     resto.hideFinancials = data.restaurant.hide_financials;
     toast(checked ? 'Volet financier masqué' : 'Volet financier réactivé');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+// Le module HACCP est désactivé par défaut : tant que la case n'est pas cochée, aucune trace
+// dans le menu ni nulle part ailleurs — pas juste masqué, vraiment absent de l'expérience de
+// quelqu'un qui n'en a pas besoin (voir le principe posé avant de commencer à construire ça).
+async function toggleHaccpEnabled(checked){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ haccpEnabled: checked } });
+    resto.haccpEnabled = data.restaurant.haccp_enabled;
+    if(checked){
+      await syncHaccpFromServer(state.resto);
+      toast('Suivi HACCP activé — retrouvez-le dans le menu');
+    } else {
+      toast('Suivi HACCP désactivé');
+    }
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -5187,6 +5503,9 @@ function openReceiveOrderModal(id){
             <div class="field"><label>Prix attendu (€)</label><input value="${li.price!=null?Number(li.price).toFixed(2):'—'}" disabled style="opacity:0.6;"></div>
             <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}" oninput="updateReceiveSummary('${id}')"></div>
           </div>`}
+          ${(RESTOS.find(r=>r.id===state.resto)||{}).haccpEnabled ? `
+          <div class="field"><label>Numéro de lot (facultatif)</label><input id="rcv-lot-${idx}" value="${escapeHtml(li.lotNumber||'')}" placeholder="Ex : L2026-0847"></div>
+          ` : ''}
         </div>
         <div class="small muted" id="rcv-pending-note-${idx}" style="display:none;">Sera laissé "en attente" — vous pourrez compléter la réception plus tard quand le reste arrivera.</div>
       </div>
@@ -5233,11 +5552,12 @@ async function confirmReceiveOrder(id){
     const isReceivedNow = checkbox ? checkbox.checked : true;
     const qtyInput = document.getElementById('rcv-qty-'+idx);
     const priceInput = document.getElementById('rcv-price-'+idx);
+    const lotInput = document.getElementById('rcv-lot-'+idx);
     return {
       productId: p ? p.remoteId : null, name: p ? p.name : li.name,
       qtyOrdered: li.qty, qtyReceived: isReceivedNow ? (qtyInput ? parseFloat(qtyInput.value)||0 : li.qty) : null,
       priceOrdered: li.price, priceReceived: isReceivedNow ? (priceInput ? parseFloat(priceInput.value)||0 : li.price) : null,
-      received: isReceivedNow,
+      received: isReceivedNow, lotNumber: lotInput ? lotInput.value.trim() : (li.lotNumber||''),
     };
   });
   const updateCatalogEl = document.getElementById('rcv-update-catalog');
@@ -6926,6 +7246,15 @@ function renderContent(){
   if(view==='notifications') return viewNotifications(role);
   if(view==='aide') return viewAide();
   if(view==='carte-fournisseurs') return soloModeEnabled() ? viewPatronDashboard() : viewSupplierMap();
+  if(view==='haccp'){
+    const restoForHaccp = RESTOS.find(r=>r.id===state.resto);
+    if(!restoForHaccp || !restoForHaccp.haccpEnabled){
+      if(role==='manager') return viewManagerDashboard();
+      if(role==='cuisine') return viewCuisineAccueil();
+      return viewPatronDashboard();
+    }
+    return viewHaccp(role);
+  }
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
     if(view==='demandes') return soloModeEnabled() ? viewPatronDashboard() : viewPatronDemandes();
