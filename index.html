@@ -2518,6 +2518,16 @@ function viewStats(){
       <div class="card"><div class="small muted">Commandes au total</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.status!=='refusee').length}</div></div>
       <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy).length}</div></div>
     </div>
+    <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">Dépenses par fournisseur</div>
+        ${spendSupplier.length ? `<div style="height:240px;"><canvas id="chartSpendSupplier"></canvas></div>` : emptyState('Aucune commande pour l\u2019instant')}
+      </div>
+      <div class="card">
+        <div class="card-title">Dépenses par catégorie</div>
+        ${spendCategory.length ? `<div style="height:240px;"><canvas id="chartSpendCategory"></canvas></div>` : emptyState('Aucune commande avec produits catégorisés')}
+      </div>
+    </div>
     ${forecast ? `
     <div class="card">
       <div class="card-title">Budget prévisionnel</div>
@@ -2544,23 +2554,13 @@ function viewStats(){
     </div>` : ''}
     <div class="card">
       <div class="flex between center" style="margin-bottom:10px;">
-        <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${trendPeriod==='mois' ? '(6 derniers mois)' : '(5 dernières années)'}</div>
+        <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${trendPeriod==='mois' ? '(3 derniers mois)' : '(5 dernières années)'}</div>
         <div class="pill-nav" style="margin:0;">
           <button class="${trendPeriod==='mois'?'active':''}" onclick="setStatsTrendPeriod('mois')">Par mois</button>
           <button class="${trendPeriod==='annee'?'active':''}" onclick="setStatsTrendPeriod('annee')">Par année</button>
         </div>
       </div>
       <div style="height:220px;"><canvas id="chartMonthlyTrend"></canvas></div>
-    </div>
-    <div class="grid grid-2b">
-      <div class="card">
-        <div class="card-title">Dépenses par fournisseur</div>
-        ${spendSupplier.length ? `<div style="height:220px;"><canvas id="chartSpendSupplier"></canvas></div>` : emptyState('Aucune commande pour l\u2019instant')}
-      </div>
-      <div class="card">
-        <div class="card-title">Dépenses par catégorie</div>
-        ${spendCategory.length ? `<div style="height:220px;"><canvas id="chartSpendCategory"></canvas></div>` : emptyState('Aucune commande avec produits catégorisés')}
-      </div>
     </div>
   `;
 }
@@ -7794,7 +7794,7 @@ function drawCharts(){
   }
   const trendCanvas = document.getElementById('chartMonthlyTrend');
   if(trendCanvas){
-    const data = ensureStatsTrendPeriod()==='annee' ? yearlyTrendData(5) : monthlyTrendData(6);
+    const data = ensureStatsTrendPeriod()==='annee' ? yearlyTrendData(5) : monthlyTrendData(3);
     charts.trend = new Chart(trendCanvas, {
       type:'line',
       data:{
@@ -7828,7 +7828,7 @@ function drawCharts(){
     charts.spendCat = new Chart(spendCatCanvas, {
       type:'doughnut',
       data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor: data.map((_,i)=>palette[i%palette.length])}] },
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{boxWidth:12}}} }
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12,padding:12}}} }
     });
   }
 }
