@@ -7773,10 +7773,19 @@ function downloadAndComposeOrderEmail(id){
 }
 let charts = {};
 function destroyCharts(){ Object.values(charts).forEach(c=>c && c.destroy()); charts = {}; }
-function drawCharts(){
-  // Avant : les couleurs des graphiques étaient codées en dur pour le mode clair (#141414 pour
-  // les barres/courbes) — exactement la même couleur que le fond en mode sombre (--ink), donc
-  // invisibles dessus. Désormais recalculées à chaque appel selon le thème actif.
+// Avant : si Chart.js (chargé depuis un CDN externe) n'avait pas fini de se charger au moment
+// exact où cette fonction s'exécutait — une connexion lente, un CDN temporairement lent à
+// répondre — TOUS les graphiques restaient vides en permanence, sans le moindre message, sans
+// jamais réessayer. Ça n'arrivait jamais dans nos tests (tout est instantané en local), mais
+// c'est précisément le genre de situation qui touche un vrai visiteur avec une connexion moins
+// rapide. On réessaie maintenant automatiquement quelques fois avant d'abandonner.
+function drawCharts(retriesLeft){
+  if(typeof Chart === 'undefined'){
+    if(retriesLeft === undefined) retriesLeft = 10;
+    if(retriesLeft > 0){ setTimeout(()=>drawCharts(retriesLeft-1), 200); return; }
+    console.error('Mise & Sûre : Chart.js ne s\'est jamais chargé — les graphiques resteront vides. Vérifiez la connexion ou un bloqueur de contenu.');
+    return;
+  }
   const isDark = document.documentElement.classList.contains('theme-dark');
   const ink = isDark ? '#EDEDE6' : '#141414';
   const mutedText = isDark ? '#A3A399' : '#6B6B65';
@@ -7785,8 +7794,18 @@ function drawCharts(){
   Chart.defaults.font.family = "'Inter',sans-serif";
   Chart.defaults.color = mutedText;
 
-  const stockValCanvas = document.getElementById('chartStockValue');
-  if(stockValCanvas){
+  // Chaque graphique est maintenant isolé dans son propre try/catch : avant, une erreur sur le
+  // premier graphique de la page (ex. chartStockValue) empêchait silencieusement tous les
+  // suivants de se dessiner, puisqu'une exception non rattrapée arrête l'exécution du reste de
+  // la fonction — exactement le genre de panne en cascade qui pouvait donner l'impression
+  // qu'"aucun graphique" ne fonctionne, alors qu'un seul avait vraiment un problème.
+  function safeChart(label, fn){
+    try{ fn(); } catch(err){ console.error(`Mise & Sûre : le graphique "${label}" n'a pas pu s'afficher —`, err); }
+  }
+
+  safeChart('Valeur des achats (fournisseurs)', () => {
+    const stockValCanvas = document.getElementById('chartStockValue');
+    if(!stockValCanvas) return;
     const data = achatsBySupplier();
     charts.stockVal = new Chart(stockValCanvas, {
       type:'bar',
@@ -7800,9 +7819,11 @@ function drawCharts(){
         scales:{x:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
       }
     });
-  }
-  const suppCanvas = document.getElementById('chartSuppliers');
-  if(suppCanvas){
+  });
+
+  safeChart('Fiabilité des fournisseurs', () => {
+    const suppCanvas = document.getElementById('chartSuppliers');
+    if(!suppCanvas) return;
     const suppliersWithReliability = SUPPLIERS.map(s=>({ s, r: calculateSupplierReliability(s.id) })).filter(x=>x.r!==null);
     charts.supp = new Chart(suppCanvas, {
       type:'bar',
@@ -7816,9 +7837,11 @@ function drawCharts(){
         scales:{x:{min:70,max:100, grid:{color:gridColor}}, y:{grid:{display:false}}}
       }
     });
-  }
-  const trendCanvas = document.getElementById('chartMonthlyTrend');
-  if(trendCanvas){
+  });
+
+  safeChart('Évolution des dépenses', () => {
+    const trendCanvas = document.getElementById('chartMonthlyTrend');
+    if(!trendCanvas) return;
     const trendPeriod = ensureStatsTrendPeriod();
     const data = trendPeriod==='annee' ? yearlyTrendData(5) : trendPeriod==='mois' ? monthlyTrendData(3) : weeklyTrendData(8);
     charts.trend = new Chart(trendCanvas, {
@@ -7833,9 +7856,11 @@ function drawCharts(){
         scales:{x:{grid:{display:false}}, y:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}}
       }
     });
-  }
-  const spendSuppCanvas = document.getElementById('chartSpendSupplier');
-  if(spendSuppCanvas){
+  });
+
+  safeChart('Dépenses par fournisseur', () => {
+    const spendSuppCanvas = document.getElementById('chartSpendSupplier');
+    if(!spendSuppCanvas) return;
     const data = achatsBySupplier();
     charts.spendSupp = new Chart(spendSuppCanvas, {
       type:'bar',
@@ -7846,9 +7871,11 @@ function drawCharts(){
         scales:{x:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
       }
     });
-  }
-  const spendCatCanvas = document.getElementById('chartSpendCategory');
-  if(spendCatCanvas){
+  });
+
+  safeChart('Dépenses par catégorie', () => {
+    const spendCatCanvas = document.getElementById('chartSpendCategory');
+    if(!spendCatCanvas) return;
     const data = spendByCategoryData();
     const palette = [ink,'#5B5B55','#8A8A84','#A93A2E','#BDBDB5','#2E4A3A'];
     charts.spendCat = new Chart(spendCatCanvas, {
@@ -7856,7 +7883,7 @@ function drawCharts(){
       data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor: data.map((_,i)=>palette[i%palette.length])}] },
       options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12,padding:12}}} }
     });
-  }
+  });
 }
 
 /* ============================================================
@@ -8885,7 +8912,7 @@ function renderInner(){
       <div class="content">${renderContent()}</div>
     </div>
   `;
-  requestAnimationFrame(drawCharts);
+  requestAnimationFrame(()=>drawCharts());
   requestAnimationFrame(initSupplierMap);
   if(TOUR_STATE.active) renderTourStep(); else maybeAutoStartTour();
 }
