@@ -2456,6 +2456,30 @@ function monthlyTrendData(monthsBack){
     return { label: m.label, value: Math.round(total*100)/100 };
   });
 }
+// Semaine par semaine, sur les 8 dernières semaines — la vue la plus "en direct" : pour un
+// établissement qui vient de démarrer sur le site, une vue par mois n'affiche qu'une seule
+// barre remplie (le reste vide, avant même l'inscription) alors qu'une vue par semaine montre
+// déjà une vraie évolution après seulement deux ou trois semaines d'usage.
+function weeklyTrendData(weeksBack){
+  weeksBack = weeksBack || 8;
+  const now = new Date();
+  const day = now.getDay(); // 0 = dimanche
+  const diffToMonday = (day===0 ? 6 : day-1);
+  const thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate()-diffToMonday);
+  const weeks = [];
+  for(let i=weeksBack-1;i>=0;i--){
+    const start = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate()-i*7);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate()+7);
+    weeks.push({ start, end, label: `${start.getDate()}/${start.getMonth()+1}` });
+  }
+  return weeks.map(w=>{
+    const total = ORDERS.filter(o=>o.status!=='refusee' && o.createdAt).filter(o=>{
+      const d = new Date(o.createdAt);
+      return d>=w.start && d<w.end;
+    }).reduce((sum,o)=>sum+(o.amount||0),0);
+    return { label: w.label, value: Math.round(total*100)/100 };
+  });
+}
 function yearlyTrendData(yearsBack){
   yearsBack = yearsBack || 5;
   const now = new Date();
@@ -2496,7 +2520,7 @@ function budgetForecastInsight(){
   };
 }
 function ensureStatsTrendPeriod(){
-  if(!state.statsTrendPeriod) state.statsTrendPeriod = 'mois';
+  if(!state.statsTrendPeriod) state.statsTrendPeriod = 'semaine';
   return state.statsTrendPeriod;
 }
 function setStatsTrendPeriod(period){
@@ -2553,9 +2577,10 @@ function viewStats(){
       <div class="small muted" style="margin-top:8px;">Estimation simple à partir du rythme observé depuis le début du mois — à prendre comme un repère, pas une prévision exacte.</div>
     </div>` : ''}
     <div class="card">
-      <div class="flex between center" style="margin-bottom:10px;">
-        <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${trendPeriod==='mois' ? '(3 derniers mois)' : '(5 dernières années)'}</div>
+      <div class="flex between center" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${trendPeriod==='semaine' ? '(8 dernières semaines)' : trendPeriod==='mois' ? '(3 derniers mois)' : '(5 dernières années)'}</div>
         <div class="pill-nav" style="margin:0;">
+          <button class="${trendPeriod==='semaine'?'active':''}" onclick="setStatsTrendPeriod('semaine')">Par semaine</button>
           <button class="${trendPeriod==='mois'?'active':''}" onclick="setStatsTrendPeriod('mois')">Par mois</button>
           <button class="${trendPeriod==='annee'?'active':''}" onclick="setStatsTrendPeriod('annee')">Par année</button>
         </div>
@@ -7794,7 +7819,8 @@ function drawCharts(){
   }
   const trendCanvas = document.getElementById('chartMonthlyTrend');
   if(trendCanvas){
-    const data = ensureStatsTrendPeriod()==='annee' ? yearlyTrendData(5) : monthlyTrendData(3);
+    const trendPeriod = ensureStatsTrendPeriod();
+    const data = trendPeriod==='annee' ? yearlyTrendData(5) : trendPeriod==='mois' ? monthlyTrendData(3) : weeklyTrendData(8);
     charts.trend = new Chart(trendCanvas, {
       type:'line',
       data:{
