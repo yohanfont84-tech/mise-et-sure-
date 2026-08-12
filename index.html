@@ -3057,7 +3057,7 @@ function viewHaccp(role){
         <button class="btn ${tab==='temperatures'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('temperatures')">${iconXs(I.thermometer)} Températures</button>
         <button class="btn ${tab==='nettoyage'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('nettoyage')">${iconXs(I.check)} Nettoyage</button>
       </div>
-      <div class="flex gap8">
+      <div class="flex gap8" style="flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" onclick="openHaccpReportModal('month')">${iconXs(I.download)} Compte-rendu — ce mois</button>
         <button class="btn btn-ghost btn-sm" onclick="openHaccpReportModal('year')">${iconXs(I.download)} Compte-rendu — cette année</button>
       </div>
@@ -3089,7 +3089,6 @@ function updateHaccpTempTodayNotice(){
 }
 function viewHaccpTemperatures(role){
   const canConfigure = CAN_CONFIGURE_HACCP_ROLES.includes(role);
-  const recentLogs = [...HACCP_TEMP_LOGS].sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
   return `
     ${HACCP_EQUIPMENT.length ? `
     <div class="card" style="margin-bottom:20px;">
@@ -3109,31 +3108,32 @@ function viewHaccpTemperatures(role){
     ` : emptyState(canConfigure ? "Ajoutez un premier équipement (frigo, chambre froide...) pour commencer à relever ses températures" : "Aucun équipement enregistré pour le moment — demandez à votre patron ou manager d'en ajouter un")}
 
     <div class="section-head">
-      <div><h3 style="font-size:15px;">Équipements suivis</h3></div>
+      <div><h3 style="font-size:15px;">Équipements et leur historique</h3><div class="sub">Un tableau par équipement, pour suivre son évolution sans le mélanger aux autres.</div></div>
       ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="openAddHaccpEquipmentModal()">${iconXs(I.plus)} Ajouter un équipement</button>` : ''}
     </div>
-    <div class="card" style="margin-bottom:24px;">
-      ${HACCP_EQUIPMENT.length ? `<div style="display:flex;flex-direction:column;gap:8px;">
-        ${HACCP_EQUIPMENT.map(e=>`
-          <div class="flex between center" style="padding:8px 4px;border-bottom:1px solid var(--border);">
-            <div><strong style="font-weight:600;">${escapeHtml(e.name)}</strong><span class="muted small"> — seuils ${e.minTemp}° à ${e.maxTemp}°</span></div>
-            ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpEquipment('${e.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+    ${HACCP_EQUIPMENT.length ? HACCP_EQUIPMENT.map(e=>{
+      const logs = HACCP_TEMP_LOGS.filter(l=>l.equipmentId===e.id).sort((a,b)=>b.createdAt-a.createdAt).slice(0,30);
+      const anomalyCount = logs.filter(l=>!l.inRange).length;
+      return `
+      <div class="card" style="margin-bottom:16px;">
+        <div class="flex between center" style="margin-bottom:12px;">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(e.name)}</div>
+            <div class="small muted">Seuils ${e.minTemp}° à ${e.maxTemp}° · ${logs.length} relevé${logs.length>1?'s':''}${anomalyCount ? ` · ${anomalyCount} hors seuils` : ''}</div>
           </div>
-        `).join('')}
-      </div>` : `<div class="small muted">Aucun équipement pour le moment.</div>`}
-    </div>
-
-    <h3 style="font-size:15px;margin-bottom:10px;">Historique des relevés</h3>
-    ${recentLogs.length ? `<table class="stack-mobile">
-      <tr><th>Équipement</th><th>Température</th><th>Statut</th><th>Relevé par</th><th>Quand</th></tr>
-      ${recentLogs.map(l=>`<tr class="tr-hover">
-        <td data-label="Équipement" style="font-weight:600;">${escapeHtml(l.equipmentName)}</td>
-        <td data-label="Température" class="mono">${l.temperature}°C</td>
-        <td data-label="Statut">${l.inRange ? `<span class="tag tag-subtle">${iconXs(I.check)} Conforme</span>` : `<span class="tag tag-red">${iconXs(I.alertTriangle)} Hors seuils</span>`}</td>
-        <td data-label="Relevé par" class="muted small">${escapeHtml(l.loggedByName||'—')}</td>
-        <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
-      </tr>`).join('')}
-    </table>` : emptyState('Aucun relevé pour le moment')}
+          ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpEquipment('${e.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+        </div>
+        ${logs.length ? `<table class="stack-mobile">
+          <tr><th>Température</th><th>Statut</th><th>Relevé par</th><th>Quand</th></tr>
+          ${logs.map(l=>`<tr class="tr-hover">
+            <td data-label="Température" class="mono">${l.temperature}°C</td>
+            <td data-label="Statut">${l.inRange ? `<span class="tag tag-subtle">${iconXs(I.check)} Conforme</span>` : `<span class="tag tag-red">${iconXs(I.alertTriangle)} Hors seuils</span>`}</td>
+            <td data-label="Relevé par" class="muted small">${escapeHtml(l.loggedByName||'—')}</td>
+            <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
+          </tr>`).join('')}
+        </table>` : `<div class="small muted">Aucun relevé pour cet équipement pour le moment.</div>`}
+      </div>`;
+    }).join('') : `<div class="card"><div class="small muted">Aucun équipement pour le moment.</div></div>`}
   `;
 }
 // Le début de la période en cours pour une fréquence donnée — sert à savoir si une tâche a
@@ -3161,43 +3161,41 @@ function haccpMomentLabel(moment){
 }
 function viewHaccpNettoyage(role){
   const canConfigure = CAN_CONFIGURE_HACCP_ROLES.includes(role);
-  const recentLogs = [...HACCP_CLEANING_LOGS].sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
   const freqLabel = f => f==='quotidien' ? 'Quotidien' : f==='hebdomadaire' ? 'Hebdomadaire' : 'Mensuel';
   return `
     <div class="section-head" style="margin-top:0;">
-      <div><h3 style="font-size:15px;">Tâches de nettoyage</h3><div class="sub">Une tâche à faire avant ET après le service ? Créez-la deux fois, une par moment — chacune garde son propre suivi.</div></div>
+      <div><h3 style="font-size:15px;">Tâches de nettoyage et leur historique</h3><div class="sub">Une tâche à faire avant ET après le service ? Créez-la deux fois, une par moment — chacune garde son propre suivi et son propre tableau.</div></div>
       ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="openAddHaccpCleaningTaskModal()">${iconXs(I.plus)} Ajouter une tâche</button>` : ''}
     </div>
-    ${HACCP_CLEANING_TASKS.length ? `<div class="grid grid-3" style="margin-bottom:24px;">
-      ${HACCP_CLEANING_TASKS.map(t=>{
-        const doneEntry = haccpTaskDoneInCurrentPeriod(t);
-        const momentLabel = haccpMomentLabel(t.moment);
-        return `<div class="card">
-          <div class="flex between center" style="margin-bottom:6px;">
+    ${HACCP_CLEANING_TASKS.length ? HACCP_CLEANING_TASKS.map(t=>{
+      const doneEntry = haccpTaskDoneInCurrentPeriod(t);
+      const momentLabel = haccpMomentLabel(t.moment);
+      const logs = HACCP_CLEANING_LOGS.filter(l=>l.taskId===t.id).sort((a,b)=>b.createdAt-a.createdAt).slice(0,30);
+      return `<div class="card" style="margin-bottom:16px;">
+        <div class="flex between center" style="margin-bottom:6px;">
+          <div>
             <div style="font-weight:600;">${escapeHtml(t.name)}</div>
-            ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpCleaningTask('${t.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+            <div class="small muted">${freqLabel(t.frequency)}${momentLabel ? ` · ${momentLabel}` : ''} · ${logs.length} enregistrement${logs.length>1?'s':''}</div>
           </div>
-          <div class="small muted" style="margin-bottom:12px;">${freqLabel(t.frequency)}${momentLabel ? ` · ${momentLabel}` : ''}</div>
+          ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpCleaningTask('${t.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+        </div>
+        <div style="margin:12px 0;">
           ${doneEntry ? `
             <div class="small" style="color:#2E7D32;font-weight:600;margin-bottom:8px;">${iconXs(I.check)} Fait à ${fmtTime(doneEntry.createdAt)} par ${escapeHtml(doneEntry.doneByName||'—')}</div>
-            <button class="btn btn-ghost btn-block btn-sm" onclick="markHaccpCleaningDone('${t.id}')">Marquer une nouvelle fois</button>
+            <button class="btn btn-ghost btn-sm" onclick="markHaccpCleaningDone('${t.id}')">Marquer une nouvelle fois</button>
           ` : `
-            <button class="btn btn-primary btn-block btn-sm" onclick="markHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait</button>
+            <button class="btn btn-primary btn-sm" onclick="markHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait</button>
           `}
-        </div>`;
-      }).join('')}
-    </div>` : emptyState(canConfigure ? "Ajoutez une première tâche récurrente (ex : nettoyage de la plonge, désinfection des plans de travail...)" : "Aucune tâche de nettoyage définie pour le moment — demandez à votre patron ou manager d'en ajouter une")}
-
-    <h3 style="font-size:15px;margin-bottom:10px;">Historique du nettoyage</h3>
-    ${recentLogs.length ? `<table class="stack-mobile">
-      <tr><th>Tâche</th><th>Fréquence</th><th>Fait par</th><th>Quand</th></tr>
-      ${recentLogs.map(l=>`<tr class="tr-hover">
-        <td data-label="Tâche" style="font-weight:600;">${escapeHtml(l.taskName)}</td>
-        <td data-label="Fréquence" class="muted small">${freqLabel(l.frequency)}</td>
-        <td data-label="Fait par" class="muted small">${escapeHtml(l.doneByName||'—')}</td>
-        <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
-      </tr>`).join('')}
-    </table>` : emptyState('Aucun nettoyage enregistré pour le moment')}
+        </div>
+        ${logs.length ? `<table class="stack-mobile">
+          <tr><th>Fait par</th><th>Quand</th></tr>
+          ${logs.map(l=>`<tr class="tr-hover">
+            <td data-label="Fait par" class="muted small">${escapeHtml(l.doneByName||'—')}</td>
+            <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
+          </tr>`).join('')}
+        </table>` : `<div class="small muted">Aucun enregistrement pour cette tâche pour le moment.</div>`}
+      </div>`;
+    }).join('') : emptyState(canConfigure ? "Ajoutez une première tâche récurrente (ex : nettoyage de la plonge, désinfection des plans de travail...)" : "Aucune tâche de nettoyage définie pour le moment — demandez à votre patron ou manager d'en ajouter une")}
   `;
 }
 function openAddHaccpEquipmentModal(){
