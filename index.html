@@ -767,8 +767,11 @@ tr.group-row:hover td{background:var(--gray-100);}
 .invoice-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
 .invoice-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);border-bottom:1.5px solid var(--black);padding:7px 6px;font-weight:600;}
 .invoice-table td{padding:9px 6px;border-bottom:1px solid var(--border);font-size:13px;}
-.invoice-table th:nth-child(2),.invoice-table td:nth-child(2),.invoice-table th:nth-child(3),.invoice-table td:nth-child(3),.invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
+.invoice-table th:nth-child(2),.invoice-table td:nth-child(2),.invoice-table th:nth-child(3),.invoice-table td:nth-child(3),.invoice-table th:nth-child(4),.invoice-table td:nth-child(4),.invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
 .invoice-table.history th:nth-child(2),.invoice-table.history td:nth-child(2),.invoice-table.history th:nth-child(3),.invoice-table.history td:nth-child(3){text-align:left;}
+.invoice-tva-summary{margin-bottom:12px;}
+.invoice-tva-row{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;}
+.invoice-tva-row-detail{color:var(--muted);font-size:11.5px;}
 .invoice-total-row{display:flex;justify-content:flex-end;align-items:baseline;gap:12px;border-top:2px solid var(--black);padding-top:10px;margin-bottom:16px;}
 .invoice-total-label{font-size:12.5px;font-weight:600;}
 .invoice-total-value{font-family:var(--heading-font);font-size:20px;font-weight:700;}
@@ -1076,6 +1079,45 @@ function supplierLastOrderDate(id){
   return fmtDateShort(new Date(latest.createdAt));
 }
 function fmtEUR(n){ if(financialsHidden()) return ''; const v = Number(n); return (Number.isFinite(v) ? v : 0).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
+// ============================================================
+// TVA — les 4 taux standards français en vigueur (stables depuis 2014). Le prix d'un produit
+// est toujours stocké HT (l'usage entre professionnels) ; ces fonctions dérivent le TTC et la
+// ventilation par taux au moment d'afficher un document, sans jamais transformer la donnée
+// stockée elle-même.
+// ============================================================
+const TVA_RATES = [
+  { value: 20, label: '20 % — Taux normal' },
+  { value: 10, label: '10 % — Taux intermédiaire (restauration, travaux)' },
+  { value: 5.5, label: '5,5 % — Taux réduit (produits alimentaires de base)' },
+  { value: 2.1, label: '2,1 % — Taux particulier (presse, médicaments remboursés)' },
+];
+function tvaRateLabel(rate){
+  const known = TVA_RATES.find(t=>Math.abs(t.value-rate)<0.01);
+  return known ? known.label.split(' — ')[0] : `${fmtNum(rate)} %`;
+}
+function fmtNum(n){ return Number(n).toLocaleString('fr-FR',{minimumFractionDigits:0, maximumFractionDigits:2}); }
+function calcTTC(priceHT, tvaRate){ return Number(priceHT||0) * (1 + Number(tvaRate||0)/100); }
+function calcTvaAmount(priceHT, tvaRate){ return Number(priceHT||0) * Number(tvaRate||0)/100; }
+// Regroupe une liste de lignes {totalHT, tvaRate} par taux de TVA — c'est la présentation
+// attendue sur un document professionnel : une ligne par taux avec sa base HT et son montant
+// de TVA, plutôt qu'un seul total TVA global qui ne dit pas comment il a été obtenu.
+function tvaBreakdown(lines){
+  const byRate = {};
+  lines.forEach(l=>{
+    const rate = Number(l.tvaRate||0);
+    if(!byRate[rate]) byRate[rate] = { rate, baseHT: 0, tvaAmount: 0 };
+    byRate[rate].baseHT += l.totalHT;
+    byRate[rate].tvaAmount += calcTvaAmount(l.totalHT, rate);
+  });
+  // Arrondi au centime PAR TAUX avant de renvoyer — pas seulement au moment de l'affichage.
+  // Sans ça, le "Total TVA" (somme des valeurs exactes non arrondies) pouvait afficher un
+  // centime de moins que ce qu'on obtient en additionnant à la main les lignes de détail
+  // arrondies affichées juste au-dessus — un écart qui saute aux yeux sur un document
+  // professionnel, même s'il ne vient que d'une imprécision binaire classique (0,1 + 0,2 ≠
+  // 0,3). Arrondir ici garantit que le total est toujours exactement la somme de ce qui est
+  // montré, comme le ferait n'importe quel comptable.
+  return Object.values(byRate).map(b => ({ ...b, baseHT: Math.round(b.baseHT*100)/100, tvaAmount: Math.round(b.tvaAmount*100)/100 })).sort((a,b)=>b.rate-a.rate);
+}
 function fullAddress(resto){
   const line2 = [resto.postalCode, resto.city].filter(Boolean).join(' ');
   return [resto.address, line2].filter(Boolean).join(', ');
@@ -1159,13 +1201,13 @@ async function sendBasket(supplierId){
   if(!items || items.length===0) return;
   const parts = [];
   let amount = 0;
-  const enrichedItems = []; // {productId (local), remoteProductId, name, qty, price} — pour un affichage fiable partout
+  const enrichedItems = []; // {productId (local), remoteProductId, name, qty, price, tvaRate} — pour un affichage fiable partout
   items.forEach(li=>{
     const p = PRODUCTS.find(x=>x.id===li.productId);
     if(p){
       parts.push(`${escapeHtml(p.name)} × ${li.qty} ${p.unit}`);
       amount += li.qty*p.price;
-      enrichedItems.push({ productId: li.productId, remoteProductId: p.remoteId, name: p.name, qty: li.qty, price: p.price });
+      enrichedItems.push({ productId: li.productId, remoteProductId: p.remoteId, name: p.name, qty: li.qty, price: p.price, tvaRate: p.tvaRate??5.5 });
     }
   });
   const now = new Date();
@@ -1176,7 +1218,7 @@ async function sendBasket(supplierId){
       method:'POST',
       body:{
         supplierId: supplierObj?supplierObj.remoteId:null, items: parts.join(', '),
-        lineItems: enrichedItems.map(li=>({productId:li.remoteProductId, name:li.name, qty:li.qty, price:li.price})),
+        lineItems: enrichedItems.map(li=>({productId:li.remoteProductId, name:li.name, qty:li.qty, price:li.price, tvaRate:li.tvaRate})),
         amount: Math.round(amount*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now),
       },
     });
@@ -1186,7 +1228,7 @@ async function sendBasket(supplierId){
     const finalStatus = data.order.status;
     ORDERS.unshift({
       id:'CMD-'+nextId(), remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
-      lineItems: enrichedItems.map(li=>({productId:li.productId, name:li.name, qty:li.qty, price:li.price})),
+      lineItems: enrichedItems.map(li=>({productId:li.productId, name:li.name, qty:li.qty, price:li.price, tvaRate:li.tvaRate})),
       amount: Math.round(amount*100)/100, status:finalStatus, date: fmtDateShort(now), createdAt: now
     });
     try{
@@ -2904,7 +2946,7 @@ function viewStocks(){
             <td data-label="Fournisseur" class="muted">${supplierName(p.supplier)}</td>
             <td data-label="Conditionnement" class="muted small">${escapeHtml(p.packaging||'—')}</td>
             <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${p.unit}</td>
-            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${(p.price||0).toFixed(2)} € / ${p.unit}</td>`}
+            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${(p.price||0).toFixed(2)} € HT / ${p.unit}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
               <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
@@ -4065,7 +4107,7 @@ async function syncProductsFromServer(localId){
         qtyCommande: parseFloat(p.qty_commande), supplier: localSupplier ? localSupplier.id : null,
         cat: p.category, department: p.department,
         packaging: p.packaging, supplierReference: p.supplier_reference,
-        zoneIds: localZoneIds,
+        zoneIds: localZoneIds, tvaRate: p.tva_rate != null ? parseFloat(p.tva_rate) : 5.5,
       };
     });
     if(state.resto === localId) PRODUCTS = d.products;
@@ -5585,7 +5627,7 @@ async function confirmReceiveOrder(id){
       return {
         productId: p ? p.remoteId : null, name: p ? p.name : li.name,
         qtyOrdered: li.qty, qtyReceived: li.qtyReceived,
-        priceOrdered: li.price, priceReceived: li.priceReceived, received: true,
+        priceOrdered: li.price, priceReceived: li.priceReceived, received: true, tvaRate: li.tvaRate??5.5,
       };
     }
     const checkbox = document.getElementById('rcv-received-'+idx);
@@ -5597,7 +5639,7 @@ async function confirmReceiveOrder(id){
       productId: p ? p.remoteId : null, name: p ? p.name : li.name,
       qtyOrdered: li.qty, qtyReceived: isReceivedNow ? (qtyInput ? parseFloat(qtyInput.value)||0 : li.qty) : null,
       priceOrdered: li.price, priceReceived: isReceivedNow ? (priceInput ? parseFloat(priceInput.value)||0 : li.price) : null,
-      received: isReceivedNow, lotNumber: lotInput ? lotInput.value.trim() : (li.lotNumber||''),
+      received: isReceivedNow, lotNumber: lotInput ? lotInput.value.trim() : (li.lotNumber||''), tvaRate: li.tvaRate??5.5,
     };
   });
   const updateCatalogEl = document.getElementById('rcv-update-catalog');
@@ -5790,7 +5832,7 @@ async function confirmValidateDemande(id){
       const now = new Date();
       const supplierObj = SUPPLIERS[0];
       const estimatedPrice = 5;
-      const fallbackLineItems = [{ productId:null, name:r.item, qty, price:estimatedPrice, unit:r.unit }];
+      const fallbackLineItems = [{ productId:null, name:r.item, qty, price:estimatedPrice, unit:r.unit, tvaRate:5.5 }];
       const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
         method:'POST',
         body:{ supplierId: supplierObj?supplierObj.remoteId:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now) },
@@ -6040,8 +6082,9 @@ function openApproveCustomRequestModal(id){
     </div>
     <div class="field-row">
       <div class="field"><label>Quantité</label><input id="cr-qty" type="number" min="1" step="1" value="1"></div>
-      <div class="field"><label>Prix total estimé (€)</label><input id="cr-price" type="number" step="0.01" value="0"></div>
+      <div class="field"><label>Prix total estimé — HT (€)</label><input id="cr-price" type="number" step="0.01" value="0"></div>
     </div>
+    <div class="field"><label>Taux de TVA</label><select id="cr-tva">${TVA_RATES.map(t=>`<option value="${t.value}" ${t.value===5.5?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>
     <button class="btn btn-primary btn-block" onclick="confirmApproveCustomRequest('${id}')">${iconXs(I.check)} Approuver et commander</button>
   `);
 }
@@ -6051,6 +6094,7 @@ async function confirmApproveCustomRequest(id){
   const supplierId = document.getElementById('cr-supplier').value || null;
   const qty = Math.round(parseFloat(document.getElementById('cr-qty').value)) || 1;
   const price = parseFloat(document.getElementById('cr-price').value) || 0;
+  const tvaRate = parseFloat(document.getElementById('cr-tva').value) || 5.5;
   const now = new Date();
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = supplierId ? SUPPLIERS.find(s=>s.id===supplierId) : null;
@@ -6060,7 +6104,7 @@ async function confirmApproveCustomRequest(id){
       method:'POST',
       body:{
         supplierId: supplierObj?supplierObj.remoteId:null, items: `${escapeHtml(cr.itemName)} × ${qty} (achat personnalisé)`,
-        lineItems: [{name: cr.itemName, qty, price}], amount: Math.round(qty*price*100)/100, status:'validee',
+        lineItems: [{name: cr.itemName, qty, price, tvaRate}], amount: Math.round(qty*price*100)/100, status:'validee',
         orderDate: fmtDateShort(now), isCustom: true,
       },
     });
@@ -6068,7 +6112,7 @@ async function confirmApproveCustomRequest(id){
     ORDERS.unshift({
       id:'CMD-'+nextId(), remoteId: data.order.id, supplier: supplierId,
       items: `${escapeHtml(cr.itemName)} × ${qty} (achat personnalisé)`,
-      lineItems: [{name: cr.itemName, qty, price}],
+      lineItems: [{name: cr.itemName, qty, price, tvaRate}],
       amount: Math.round(qty*price*100)/100, status:'validee', date: fmtDateShort(now), createdAt: now, custom:true
     });
     closeModal();
@@ -6120,7 +6164,12 @@ function openNewProductModal(prefill){
       <div class="small muted" style="margin-top:4px;">Comment vous commandez ce produit : au kilo, au litre, à la pièce, au carton, à la caisse…</div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
-    ${financialsHidden() ? '' : `<div class="field"><label id="np-price-label">Prix par ${initialUnit || 'unité'} (€)</label><input id="np-price" type="number" step="0.01" value="${p ? p.price : '5.00'}"></div>`}
+    ${financialsHidden() ? '' : `
+    <div class="field-row">
+      <div class="field"><label id="np-price-label">Prix par ${initialUnit || 'unité'} — HT (€)</label><input id="np-price" type="number" step="0.01" value="${p ? p.price : '5.00'}"></div>
+      <div class="field"><label>Taux de TVA</label><select id="np-tva">${TVA_RATES.map(t=>`<option value="${t.value}" ${(p ? Math.abs((p.tvaRate??5.5)-t.value)<0.01 : t.value===5.5)?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>
+    </div>
+    `}
     <div class="field">
       <label>Contenu du conditionnement (facultatif)</label>
       <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${escapeHtml(p ? (p.packaging||'') : '')}">
@@ -6260,7 +6309,7 @@ function updatePriceLabel(prefix){
   const label = document.getElementById(prefix+'-price-label');
   if(!unitInput || !label) return;
   const unit = unitInput.value.trim();
-  label.textContent = `Prix par ${unit || 'unité'} (€)`;
+  label.textContent = `Prix par ${unit || 'unité'} — HT (€)`;
 }
 function onNewProductCategoryChange(select){
   if(select.value==='__new__'){
@@ -6301,6 +6350,8 @@ async function addProduct(){
   const supplierReference = document.getElementById('np-reference').value.trim();
   const priceEl = document.getElementById('np-price');
   const price = priceEl ? (parseNum(priceEl.value)||0) : 0;
+  const tvaEl = document.getElementById('np-tva');
+  const tvaRate = tvaEl ? parseFloat(tvaEl.value) : 5.5;
   const supplier = document.getElementById('np-supplier').value;
   const department = document.getElementById('np-department').value;
   const zoneIds = Array.from(document.querySelectorAll('.np-zone-chk:checked')).map(el=>el.value);
@@ -6310,9 +6361,9 @@ async function addProduct(){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
-      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate },
     });
-    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds});
+    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds, tvaRate:parseFloat(data.product.tva_rate)});
     closeModal();
     toast('Produit « '+escapeHtml(name)+' » créé');
     render();
@@ -6331,6 +6382,7 @@ const CSV_COLUMN_ALIASES = {
   category: ['categorie','category'],
   unit: ['unite','unit','uniteDeCommande'.toLowerCase()],
   price: ['prix','price','prixachat','prixdachat'],
+  tva: ['tva','tauxtva','tvarate'],
   qty: ['quantitecommande','qtecommande','quantite','qty','qtycommande'],
   supplier: ['fournisseur','supplier'],
   packaging: ['conditionnement','packaging'],
@@ -6383,6 +6435,15 @@ function mapCSVRowsToProducts(rows){
       category: colIndex.category!=null ? (r[colIndex.category]||'').trim() : '',
       unit: colIndex.unit!=null ? (r[colIndex.unit]||'').trim() : 'unité',
       price: colIndex.price!=null ? (parseNum(r[colIndex.price])||0) : 0,
+      tvaRate: (() => {
+        if(colIndex.tva==null) return 5.5;
+        const parsed = parseNum(r[colIndex.tva]);
+        // On accepte la valeur si elle correspond (à peu près) à l'un des 4 taux français
+        // standards — sinon repli sur 5,5 % plutôt que de bloquer tout l'import pour une
+        // cellule mal saisie.
+        const match = TVA_RATES.find(t=>Number.isFinite(parsed) && Math.abs(t.value-parsed)<0.3);
+        return match ? match.value : 5.5;
+      })(),
       qtyCommande: colIndex.qty!=null ? (parseNum(r[colIndex.qty])||1) : 1,
       supplierName: colIndex.supplier!=null ? (r[colIndex.supplier]||'').trim() : '',
       packaging: colIndex.packaging!=null ? (r[colIndex.packaging]||'').trim() : '',
@@ -6450,7 +6511,7 @@ async function confirmImportProductsCSV(){
         method:'POST',
         body:{
           name:item.name, category:item.category, unit:item.unit||'unité', price:item.price,
-          qtyCommande:item.qtyCommande||1, department:'both',
+          qtyCommande:item.qtyCommande||1, department:'both', tvaRate:item.tvaRate??5.5,
           supplierId: supplierObj?supplierObj.remoteId:null, packaging:item.packaging, supplierReference:item.supplierReference,
         },
       });
@@ -6458,7 +6519,7 @@ async function confirmImportProductsCSV(){
         id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit,
         qtyCommande:parseFloat(data.product.qty_commande), supplier: supplierObj?supplierObj.id:null,
         cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department,
-        packaging:item.packaging, supplierReference:item.supplierReference, zoneIds:[],
+        packaging:item.packaging, supplierReference:item.supplierReference, zoneIds:[], tvaRate:parseFloat(data.product.tva_rate),
       });
       created++;
     } catch(err){
@@ -6484,7 +6545,12 @@ function editProduct(id){
       <div class="small muted" style="margin-top:4px;">Comment vous commandez ce produit : au kilo, au litre, à la pièce, au carton, à la caisse…</div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
-    ${financialsHidden() ? '' : `<div class="field"><label id="ep-price-label">Prix par ${p.unit || 'unité'} (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>`}
+    ${financialsHidden() ? '' : `
+    <div class="field-row">
+      <div class="field"><label id="ep-price-label">Prix par ${p.unit || 'unité'} — HT (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>
+      <div class="field"><label>Taux de TVA</label><select id="ep-tva">${TVA_RATES.map(t=>`<option value="${t.value}" ${Math.abs((p.tvaRate??5.5)-t.value)<0.01?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>
+    </div>
+    `}
     <div class="field">
       <label>Contenu du conditionnement (facultatif)</label>
       <input id="ep-packaging" value="${escapeHtml(p.packaging||'')}" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg">
@@ -6563,6 +6629,8 @@ async function saveProduct(id){
   // un prix négatif (aucun sens pour un prix d'achat), en gardant l'ancien prix dans ce cas.
   const priceParsed = priceEl ? parseNum(priceEl.value) : NaN;
   const price = (Number.isFinite(priceParsed) && priceParsed >= 0) ? priceParsed : p.price;
+  const tvaEl = document.getElementById('ep-tva');
+  const tvaRate = tvaEl ? parseFloat(tvaEl.value) : p.tvaRate;
   const supplier = document.getElementById('ep-supplier').value;
   const department = document.getElementById('ep-department').value;
   const zoneIds = Array.from(document.querySelectorAll('.ep-zone-chk:checked')).map(el=>el.value);
@@ -6572,12 +6640,13 @@ async function saveProduct(id){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
       method:'PATCH',
-      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds },
+      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate },
     });
     p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
     p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
     p.supplier = supplier; p.department = data.product.department;
     p.packaging = packaging; p.supplierReference = supplierReference; p.zoneIds = zoneIds;
+    p.tvaRate = parseFloat(data.product.tva_rate);
     closeModal();
     toast('Produit mis à jour');
     render();
@@ -6711,16 +6780,20 @@ function orderDocLines(o){
       if(!li.productId){
         // ligne d'achat personnalisé (hors catalogue) : nom/prix saisis directement
         const price = li.price || 0;
-        return {name: li.name || o.items, qty: li.qty, unit:'', price, total: Math.round(li.qty*price*100)/100};
+        return {name: li.name || o.items, qty: li.qty, unit:'', price, total: Math.round(li.qty*price*100)/100, tvaRate: li.tvaRate??5.5};
       }
       const p = PRODUCTS.find(x=>x.id===li.productId);
       const name = p ? p.name : o.items;
       const unit = p ? p.unit : '';
       const price = p ? p.price : (li.qty ? o.amount/li.qty : o.amount);
-      return {name, qty:li.qty, unit, price, total:Math.round(li.qty*price*100)/100};
+      // li.tvaRate existe sur toute commande créée depuis l'ajout du suivi TVA ; pour une
+      // commande plus ancienne, on retombe sur le taux actuel du produit, et à défaut 5,5 %
+      // (le taux le plus courant pour des matières premières alimentaires).
+      const tvaRate = li.tvaRate != null ? li.tvaRate : (p ? (p.tvaRate??5.5) : 5.5);
+      return {name, qty:li.qty, unit, price, total:Math.round(li.qty*price*100)/100, tvaRate};
     });
   }
-  return [{name:o.items||'Article', qty:1, unit:'', price:o.amount, total:o.amount}];
+  return [{name:o.items||'Article', qty:1, unit:'', price:o.amount, total:o.amount, tvaRate:5.5}];
 }
 function buildOrderDocumentHTML(o){
   const resto = RESTOS.find(r=>r.id===state.resto) || {name:'—', city:''};
@@ -6732,7 +6805,10 @@ function buildOrderDocumentHTML(o){
   // marchandise reçue, avec un avertissement explicite en bas de page.
   const docType = isDelivered ? 'Bon de commande — réceptionné' : 'Bon de commande';
   const lines = orderDocLines(o);
-  const total = lines.reduce((a,l)=>a+l.total,0);
+  const totalHT = lines.reduce((a,l)=>a+l.total,0);
+  const breakdown = tvaBreakdown(lines.map(l=>({totalHT:l.total, tvaRate:l.tvaRate})));
+  const totalTVA = breakdown.reduce((a,b)=>a+b.tvaAmount,0);
+  const totalTTC = totalHT + totalTVA;
   const when = o.createdAt ? fmtDateLong(new Date(o.createdAt)) + ' à ' + fmtTime(new Date(o.createdAt)) : o.date;
   return `
     <div class="invoice-doc">
@@ -6764,20 +6840,27 @@ function buildOrderDocumentHTML(o){
         </div>
       </div>
       <table class="invoice-table">
-        <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit.</th><th>Total</th>'}</tr></thead>
+        <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit. HT</th><th>TVA</th><th>Total HT</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${(l.price||0).toFixed(2)} €</td><td>${(l.total||0).toFixed(2)} €</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${(l.price||0).toFixed(2)} €</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${(l.total||0).toFixed(2)} €</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
+      <div class="invoice-tva-summary">
+        <div class="invoice-tva-row"><span>Total HT</span><span>${fmtEUR(totalHT)}</span></div>
+        ${breakdown.map(b=>`<div class="invoice-tva-row invoice-tva-row-detail"><span>dont TVA à ${tvaRateLabel(b.rate)} sur ${fmtEUR(b.baseHT)}</span><span>${fmtEUR(b.tvaAmount)}</span></div>`).join('')}
+        <div class="invoice-tva-row"><span>Total TVA</span><span>${fmtEUR(totalTVA)}</span></div>
+      </div>
       <div class="invoice-total-row">
-        <div class="invoice-total-label">Total ${isDelivered?'facturé par le fournisseur':'commandé'}</div>
-        <div class="invoice-total-value">${fmtEUR(total)}</div>
+        <div class="invoice-total-label">Total TTC ${isDelivered?'facturé par le fournisseur':'commandé'}</div>
+        <div class="invoice-total-value">${fmtEUR(totalTTC)}</div>
       </div>`}
       <div class="invoice-legal-note">
         Ce document est un récapitulatif de commande établi par ${escapeHtml(resto.name)} pour son
         suivi interne — il ne constitue pas une facture au sens légal et ne remplace pas la
-        facture officielle émise par le fournisseur, à conserver pour votre comptabilité.
+        facture officielle émise par le fournisseur, à conserver pour votre comptabilité. Les
+        montants de TVA affichés sont calculés à partir des taux renseignés dans le catalogue et
+        fournis à titre indicatif ; seule la facture du fournisseur fait foi.
       </div>
       <div class="invoice-foot">
         <div>${escapeHtml(resto.name)} — ${escapeHtml(resto.city)}</div>
@@ -6804,8 +6887,11 @@ const INVOICE_STANDALONE_CSS = `
   .invoice-table{width:100%;border-collapse:collapse;margin-bottom:18px;}
   .invoice-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;color:#6B6B65;border-bottom:1.5px solid #141414;padding:8px 6px;font-weight:600;}
   .invoice-table td{padding:10px 6px;border-bottom:1px solid #E1E1DA;font-size:13.5px;}
-  .invoice-table th:nth-child(2),.invoice-table td:nth-child(2),.invoice-table th:nth-child(3),.invoice-table td:nth-child(3),.invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
+  .invoice-table th:nth-child(2),.invoice-table td:nth-child(2),.invoice-table th:nth-child(3),.invoice-table td:nth-child(3),.invoice-table th:nth-child(4),.invoice-table td:nth-child(4),.invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
   .invoice-table.history th:nth-child(2),.invoice-table.history td:nth-child(2),.invoice-table.history th:nth-child(3),.invoice-table.history td:nth-child(3){text-align:left;}
+  .invoice-tva-summary{margin-bottom:14px;}
+  .invoice-tva-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;}
+  .invoice-tva-row-detail{color:#6B6B65;font-size:12px;}
   .invoice-total-row{display:flex;justify-content:flex-end;align-items:baseline;gap:14px;border-top:2px solid #141414;padding-top:12px;margin-bottom:20px;}
   .invoice-total-label{font-size:13px;font-weight:600;}
   .invoice-total-value{font-family:'Fraunces',serif;font-size:22px;font-weight:700;}
@@ -6852,7 +6938,13 @@ function buildHistoryDocumentHTML(period){
   const resto = RESTOS.find(r=>r.id===state.resto) || {name:'—', city:''};
   const now = new Date();
   const orders = ordersForPeriod(period).filter(o=>o.status!=='refusee');
-  const total = orders.reduce((a,o)=>a+o.amount,0);
+  const totalHT = orders.reduce((a,o)=>a+o.amount,0);
+  // La ventilation TVA de la période agrège les lignes de TOUTES les commandes, taux par taux —
+  // pas juste la somme des montants, qui ne dirait rien de la répartition entre taux.
+  const allLines = orders.flatMap(o=>orderDocLines(o).map(l=>({totalHT:l.total, tvaRate:l.tvaRate})));
+  const breakdown = tvaBreakdown(allLines);
+  const totalTVA = breakdown.reduce((a,b)=>a+b.tvaAmount,0);
+  const totalTTC = totalHT + totalTVA;
   const periodLabel = period==='year' ? 'Année '+now.getFullYear() : fmtMonthYear(now);
   return `
     <div class="invoice-doc">
@@ -6868,16 +6960,26 @@ function buildHistoryDocumentHTML(period){
         </div>
       </div>
       <table class="invoice-table history">
-        <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th>${financialsHidden()?"":"<th>Montant</th>"}</tr></thead>
+        <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th>${financialsHidden()?"":"<th>Montant HT</th>"}</tr></thead>
         <tbody>
           ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${(o.amount||0).toFixed(2)} €</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
+      <div class="invoice-tva-summary">
+        <div class="invoice-tva-row"><span>Total HT — ${periodLabel}</span><span>${fmtEUR(totalHT)}</span></div>
+        ${breakdown.map(b=>`<div class="invoice-tva-row invoice-tva-row-detail"><span>dont TVA à ${tvaRateLabel(b.rate)} sur ${fmtEUR(b.baseHT)}</span><span>${fmtEUR(b.tvaAmount)}</span></div>`).join('')}
+        <div class="invoice-tva-row"><span>Total TVA</span><span>${fmtEUR(totalTVA)}</span></div>
+      </div>
       <div class="invoice-total-row">
-        <div class="invoice-total-label">Total des achats — ${periodLabel}</div>
-        <div class="invoice-total-value">${fmtEUR(total)}</div>
+        <div class="invoice-total-label">Total TTC — ${periodLabel}</div>
+        <div class="invoice-total-value">${fmtEUR(totalTTC)}</div>
       </div>`}
+      <div class="invoice-legal-note">
+        Récapitulatif interne établi par ${escapeHtml(resto.name)} à partir des bons de commande — les
+        montants de TVA sont calculés à partir des taux renseignés dans le catalogue, à titre
+        indicatif. Seules les factures officielles des fournisseurs font foi pour la comptabilité.
+      </div>
       <div class="invoice-foot">
         <div>${escapeHtml(resto.name)} — ${escapeHtml(resto.city)}</div>
         <div>Document généré automatiquement par Mise &amp; Sûre</div>
@@ -6905,17 +7007,22 @@ function csvEscape(value){
 function downloadOrdersCSV(period){
   const orders = ordersForPeriod(period).filter(o=>o.status!=='refusee');
   const rows = [
-    ['Référence','Fournisseur','Date','Statut','Écart détecté','Montant (€)','Produits commandés'],
+    ['Référence','Fournisseur','Date','Statut','Écart détecté','Montant HT (€)','TVA (€)','Montant TTC (€)','Produits commandés'],
     ...orders.map(o=>{
       const supplier = SUPPLIERS.find(s=>s.id===o.supplier);
       const products = (o.lineItems||[]).map(li=>`${li.name} x${li.qty}`).join('; ') || o.items || '';
+      const lines = orderDocLines(o);
+      const totalHT = lines.reduce((a,l)=>a+l.total,0);
+      const totalTVA = tvaBreakdown(lines.map(l=>({totalHT:l.total, tvaRate:l.tvaRate}))).reduce((a,b)=>a+b.tvaAmount,0);
       return [
         o.id,
         supplier ? supplier.name : '—',
         o.createdAt ? new Date(o.createdAt).toLocaleDateString('fr-FR') : '',
         orderStatusLabel(o.status),
         o.hasDiscrepancy ? 'Oui' : 'Non',
-        (o.amount||0).toFixed(2),
+        totalHT.toFixed(2),
+        totalTVA.toFixed(2),
+        (totalHT+totalTVA).toFixed(2),
         products,
       ];
     }),
@@ -7366,33 +7473,50 @@ function buildOrderPdf(o){
 
   y += 8;
   const hideFin = financialsHidden();
-  const rows = (o.lineItems||[]).map(li=>{
+  const pdfLines = (o.lineItems||[]).map(li=>{
     const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
     const name = p ? p.name : (li.name || 'Article');
     const unit = p ? p.unit : '';
     const price = li.priceReceived != null ? li.priceReceived : (li.price != null ? li.price : (p?p.price:0));
     const qty = li.qtyReceived != null ? li.qtyReceived : li.qty;
-    return hideFin
-      ? [name, `${qty} ${unit}`.trim()]
-      : [name, `${qty} ${unit}`.trim(), `${Number(price).toFixed(2)} €`, `${(Number(qty)*Number(price)).toFixed(2)} €`];
+    const tvaRate = li.tvaRate != null ? li.tvaRate : (p ? (p.tvaRate??5.5) : 5.5);
+    const totalHT = Math.round(Number(qty)*Number(price)*100)/100;
+    return { name, unit, price:Number(price), qty:Number(qty), tvaRate, totalHT };
   });
+  const rows = pdfLines.map(l => hideFin
+    ? [l.name, `${l.qty} ${l.unit}`.trim()]
+    : [l.name, `${l.qty} ${l.unit}`.trim(), `${l.price.toFixed(2)} €`, tvaRateLabel(l.tvaRate), `${l.totalHT.toFixed(2)} €`]
+  );
   doc.autoTable ? doc.autoTable({
     startY: y, margin:{left:marginX,right:15},
-    head: hideFin ? [['Article','Quantité']] : [['Article','Quantité','Prix unitaire','Total']],
+    head: hideFin ? [['Article','Quantité']] : [['Article','Quantité','Prix unit. HT','TVA','Total HT']],
     body: rows,
     styles:{ font:'helvetica', fontSize:10, textColor:[30,30,30] },
     headStyles:{ fillColor:[20,20,20], textColor:255 },
     theme:'grid',
   }) : null;
   if(!hideFin){
-    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : y + 10 + rows.length*8;
-    doc.setFont('helvetica','bold'); doc.setFontSize(12);
-    doc.text(`Total : ${fmtEUR(o.amount)}`, 195, finalY, { align:'right' });
+    const totalHT = pdfLines.reduce((a,l)=>a+l.totalHT,0);
+    const breakdown = tvaBreakdown(pdfLines.map(l=>({totalHT:l.totalHT, tvaRate:l.tvaRate})));
+    const totalTVA = breakdown.reduce((a,b)=>a+b.tvaAmount,0);
+    const totalTTC = totalHT + totalTVA;
+    let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 8 + rows.length*8;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(30,30,30);
+    doc.text(`Total HT : ${fmtEUR(totalHT)}`, 195, finalY, { align:'right' }); finalY += 6;
+    breakdown.forEach(b=>{
+      doc.setFontSize(9); doc.setTextColor(110,110,105);
+      doc.text(`dont TVA à ${tvaRateLabel(b.rate)} sur ${fmtEUR(b.baseHT)} : ${fmtEUR(b.tvaAmount)}`, 195, finalY, { align:'right' });
+      finalY += 5;
+    });
+    doc.setFontSize(10); doc.setTextColor(30,30,30);
+    doc.text(`Total TVA : ${fmtEUR(totalTVA)}`, 195, finalY, { align:'right' }); finalY += 8;
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(20,20,20);
+    doc.text(`Total TTC : ${fmtEUR(totalTTC)}`, 195, finalY, { align:'right' });
   }
 
   const pageHeight = doc.internal.pageSize.getHeight();
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,145);
-  doc.text("Ce document est un bon de commande émis par l'acheteur — il ne constitue pas une facture et ne remplace pas celle émise par le fournisseur.", marginX, pageHeight-12, { maxWidth:180 });
+  doc.text("Ce document est un bon de commande émis par l'acheteur — il ne constitue pas une facture et ne remplace pas celle émise par le fournisseur. Les montants de TVA sont calculés à partir des taux renseignés dans le catalogue, à titre indicatif.", marginX, pageHeight-14, { maxWidth:180 });
 
   return doc;
 }
