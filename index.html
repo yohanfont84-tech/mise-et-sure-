@@ -719,6 +719,12 @@ tr.group-row:hover td{background:var(--gray-100);}
 .tour-progress{font-size:11px;color:var(--muted-2);font-weight:600;white-space:nowrap;}
 .modal-bg.open{display:flex;}
 .modal{background:var(--surface);border-radius:14px;padding:26px;width:460px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:86vh;overflow-y:auto;}
+/* Les documents denses en colonnes (bon de commande, historique, compte-rendu HACCP) ont besoin
+   de plus de largeur que la modale standard — sans ça, un nom un peu long ("Camille") pouvait
+   se retrouver coupé lettre par lettre faute de place, exactement le même problème déjà corrigé
+   sur le tableau produits. .invoice-doc vise déjà 640px de large (voir plus bas) ; on laisse la
+   modale grandir pour l'accueillir plutôt que de l'écraser dans les 460px par défaut. */
+.modal:has(.invoice-doc){width:680px;}
 .modal h3{margin:0 0 4px 0;font-size:18px;}
 .modal .modal-sub{font-size:13px;color:var(--muted);margin-bottom:18px;}
 .modal-close{float:right;background:var(--paper);border:none;border-radius:50%;width:28px;height:28px;color:var(--muted);}
@@ -769,6 +775,14 @@ tr.group-row:hover td{background:var(--gray-100);}
 .invoice-table td{padding:9px 6px;border-bottom:1px solid var(--border);font-size:13px;}
 .invoice-table th:nth-child(2),.invoice-table td:nth-child(2),.invoice-table th:nth-child(3),.invoice-table td:nth-child(3),.invoice-table th:nth-child(4),.invoice-table td:nth-child(4),.invoice-table th:last-child,.invoice-table td:last-child{text-align:right;}
 .invoice-table.history th:nth-child(2),.invoice-table.history td:nth-child(2),.invoice-table.history th:nth-child(3),.invoice-table.history td:nth-child(3){text-align:left;}
+@media(max-width:640px){
+  /* Un document dense en colonnes (compte-rendu HACCP à 6 colonnes, par exemple) ne peut
+     simplement pas tenir sur un écran de moins de 360px sans écraser une colonne au point de
+     couper un nom au milieu — plutôt que de continuer à compresser, on laisse le tableau
+     défiler horizontalement, avec une largeur minimale qui garantit que chaque colonne garde
+     assez de place pour rester lisible. */
+  .invoice-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;min-width:520px;white-space:nowrap;}
+}
 .invoice-tva-summary{margin-bottom:12px;}
 .invoice-tva-row{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;}
 .invoice-tva-row-detail{color:var(--muted);font-size:11.5px;}
@@ -3038,9 +3052,15 @@ function viewHaccp(role){
     <div class="section-head" style="margin-top:0;">
       <div><h2>Suivi HACCP</h2><div class="sub">Températures et nettoyage — la trace à garder en cas de contrôle sanitaire</div></div>
     </div>
-    <div class="flex gap8" style="margin-bottom:22px;">
-      <button class="btn ${tab==='temperatures'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('temperatures')">${iconXs(I.thermometer)} Températures</button>
-      <button class="btn ${tab==='nettoyage'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('nettoyage')">${iconXs(I.check)} Nettoyage</button>
+    <div class="flex between center" style="margin-bottom:22px;flex-wrap:wrap;gap:12px;">
+      <div class="flex gap8">
+        <button class="btn ${tab==='temperatures'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('temperatures')">${iconXs(I.thermometer)} Températures</button>
+        <button class="btn ${tab==='nettoyage'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('nettoyage')">${iconXs(I.check)} Nettoyage</button>
+      </div>
+      <div class="flex gap8">
+        <button class="btn btn-ghost btn-sm" onclick="openHaccpReportModal('month')">${iconXs(I.download)} Compte-rendu — ce mois</button>
+        <button class="btn btn-ghost btn-sm" onclick="openHaccpReportModal('year')">${iconXs(I.download)} Compte-rendu — cette année</button>
+      </div>
     </div>
     ${tab==='temperatures' ? viewHaccpTemperatures(role) : viewHaccpNettoyage(role)}
   `;
@@ -3048,6 +3068,25 @@ function viewHaccp(role){
 function setHaccpTab(tab){ state.haccpTab = tab; render(); }
 const CAN_CONFIGURE_HACCP_ROLES = ['patron','manager'];
 
+function haccpTempLogsToday(equipmentId){
+  const todayStart = haccpPeriodStart('quotidien');
+  return HACCP_TEMP_LOGS.filter(l=>l.equipmentId===equipmentId && l.createdAt>=todayStart).sort((a,b)=>b.createdAt-a.createdAt);
+}
+function haccpTempTodayNoticeHTML(equipmentId){
+  const todayLogs = haccpTempLogsToday(equipmentId);
+  if(!todayLogs.length) return '';
+  const last = todayLogs[0];
+  const plural = todayLogs.length>1 ? `${todayLogs.length} relevés déjà faits aujourd'hui` : `Déjà relevé aujourd'hui`;
+  return `<div class="small" style="margin-top:-6px;margin-bottom:14px;color:${last.inRange?'#6B6B65':'#A93A2E'};">
+    ${iconXs(last.inRange?I.check:I.alertTriangle)} ${plural} — dernier à ${fmtTime(last.createdAt)} (${last.temperature}°C) par ${escapeHtml(last.loggedByName||'—')}
+  </div>`;
+}
+function updateHaccpTempTodayNotice(){
+  const select = document.getElementById('haccp-temp-equipment');
+  const notice = document.getElementById('haccp-temp-today-notice');
+  if(!select || !notice) return;
+  notice.innerHTML = haccpTempTodayNoticeHTML(select.value);
+}
 function viewHaccpTemperatures(role){
   const canConfigure = CAN_CONFIGURE_HACCP_ROLES.includes(role);
   const recentLogs = [...HACCP_TEMP_LOGS].sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
@@ -3057,12 +3096,13 @@ function viewHaccpTemperatures(role){
       <div class="card-title">Relever une température</div>
       <div class="field-row">
         <div class="field"><label>Équipement</label>
-          <select id="haccp-temp-equipment">
+          <select id="haccp-temp-equipment" onchange="updateHaccpTempTodayNotice()">
             ${HACCP_EQUIPMENT.map(e=>`<option value="${e.id}">${escapeHtml(e.name)} (${e.minTemp}° à ${e.maxTemp}°)</option>`).join('')}
           </select>
         </div>
         <div class="field"><label>Température relevée (°C)</label><input id="haccp-temp-value" type="number" step="0.1" placeholder="4.0"></div>
       </div>
+      <div id="haccp-temp-today-notice">${haccpTempTodayNoticeHTML(HACCP_EQUIPMENT[0].id)}</div>
       <div class="field"><label>Note (facultatif)</label><input id="haccp-temp-note" placeholder="Ex : porte restée ouverte pendant le service"></div>
       <button class="btn btn-primary" onclick="submitHaccpTemperatureLog()">Enregistrer le relevé</button>
     </div>
@@ -7003,6 +7043,103 @@ function csvEscape(value){
   // guillemets, et les guillemets internes doublés — sinon le fichier s'ouvre mal dans Excel.
   if(/[",\n]/.test(str)) return '"' + str.replace(/"/g,'""') + '"';
   return str;
+}
+// ============================================================
+// COMPTE-RENDU HACCP — un document téléchargeable (mois ou année en cours), pensé comme une
+// preuve à présenter en cas de contrôle sanitaire : tous les relevés de température et tout le
+// nettoyage enregistré sur la période, avec les non-conformités mises en évidence plutôt que
+// noyées dans la liste — c'est précisément ce qu'un contrôleur cherche en premier.
+// ============================================================
+function haccpLogsForPeriod(period, logs){
+  const now = new Date();
+  return logs.filter(l=>{
+    if(!l.createdAt) return false;
+    const d = new Date(l.createdAt);
+    if(period==='year') return d.getFullYear()===now.getFullYear();
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  });
+}
+function buildHaccpReportHTML(period){
+  const resto = RESTOS.find(r=>r.id===state.resto) || {name:'—', city:''};
+  const now = new Date();
+  const periodLabel = period==='year' ? 'Année '+now.getFullYear() : fmtMonthYear(now);
+  const tempLogs = [...haccpLogsForPeriod(period, HACCP_TEMP_LOGS)].sort((a,b)=>a.createdAt-b.createdAt);
+  const cleaningLogs = [...haccpLogsForPeriod(period, HACCP_CLEANING_LOGS)].sort((a,b)=>a.createdAt-b.createdAt);
+  const anomalies = tempLogs.filter(l=>!l.inRange);
+  return `
+    <div class="invoice-doc">
+      <div class="invoice-head">
+        <div>
+          <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
+          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
+        </div>
+        <div class="invoice-doctype">
+          <div class="invoice-doctype-label">Compte-rendu HACCP</div>
+          <div class="invoice-ref">${periodLabel}</div>
+        </div>
+      </div>
+
+      <div class="invoice-meta-row">
+        <div><div class="invoice-meta-label">Relevés de température</div><div class="invoice-meta-value">${tempLogs.length}</div></div>
+        <div><div class="invoice-meta-label">Non conformes</div><div class="invoice-meta-value" style="${anomalies.length?'color:#A93A2E;':''}">${anomalies.length}</div></div>
+        <div><div class="invoice-meta-label">Nettoyages enregistrés</div><div class="invoice-meta-value">${cleaningLogs.length}</div></div>
+      </div>
+
+      ${anomalies.length ? `
+      <div class="invoice-legal-note" style="background:#F3E2DE;border-color:#e0b8ae;color:#7a2e24;">
+        <strong>${anomalies.length} relevé${anomalies.length>1?'s':''} hors seuils sur la période</strong> — voir le détail ci-dessous, lignes signalées.
+      </div>` : ''}
+
+      <h3 style="font-family:var(--heading-font);font-size:15px;margin:18px 0 8px 0;">Relevés de température</h3>
+      ${tempLogs.length ? `<table class="invoice-table history">
+        <thead><tr><th>Date</th><th>Équipement</th><th>Relevé</th><th>Seuils</th><th>Statut</th><th>Par</th></tr></thead>
+        <tbody>
+          ${tempLogs.map(l=>`<tr style="${!l.inRange?'background:#F3E2DE;':''}">
+            <td>${fmtDateLong(l.createdAt)} ${fmtTime(l.createdAt)}</td>
+            <td>${escapeHtml(l.equipmentName)}</td>
+            <td>${l.temperature}°C</td>
+            <td>${l.minTemp}° à ${l.maxTemp}°</td>
+            <td>${l.inRange ? 'Conforme' : 'Hors seuils'}</td>
+            <td>${escapeHtml(l.loggedByName||'—')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : `<div class="small muted" style="margin-bottom:16px;">Aucun relevé sur cette période.</div>`}
+
+      <h3 style="font-family:var(--heading-font);font-size:15px;margin:18px 0 8px 0;">Nettoyage</h3>
+      ${cleaningLogs.length ? `<table class="invoice-table history">
+        <thead><tr><th>Date</th><th>Tâche</th><th>Fréquence</th><th>Fait par</th></tr></thead>
+        <tbody>
+          ${cleaningLogs.map(l=>`<tr>
+            <td>${fmtDateLong(l.createdAt)} ${fmtTime(l.createdAt)}</td>
+            <td>${escapeHtml(l.taskName)}</td>
+            <td>${l.frequency==='quotidien'?'Quotidien':l.frequency==='hebdomadaire'?'Hebdomadaire':'Mensuel'}</td>
+            <td>${escapeHtml(l.doneByName||'—')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : `<div class="small muted" style="margin-bottom:16px;">Aucun nettoyage enregistré sur cette période.</div>`}
+
+      <div class="invoice-legal-note">
+        Document généré automatiquement à partir des relevés saisis dans Mise &amp; Sûre par
+        ${escapeHtml(resto.name)} — à conserver comme preuve de suivi dans le cadre de votre
+        Plan de Maîtrise Sanitaire (PMS).
+      </div>
+      <div class="invoice-foot">
+        <div>${escapeHtml(resto.name)} — ${escapeHtml(resto.city)}</div>
+        <div>Document généré automatiquement par Mise &amp; Sûre</div>
+      </div>
+    </div>
+  `;
+}
+function openHaccpReportModal(period){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    ${buildHaccpReportHTML(period)}
+    <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="downloadHaccpReport('${period}')">${iconSm(I.download)} Télécharger le compte-rendu</button>
+  `);
+}
+function downloadHaccpReport(period){
+  downloadHtmlFile('compte-rendu-haccp-'+period+'.html', buildHaccpReportHTML(period));
 }
 function downloadOrdersCSV(period){
   const orders = ordersForPeriod(period).filter(o=>o.status!=='refusee');
