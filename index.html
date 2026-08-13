@@ -1477,6 +1477,7 @@ const NAV = {
     {id:'accueil', label:'Accueil salle', icon:I.tray},
     {id:'signaler', label:'Signaler un manque', icon:I.warn},
     {id:'stocks', label:'Catalogue', icon:I.doc},
+    {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
     {id:'demandes', label:'Mes demandes', icon:I.clock},
     {id:'notifications', label:'Notifications', icon:I.mail},
     {id:'aide', label:'Aide', icon:I.help},
@@ -5675,7 +5676,10 @@ function viewDemandesList(role){
 ============================================================ */
 function viewSalleAccueil(){
   const mine = REQUESTS.filter(r=>r.from==='Salle');
+  const restoForTile = RESTOS.find(r=>r.id===state.resto);
+  const showHaccpTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
   return `
+    ${haccpDashboardReminderHTML()}
     <div class="tile-grid" style="margin-bottom:22px;">
       <button class="tile urgent-tile" onclick="openSignalModal('Salle', true)">
         <div class="tile-icon">${I.warn}</div>
@@ -5697,6 +5701,12 @@ function viewSalleAccueil(){
         <div class="tile-label">Achat personnalisé</div>
         <div class="tile-sub">Proposer au patron</div>
       </button>
+      ${showHaccpTile ? `
+      <button class="tile" onclick="openQuickHaccpTempModal()">
+        <div class="tile-icon">${I.thermometer}</div>
+        <div class="tile-label">Relever une température</div>
+        <div class="tile-sub">Un geste, sans quitter l'accueil</div>
+      </button>` : ''}
     </div>
     <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
     <div class="rail">${mine.slice(0,5).map(r=>ticketDemande(r,'salle')).join('') || emptyState('Aucune demande envoyée')}</div>
@@ -7731,6 +7741,7 @@ function renderContent(){
     if(!restoForHaccp || !restoForHaccp.haccpEnabled){
       if(role==='manager') return viewManagerDashboard();
       if(role==='cuisine') return viewCuisineAccueil();
+      if(role==='salle') return viewSalleAccueil();
       return viewPatronDashboard();
     }
     return viewHaccp(role);
