@@ -2441,6 +2441,16 @@ function spendByCategoryData(){
   });
   return Object.entries(map).map(([label,value])=>({label, value:Math.round(value*100)/100})).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);
 }
+// Ancienneté réelle de l'activité (en jours), à partir de la commande la plus ancienne — sert
+// à adapter les fenêtres d'affichage plutôt que d'imposer 8 semaines ou 3 mois fixes à un
+// établissement qui vient tout juste de commencer, ce qui ne montrerait qu'une poignée de
+// barres remplies au milieu d'un graphique presque entièrement vide.
+function restaurantActivityDaysSpan(){
+  const validOrders = ORDERS.filter(o=>o.status!=='refusee' && o.createdAt);
+  if(!validOrders.length) return 0;
+  const earliest = validOrders.reduce((min,o)=> o.createdAt<min ? o.createdAt : min, validOrders[0].createdAt);
+  return Math.max(0, Math.floor((new Date() - new Date(earliest)) / (1000*60*60*24)));
+}
 function monthlyTrendData(monthsBack){
   monthsBack = monthsBack || 6;
   const now = new Date();
@@ -2457,10 +2467,9 @@ function monthlyTrendData(monthsBack){
     return { label: m.label, value: Math.round(total*100)/100 };
   });
 }
-// Semaine par semaine, sur les 8 dernières semaines — la vue la plus "en direct" : pour un
-// établissement qui vient de démarrer sur le site, une vue par mois n'affiche qu'une seule
-// barre remplie (le reste vide, avant même l'inscription) alors qu'une vue par semaine montre
-// déjà une vraie évolution après seulement deux ou trois semaines d'usage.
+// Semaine par semaine, sur les 8 dernières semaines au maximum — mais réduit automatiquement
+// si l'établissement a commencé à commander plus récemment que ça, pour ne pas imposer 8
+// colonnes dont la moitié n'a jamais pu être remplie faute d'avoir existé sur le site.
 function weeklyTrendData(weeksBack){
   weeksBack = weeksBack || 8;
   const now = new Date();
@@ -2493,6 +2502,24 @@ function yearlyTrendData(yearsBack){
     }).reduce((sum,o)=>sum+(o.amount||0),0);
     return { label: String(y), value: Math.round(total*100)/100 };
   });
+}
+// Calcule, pour la période choisie (semaine/mois/année), la taille de fenêtre adaptée à
+// l'ancienneté réelle de l'activité — jamais plus que le maximum habituel (8/3/5), mais réduite
+// si l'établissement a commencé à commander plus récemment, pour ne jamais imposer des colonnes
+// vides datant d'avant l'ouverture du compte. Toujours au moins 1, même pour un tout nouveau
+// compte sans aucune commande.
+function adaptiveTrendWindow(trendPeriod){
+  const daysActive = restaurantActivityDaysSpan();
+  if(trendPeriod==='annee'){
+    const yearsActive = Math.floor(daysActive/365) + 1;
+    return Math.max(1, Math.min(5, yearsActive));
+  }
+  if(trendPeriod==='mois'){
+    const monthsActive = Math.floor(daysActive/30) + 1;
+    return Math.max(1, Math.min(3, monthsActive));
+  }
+  const weeksActive = Math.floor(daysActive/7) + 1;
+  return Math.max(1, Math.min(8, weeksActive));
 }
 function totalSpendThisMonth(){
   const now = new Date();
@@ -2579,7 +2606,12 @@ function viewStats(){
     </div>` : ''}
     <div class="card">
       <div class="flex between center" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;">
-        <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${trendPeriod==='semaine' ? '(8 dernières semaines)' : trendPeriod==='mois' ? '(3 derniers mois)' : '(5 dernières années)'}</div>
+        <div class="card-title" style="margin-bottom:0;">Évolution des dépenses ${(() => {
+          const w = adaptiveTrendWindow(trendPeriod);
+          if(trendPeriod==='semaine') return `(${w} dernière${w>1?'s':''} semaine${w>1?'s':''})`;
+          if(trendPeriod==='mois') return `(${w} dernier${w>1?'s':''} mois)`;
+          return `(${w} dernière${w>1?'s':''} année${w>1?'s':''})`;
+        })()}</div>
         <div class="pill-nav" style="margin:0;">
           <button class="${trendPeriod==='semaine'?'active':''}" onclick="setStatsTrendPeriod('semaine')">Par semaine</button>
           <button class="${trendPeriod==='mois'?'active':''}" onclick="setStatsTrendPeriod('mois')">Par mois</button>
@@ -4189,7 +4221,7 @@ async function syncCategoriesFromServer(localId){
     const d = ensureRestoData(localId);
     d.categories = data.categories.map(c => ({ id:'cat'+c.id, remoteId:c.id, name:c.name }));
     if(state.resto === localId) CATEGORIES = d.categories;
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncCategoriesFromServer —', err); }
 }
 async function syncZonesFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
@@ -4199,7 +4231,7 @@ async function syncZonesFromServer(localId){
     const d = ensureRestoData(localId);
     d.zones = data.zones.map(z => ({ id:'zone'+z.id, remoteId:z.id, name:z.name }));
     if(state.resto === localId) ZONES = d.zones;
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncZonesFromServer —', err); }
 }
 async function syncSuppliersFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
@@ -4262,7 +4294,7 @@ async function syncOrdersFromServer(localId){
       };
     });
     if(state.resto === localId) ORDERS = d.orders;
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncOrdersFromServer —', err); }
 }
 // ============================================================
 // MODULE HACCP — synchronisation des 4 types de données (équipements, relevés de température,
@@ -4279,7 +4311,7 @@ async function syncHaccpFromServer(localId){
     d.haccpEquipment = eqData.equipment.map(e => ({
       id:'eq'+e.id, remoteId:e.id, name:e.name, minTemp:parseFloat(e.min_temp), maxTemp:parseFloat(e.max_temp),
     }));
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncHaccpFromServer —', err); }
   try{
     const tempData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/temperature-logs`);
     d.haccpTempLogs = tempData.temperatureLogs.map(l => ({
@@ -4287,20 +4319,20 @@ async function syncHaccpFromServer(localId){
       minTemp:parseFloat(l.min_temp), maxTemp:parseFloat(l.max_temp), temperature:parseFloat(l.temperature),
       inRange:l.in_range, note:l.note, loggedByName:l.logged_by_name, createdAt:new Date(l.created_at),
     }));
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncHaccpFromServer —', err); }
   try{
     const taskData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-tasks`);
     d.haccpCleaningTasks = taskData.cleaningTasks.map(t => ({
       id:'ct'+t.id, remoteId:t.id, name:t.name, frequency:t.frequency, moment:t.moment||'journee',
     }));
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncHaccpFromServer —', err); }
   try{
     const logData = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/cleaning-logs`);
     d.haccpCleaningLogs = logData.cleaningLogs.map(l => ({
       id:'cl'+l.id, remoteId:l.id, taskId:'ct'+l.task_id, taskName:l.task_name, frequency:l.frequency,
       doneByName:l.done_by_name, createdAt:new Date(l.created_at),
     }));
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncHaccpFromServer —', err); }
   if(state.resto === localId){
     HACCP_EQUIPMENT = d.haccpEquipment;
     HACCP_TEMP_LOGS = d.haccpTempLogs;
@@ -4321,7 +4353,7 @@ async function syncRequestsFromServer(localId){
       createdByMemberId: r.created_by_member_id,
     }));
     if(state.resto === localId) REQUESTS = d.requests;
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRequestsFromServer —', err); }
 }
 async function syncCustomRequestsFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
@@ -4334,7 +4366,7 @@ async function syncCustomRequestsFromServer(localId){
       note: cr.note, status: cr.status, time: fmtTime(new Date(cr.created_at)), createdAt: new Date(cr.created_at),
     }));
     if(state.resto === localId) CUSTOM_REQUESTS = d.customRequests;
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncCustomRequestsFromServer —', err); }
 }
 async function manualRefresh(){
   toast('Actualisation…');
@@ -4357,7 +4389,7 @@ async function syncBasketsFromServer(localId){
     });
     d.baskets = newBaskets;
     if(state.resto === localId) BASKETS = d.baskets;
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncBasketsFromServer —', err); }
 }
 async function syncRestaurantInfoFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
@@ -4382,7 +4414,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.siret = data.restaurant.siret;
     resto.haccpEnabled = data.restaurant.haccp_enabled;
     applyAppearance(resto);
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRestaurantInfoFromServer —', err); }
 }
 async function syncNotificationSettingsFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
@@ -4394,7 +4426,7 @@ async function syncNotificationSettingsFromServer(localId){
         NOTIF_STATE[role] = { ...NOTIF_STATE[role], ...data.notificationSettings[role] };
       }
     });
-  } catch(err){}
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncNotificationSettingsFromServer —', err); }
 }
 async function syncRestoOperationalData(localId){
   // Les fournisseurs et les lieux/zones doivent être rechargés AVANT les produits, puisque
@@ -8027,7 +8059,8 @@ function drawCharts(retriesLeft){
     const trendCanvas = document.getElementById('chartMonthlyTrend');
     if(!trendCanvas) return;
     const trendPeriod = ensureStatsTrendPeriod();
-    const data = trendPeriod==='annee' ? yearlyTrendData(5) : trendPeriod==='mois' ? monthlyTrendData(3) : weeklyTrendData(8);
+    const trendWindow = adaptiveTrendWindow(trendPeriod);
+    const data = trendPeriod==='annee' ? yearlyTrendData(trendWindow) : trendPeriod==='mois' ? monthlyTrendData(trendWindow) : weeklyTrendData(trendWindow);
     charts.trend = new Chart(trendCanvas, {
       type:'line',
       data:{
