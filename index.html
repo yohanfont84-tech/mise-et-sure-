@@ -766,7 +766,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .invoice-doctype{text-align:right;}
 .invoice-doctype-label{font-family:var(--heading-font);font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;}
 .invoice-ref{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin-top:2px;}
-.invoice-meta-row{display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;}
+.invoice-meta-row{display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap;}
 .invoice-meta-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted-2);font-weight:600;margin-bottom:3px;}
 .invoice-meta-value{font-size:13px;font-weight:600;}
 .invoice-meta-sub{font-size:11.5px;color:var(--muted);}
@@ -2696,6 +2696,7 @@ function viewPatronDashboard(){
 
   return `
     ${onboardingChecklist()}
+    ${haccpDashboardReminderHTML()}
     <div class="grid grid-4">
       <div class="card kpi">
         <div class="kpi-icon">${I.invoice}</div>
@@ -3137,14 +3138,17 @@ function viewHaccpTemperatures(role){
       ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="openAddHaccpEquipmentModal()">${iconXs(I.plus)} Ajouter un équipement</button>` : ''}
     </div>
     ${HACCP_EQUIPMENT.length ? HACCP_EQUIPMENT.map(e=>{
-      const logs = HACCP_TEMP_LOGS.filter(l=>l.equipmentId===e.id).sort((a,b)=>b.createdAt-a.createdAt).slice(0,30);
+      const allLogs = HACCP_TEMP_LOGS.filter(l=>l.equipmentId===e.id);
+      const logs = [...allLogs].sort((a,b)=>b.createdAt-a.createdAt).slice(0,30);
       const anomalyCount = logs.filter(l=>!l.inRange).length;
+      const completion = haccpCompletionRate(allLogs, 'createdAt');
       return `
       <div class="card" style="margin-bottom:16px;">
         <div class="flex between center" style="margin-bottom:12px;">
           <div>
             <div style="font-weight:600;">${escapeHtml(e.name)}</div>
             <div class="small muted">Seuils ${e.minTemp}° à ${e.maxTemp}° · ${logs.length} relevé${logs.length>1?'s':''}${anomalyCount ? ` · ${anomalyCount} hors seuils` : ''}</div>
+            <div class="small muted" title="Nombre de jours avec au moins un relevé, sur les 30 derniers jours — un repère honnête, pas un objectif à atteindre à tout prix.">${completion.daysCovered}/${completion.days} jours avec un relevé sur le dernier mois (${completion.pct} %)</div>
           </div>
           ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpEquipment('${e.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
         </div>
@@ -3178,6 +3182,47 @@ function haccpPeriodStart(frequency){
 function haccpTaskDoneInCurrentPeriod(task){
   const periodStart = haccpPeriodStart(task.frequency);
   return HACCP_CLEANING_LOGS.filter(l=>l.taskId===task.id && l.createdAt>=periodStart).sort((a,b)=>b.createdAt-a.createdAt)[0] || null;
+}
+// ============================================================
+// STATUT DU JOUR — pour le rappel sur les tableaux de bord. Ne dit jamais "vous avez raté vos
+// relevés", seulement "il en reste X à faire aujourd'hui" — un rappel utile, pas un reproche.
+// Voir la discussion : jamais de donnée inventée pour combler un trou, seulement des rappels
+// pour aider à ne pas en avoir besoin.
+// ============================================================
+function haccpTodayStatus(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto || !resto.haccpEnabled) return null;
+  const missingEquipment = HACCP_EQUIPMENT.filter(e=>haccpTempLogsToday(e.id).length===0);
+  const dueTasks = HACCP_CLEANING_TASKS.filter(t=>t.frequency==='quotidien' && !haccpTaskDoneInCurrentPeriod(t));
+  const totalMissing = missingEquipment.length + dueTasks.length;
+  if(totalMissing===0) return null; // rien à rappeler : soit tout est fait, soit rien n'est configuré
+  return { missingEquipment, dueTasks, totalMissing };
+}
+function haccpDashboardReminderHTML(){
+  const status = haccpTodayStatus();
+  if(!status) return '';
+  const parts = [];
+  if(status.missingEquipment.length) parts.push(`${status.missingEquipment.length} température${status.missingEquipment.length>1?'s':''} à relever`);
+  if(status.dueTasks.length) parts.push(`${status.dueTasks.length} nettoyage${status.dueTasks.length>1?'s':''} du jour`);
+  return `
+    <div class="card" style="margin-bottom:18px;border:1.5px solid var(--border);background:var(--paper);">
+      <div class="flex center gap8" style="margin-bottom:4px;">
+        ${iconSm(I.thermometer)}
+        <div class="card-title" style="margin-bottom:0;">Suivi HACCP du jour</div>
+      </div>
+      <div class="small muted" style="margin-bottom:12px;">Encore ${parts.join(' et ')} — deux minutes, quand vous avez un instant.</div>
+      <button class="btn btn-primary btn-sm" onclick="setView('haccp')">${iconXs(I.check)} Faire les relevés</button>
+    </div>
+  `;
+}
+// Taux de complétion honnête sur les 30 derniers jours, plutôt qu'un historique qui pourrait
+// sembler flatteur ou trafiqué s'il n'a jamais un seul trou — voir la discussion à ce sujet.
+function haccpCompletionRate(logs, dateField){
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()-29);
+  const relevantLogs = logs.filter(l=>l[dateField]>=start);
+  const daysWithLog = new Set(relevantLogs.map(l=>{ const d=new Date(l[dateField]); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }));
+  return { days: 30, daysCovered: daysWithLog.size, pct: Math.round((daysWithLog.size/30)*100) };
 }
 function haccpMomentLabel(moment){
   if(moment==='avant_service') return 'Avant service';
@@ -3279,8 +3324,25 @@ async function submitHaccpTemperatureLog(){
       createdAt:new Date(data.temperatureLog.created_at),
     });
     toast(data.temperatureLog.in_range ? 'Relevé enregistré — conforme' : 'Relevé enregistré — hors seuils, à surveiller', data.temperatureLog.in_range ? undefined : 'alert');
+    closeModal();
     render();
   } catch(err){ toast(err.message, 'alert'); }
+}
+function openQuickHaccpTempModal(){
+  if(!HACCP_EQUIPMENT.length){ toast('Aucun équipement configuré pour le moment', 'alert'); return; }
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Relever une température</h3>
+    <div class="field"><label>Équipement</label>
+      <select id="haccp-temp-equipment" onchange="updateHaccpTempTodayNotice()">
+        ${HACCP_EQUIPMENT.map(e=>`<option value="${e.id}">${escapeHtml(e.name)} (${e.minTemp}° à ${e.maxTemp}°)</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Température relevée (°C)</label><input id="haccp-temp-value" type="number" step="0.1" placeholder="4.0" autofocus></div>
+    <div id="haccp-temp-today-notice">${haccpTempTodayNoticeHTML(HACCP_EQUIPMENT[0].id)}</div>
+    <div class="field"><label>Note (facultatif)</label><input id="haccp-temp-note" placeholder="Ex : porte restée ouverte pendant le service"></div>
+    <button class="btn btn-primary btn-block" onclick="submitHaccpTemperatureLog()">Enregistrer le relevé</button>
+  `);
 }
 function openAddHaccpCleaningTaskModal(){
   openModal(`
@@ -5449,6 +5511,7 @@ function viewManagerDashboard(){
   const salleAttente = REQUESTS.filter(r=>r.status==='attente' && r.from==='Salle');
   const myCustom = CUSTOM_REQUESTS.filter(cr=>cr.from==='Manager');
   return `
+    ${haccpDashboardReminderHTML()}
     <div class="grid grid-4">
       <div class="card kpi"><div class="kpi-icon strong">${I.bell}</div><div class="card-title">Demandes de la salle</div><div class="val">${salleAttente.length}</div><div class="delta bad">dont ${salleAttente.filter(r=>r.urgent).length} urgentes</div></div>
       <div class="card kpi"><div class="kpi-icon">${I.cart}</div><div class="card-title">Commandes à préparer</div><div class="val">${ORDERS.filter(o=>o.status==='en_attente_validation').length}</div><div class="delta good">prêtes à envoyer au patron</div></div>
@@ -5531,7 +5594,10 @@ function viewLivraisons(){
 ============================================================ */
 function viewCuisineAccueil(){
   const mine = REQUESTS.filter(r=>r.from==='Cuisine');
+  const restoForTile = RESTOS.find(r=>r.id===state.resto);
+  const showHaccpTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
   return `
+    ${haccpDashboardReminderHTML()}
     <div class="tile-grid" style="margin-bottom:22px;">
       <button class="tile urgent-tile" onclick="openSignalModal('Cuisine', true)">
         <div class="tile-icon">${I.warn}</div>
@@ -5553,6 +5619,12 @@ function viewCuisineAccueil(){
         <div class="tile-label">Achat personnalisé</div>
         <div class="tile-sub">Proposer au patron</div>
       </button>
+      ${showHaccpTile ? `
+      <button class="tile" onclick="openQuickHaccpTempModal()">
+        <div class="tile-icon">${I.thermometer}</div>
+        <div class="tile-label">Relever une température</div>
+        <div class="tile-sub">Un geste, sans quitter l'accueil</div>
+      </button>` : ''}
     </div>
     <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
     <div class="rail">
@@ -7183,6 +7255,12 @@ function buildHaccpReportHTML(period){
   const tempLogs = [...haccpLogsForPeriod(period, HACCP_TEMP_LOGS)].sort((a,b)=>a.createdAt-b.createdAt);
   const cleaningLogs = [...haccpLogsForPeriod(period, HACCP_CLEANING_LOGS)].sort((a,b)=>a.createdAt-b.createdAt);
   const anomalies = tempLogs.filter(l=>!l.inRange);
+  // Jours avec au moins un relevé de température, sur les jours écoulés de la période — un
+  // indicateur honnête plutôt qu'un simple total de relevés (qui ne dit rien de la régularité).
+  const periodStart = period==='year' ? new Date(now.getFullYear(),0,1) : new Date(now.getFullYear(),now.getMonth(),1);
+  const daysElapsed = Math.floor((now - periodStart)/(1000*60*60*24)) + 1;
+  const daysWithTempLog = new Set(tempLogs.map(l=>{ const d=new Date(l.createdAt); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; })).size;
+  const coveragePct = daysElapsed>0 ? Math.round((daysWithTempLog/daysElapsed)*100) : 0;
   return `
     <div class="invoice-doc">
       <div class="invoice-head">
@@ -7200,6 +7278,7 @@ function buildHaccpReportHTML(period){
       <div class="invoice-meta-row">
         <div><div class="invoice-meta-label">Relevés de température</div><div class="invoice-meta-value">${tempLogs.length}</div></div>
         <div><div class="invoice-meta-label">Non conformes</div><div class="invoice-meta-value" style="${anomalies.length?'color:#A93A2E;':''}">${anomalies.length}</div></div>
+        <div><div class="invoice-meta-label">Jours couverts</div><div class="invoice-meta-value">${daysWithTempLog}/${daysElapsed} (${coveragePct} %)</div></div>
         <div><div class="invoice-meta-label">Nettoyages enregistrés</div><div class="invoice-meta-value">${cleaningLogs.length}</div></div>
       </div>
 
