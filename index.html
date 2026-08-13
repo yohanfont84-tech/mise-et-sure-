@@ -4509,8 +4509,11 @@ function viewParametres(){
       </div>
       <div class="card">
         <div class="card-title">Vos données</div>
-        <div class="small muted" style="margin-bottom:14px;">Le site l'annonce sur la page tarifs : vos données vous appartiennent, exportables à tout moment. Ce bouton télécharge tout ce qui concerne cet établissement — produits, fournisseurs, catégories, lieux, équipe (hors mots de passe), historique des commandes — dans un seul fichier que vous pouvez rouvrir dans un tableur ou garder de côté.</div>
-        <button class="btn btn-ghost" onclick="exportAllRestaurantData()">${iconSm(I.doc)} Exporter toutes les données de cet établissement</button>
+        <div class="small muted" style="margin-bottom:14px;">Le site l'annonce sur la page tarifs : vos données vous appartiennent, exportables à tout moment. Deux formats au choix — un document lisible à garder ou imprimer, ou un fichier technique si vous voulez les réimporter ailleurs.</div>
+        <div class="flex gap8" style="flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="openDataExportPreviewModal()">${iconSm(I.doc)} Document visuel</button>
+          <button class="btn btn-ghost" onclick="exportAllRestaurantData()">${iconSm(I.download)} Export technique (JSON)</button>
+        </div>
       </div>
       <div class="card">
         <div class="card-title">Suivi HACCP</div>
@@ -4905,10 +4908,8 @@ async function toggleHaccpEnabled(checked){
 // côté site pour l'établissement courant, donc aucun aller-retour serveur n'est nécessaire :
 // on sérialise directement en JSON, lisible par n'importe qui (même hors tableur) et
 // ré-important à la main si besoin un jour de changer d'outil.
-function exportAllRestaurantData(){
-  const resto = RESTOS.find(r=>r.id===state.resto);
-  if(!resto) return;
-  const data = {
+function gatherAllRestaurantData(resto){
+  return {
     exporte_le: new Date().toISOString(),
     etablissement: { nom: resto.name, adresse: resto.address||null, code_postal: resto.postalCode||null, ville: resto.city||null, siret: resto.siret||null, devise: resto.currency },
     produits: PRODUCTS.map(p => ({
@@ -4933,6 +4934,11 @@ function exportAllRestaurantData(){
       contenu: o.items, montant: o.amount, statut: o.status, date: o.date,
     })),
   };
+}
+function exportAllRestaurantData(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto) return;
+  const data = gatherAllRestaurantData(resto);
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -4942,7 +4948,95 @@ function exportAllRestaurantData(){
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  toast('Export téléchargé');
+  toast('Export technique (JSON) téléchargé');
+}
+// ============================================================
+// EXPORT VISUEL — la même donnée que l'export JSON, mais présentée comme un vrai document
+// lisible (mêmes codes que les bons de commande et le compte-rendu HACCP), plutôt qu'un fichier
+// technique destiné à être rouvert dans un autre logiciel.
+// ============================================================
+function buildDataExportDocumentHTML(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto) return '';
+  const data = gatherAllRestaurantData(resto);
+  const now = new Date();
+  const section = (title, bodyHtml) => `
+    <h3 style="font-family:var(--heading-font);font-size:15px;margin:22px 0 10px 0;">${title}</h3>
+    ${bodyHtml}
+  `;
+  return `
+    <div class="invoice-doc" style="max-width:100%;">
+      <div class="invoice-head">
+        <div>
+          <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
+          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city || ''}</div>
+          ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
+        </div>
+        <div class="invoice-doctype">
+          <div class="invoice-doctype-label">Export complet des données</div>
+          <div class="invoice-ref">${fmtDateLong(now)} à ${fmtTime(now)}</div>
+        </div>
+      </div>
+
+      ${section('Produits ('+data.produits.length+')', data.produits.length ? `<table class="invoice-table history">
+        <thead><tr><th>Nom</th><th>Catégorie</th><th>Fournisseur</th><th>Prix HT</th><th>Unité</th></tr></thead>
+        <tbody>${data.produits.map(p=>`<tr>
+          <td>${escapeHtml(p.nom)}</td><td>${escapeHtml(p.categorie||'—')}</td><td>${escapeHtml(p.fournisseur||'—')}</td>
+          <td>${p.prix_achat!=null ? Number(p.prix_achat).toFixed(2)+' €' : '—'}</td><td>${escapeHtml(p.unite||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : `<div class="small muted">Aucun produit enregistré.</div>`)}
+
+      ${section('Fournisseurs ('+data.fournisseurs.length+')', data.fournisseurs.length ? `<table class="invoice-table history">
+        <thead><tr><th>Nom</th><th>Catégorie</th><th>Délai moyen</th><th>Email</th><th>Contact commercial</th></tr></thead>
+        <tbody>${data.fournisseurs.map(s=>`<tr>
+          <td>${escapeHtml(s.nom)}</td><td>${escapeHtml(s.categorie||'—')}</td><td>${escapeHtml(s.delai_moyen||'—')}</td>
+          <td>${escapeHtml(s.email||'—')}</td><td>${escapeHtml(s.contact_commercial||'—')}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : `<div class="small muted">Aucun fournisseur enregistré.</div>`)}
+
+      ${section('Catégories et lieux', `
+        <div class="small" style="margin-bottom:6px;"><strong>Catégories :</strong> ${data.categories.length ? data.categories.map(escapeHtml).join(', ') : '—'}</div>
+        <div class="small"><strong>Lieux / zones :</strong> ${data.lieux.length ? data.lieux.map(escapeHtml).join(', ') : '—'}</div>
+      `)}
+
+      ${section('Équipe ('+data.equipe.length+')', data.equipe.length ? `<table class="invoice-table history">
+        <thead><tr><th>Nom</th><th>Rôle</th><th>Horaires</th><th>Statut</th><th>Commande directe</th></tr></thead>
+        <tbody>${data.equipe.map(t=>`<tr>
+          <td>${escapeHtml(t.nom)}</td><td>${escapeHtml(t.role||'—')}</td><td>${escapeHtml(t.horaires||'—')}</td>
+          <td>${escapeHtml(t.statut||'—')}</td><td>${t.peut_commander_directement ? `Oui${t.plafond_commande_avant_validation!=null?' (jusqu\u2019à '+t.plafond_commande_avant_validation+' €)':''}` : 'Non'}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : `<div class="small muted">Aucun membre d'équipe enregistré.</div>`)}
+
+      ${section('Historique des commandes ('+data.historique_commandes.length+')', data.historique_commandes.length ? `<table class="invoice-table history">
+        <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Statut</th><th>Date</th>${financialsHidden()?'':'<th>Montant</th>'}</tr></thead>
+        <tbody>${data.historique_commandes.map(o=>`<tr>
+          <td>${escapeHtml(o.reference)}</td><td>${escapeHtml(o.fournisseur||'—')}</td><td>${escapeHtml(o.contenu||'—')}</td>
+          <td>${escapeHtml(orderStatusLabel(o.statut))}</td><td>${escapeHtml(o.date||'—')}</td>
+          ${financialsHidden()?'':`<td>${Number(o.montant||0).toFixed(2)} €</td>`}
+        </tr>`).join('')}</tbody>
+      </table>` : `<div class="small muted">Aucune commande enregistrée.</div>`)}
+
+      <div class="invoice-legal-note" style="margin-top:20px;">
+        Document généré automatiquement à partir des données de ${escapeHtml(resto.name)} sur Mise &amp; Sûre —
+        pour un usage technique (import dans un autre outil), préférez l'export JSON, disponible juste à côté.
+      </div>
+      <div class="invoice-foot">
+        <div>${escapeHtml(resto.name)} — ${escapeHtml(resto.city||'')}</div>
+        <div>Document généré automatiquement par Mise &amp; Sûre</div>
+      </div>
+    </div>
+  `;
+}
+function openDataExportPreviewModal(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    ${buildDataExportDocumentHTML()}
+    <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="downloadDataExportDocument()">${iconSm(I.download)} Télécharger ce document</button>
+  `);
+}
+function downloadDataExportDocument(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  downloadHtmlFile(`export-donnees-${(resto?.name||'etablissement').replace(/[^a-z0-9]+/gi,'-').toLowerCase()}-${new Date().toISOString().slice(0,10)}.html`, buildDataExportDocumentHTML());
 }
 async function saveRestoInfo(){
   const resto = RESTOS.find(r=>r.id===state.resto);
