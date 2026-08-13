@@ -3377,6 +3377,40 @@ function openQuickHaccpTempModal(){
     <button class="btn btn-primary btn-block" onclick="submitHaccpTemperatureLog()">Enregistrer le relevé</button>
   `);
 }
+// Contrairement à la température (un seul geste : équipement + chiffre), le nettoyage peut
+// concerner plusieurs tâches à la fois — une simple liste à cocher est donc plus adaptée
+// qu'un formulaire, et se prête bien à un accès rapide depuis l'accueil.
+function openQuickHaccpCleaningModal(){
+  if(!HACCP_CLEANING_TASKS.length){ toast('Aucune tâche de nettoyage configurée pour le moment', 'alert'); return; }
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Nettoyage du jour</h3>
+    <div class="modal-sub">Cochez ce qui vient d'être fait — chaque tâche s'enregistre aussitôt, pas besoin de valider en bloc.</div>
+    <div id="quick-haccp-cleaning-list" style="display:flex;flex-direction:column;gap:8px;">
+      ${renderQuickHaccpCleaningList()}
+    </div>
+  `);
+}
+function renderQuickHaccpCleaningList(){
+  return HACCP_CLEANING_TASKS.map(t=>{
+    const doneEntry = haccpTaskDoneInCurrentPeriod(t);
+    const momentLabel = haccpMomentLabel(t.moment);
+    return `<div class="flex between center" style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:${doneEntry?'var(--paper)':'var(--surface)'};">
+      <div>
+        <div style="font-weight:600;font-size:13.5px;">${escapeHtml(t.name)}</div>
+        <div class="small muted">${momentLabel || 'Quotidien'}${doneEntry?` · fait à ${fmtTime(doneEntry.createdAt)} par ${escapeHtml(doneEntry.doneByName||'—')}`:''}</div>
+      </div>
+      ${doneEntry
+        ? `<span class="tag tag-subtle">${iconXs(I.check)} Fait</span>`
+        : `<button class="btn btn-primary btn-sm" onclick="quickMarkHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait</button>`}
+    </div>`;
+  }).join('');
+}
+async function quickMarkHaccpCleaningDone(taskId){
+  await markHaccpCleaningDone(taskId);
+  const list = document.getElementById('quick-haccp-cleaning-list');
+  if(list) list.innerHTML = renderQuickHaccpCleaningList();
+}
 function openAddHaccpCleaningTaskModal(){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
@@ -5009,7 +5043,7 @@ function gatherAllRestaurantData(resto){
     etablissement: { nom: resto.name, adresse: resto.address||null, code_postal: resto.postalCode||null, ville: resto.city||null, siret: resto.siret||null, devise: resto.currency },
     produits: PRODUCTS.map(p => ({
       nom: p.name, categorie: p.cat||null, unite: p.unit, quantite_commande_habituelle: p.qtyCommande,
-      prix_achat: p.price, fournisseur: (SUPPLIERS.find(s=>s.id===p.supplier)||{}).name || null,
+      prix_achat_ht: p.price, taux_tva: p.tvaRate??5.5, fournisseur: (SUPPLIERS.find(s=>s.id===p.supplier)||{}).name || null,
       departement: p.department||null, lieux: (p.zoneIds||[]).map(zid=>(ZONES.find(z=>z.id===zid)||{}).name).filter(Boolean),
       conditionnement: p.packaging||null, reference_fournisseur: p.supplierReference||null,
     })),
@@ -5028,6 +5062,19 @@ function gatherAllRestaurantData(resto){
       reference: o.id, fournisseur: (SUPPLIERS.find(s=>s.id===o.supplier)||{}).name || null,
       contenu: o.items, montant: o.amount, statut: o.status, date: o.date,
     })),
+    // Le module HACCP est facultatif — on n'exporte ces sections que s'il est activé, pour ne
+    // pas alourdir l'export de quelqu'un qui n'utilise pas cette fonctionnalité.
+    ...(resto.haccpEnabled ? {
+      haccp_equipements: HACCP_EQUIPMENT.map(e => ({ nom: e.name, seuil_min: e.minTemp, seuil_max: e.maxTemp })),
+      haccp_releves_temperature: HACCP_TEMP_LOGS.map(l => ({
+        equipement: l.equipmentName, temperature: l.temperature, conforme: l.inRange,
+        note: l.note||null, releve_par: l.loggedByName||null, date: l.createdAt.toISOString(),
+      })),
+      haccp_taches_nettoyage: HACCP_CLEANING_TASKS.map(t => ({ nom: t.name, frequence: t.frequency, moment: t.moment||'journee' })),
+      haccp_nettoyages_effectues: HACCP_CLEANING_LOGS.map(l => ({
+        tache: l.taskName, fait_par: l.doneByName||null, date: l.createdAt.toISOString(),
+      })),
+    } : {}),
   };
 }
 function exportAllRestaurantData(){
@@ -5110,6 +5157,26 @@ function buildDataExportDocumentHTML(){
           ${financialsHidden()?'':`<td>${Number(o.montant||0).toFixed(2)} €</td>`}
         </tr>`).join('')}</tbody>
       </table>` : `<div class="small muted">Aucune commande enregistrée.</div>`)}
+
+      ${resto.haccpEnabled ? `
+      ${section('Suivi HACCP — équipements ('+data.haccp_equipements.length+')', data.haccp_equipements.length ? `<table class="invoice-table history">
+        <thead><tr><th>Équipement</th><th>Seuil min</th><th>Seuil max</th></tr></thead>
+        <tbody>${data.haccp_equipements.map(e=>`<tr><td>${escapeHtml(e.nom)}</td><td>${e.seuil_min}°</td><td>${e.seuil_max}°</td></tr>`).join('')}</tbody>
+      </table>` : `<div class="small muted">Aucun équipement enregistré.</div>`)}
+
+      ${section('Suivi HACCP — relevés de température ('+data.haccp_releves_temperature.length+')', data.haccp_releves_temperature.length ? `<table class="invoice-table history">
+        <thead><tr><th>Équipement</th><th>Relevé</th><th>Statut</th><th>Par</th><th>Date</th></tr></thead>
+        <tbody>${data.haccp_releves_temperature.map(l=>`<tr>
+          <td>${escapeHtml(l.equipement)}</td><td>${l.temperature}°C</td><td>${l.conforme?'Conforme':'Hors seuils'}</td>
+          <td>${escapeHtml(l.releve_par||'—')}</td><td>${fmtDateLong(new Date(l.date))}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : `<div class="small muted">Aucun relevé enregistré.</div>`)}
+
+      ${section('Suivi HACCP — nettoyage effectué ('+data.haccp_nettoyages_effectues.length+')', data.haccp_nettoyages_effectues.length ? `<table class="invoice-table history">
+        <thead><tr><th>Tâche</th><th>Fait par</th><th>Date</th></tr></thead>
+        <tbody>${data.haccp_nettoyages_effectues.map(l=>`<tr><td>${escapeHtml(l.tache)}</td><td>${escapeHtml(l.fait_par||'—')}</td><td>${fmtDateLong(new Date(l.date))}</td></tr>`).join('')}</tbody>
+      </table>` : `<div class="small muted">Aucun nettoyage enregistré.</div>`)}
+      ` : ''}
 
       <div class="invoice-legal-note" style="margin-top:20px;">
         Document généré automatiquement à partir des données de ${escapeHtml(resto.name)} sur Mise &amp; Sûre —
@@ -5389,7 +5456,44 @@ const FAQ_CATEGORIES = [
         q: "Comment gérer plusieurs établissements ?",
         a: "Si votre forfait le permet (Pro), la page « Multi-établissements » vous permet d'ajouter d'autres restaurants et de basculer de l'un à l'autre — chacun garde son propre catalogue, ses fournisseurs et son équipe. Un bloc « Vue consolidée » en haut de cette page additionne les dépenses de tous vos établissements, avec le détail de chacun.",
         img: '13-vue-consolidee',
-        img: '13-vue-consolidee',
+      },
+      {
+        q: "Comment fonctionne la TVA sur mes produits ?",
+        a: "Chaque produit a un taux de TVA (20 %, 10 %, 5,5 % ou 2,1 %), modifiable à la création ou à tout moment dans sa fiche — 5,5 % par défaut, le taux le plus courant pour des matières premières alimentaires. Le prix que vous saisissez est toujours HT ; le TTC et la ventilation par taux se calculent automatiquement sur vos bons de commande.",
+      },
+      {
+        q: "Comment exporter toutes mes données ?",
+        a: "Dans Paramètres → « Vos données », deux formats au choix : un document visuel (lisible, imprimable, dans le même style que vos bons de commande) ou un export technique au format JSON si vous voulez réimporter ces données ailleurs. Les deux contiennent produits, fournisseurs, catégories, lieux, équipe et historique des commandes — et le suivi HACCP si vous l'avez activé.",
+      },
+    ],
+  },
+  {
+    id: 'haccp',
+    label: 'Suivi HACCP',
+    items: [
+      {
+        q: "Comment activer le suivi HACCP ?",
+        a: "Dans Paramètres, cochez « Activer le suivi HACCP pour cet établissement ». C'est désactivé par défaut et inclus à tous les forfaits : tant que la case n'est pas cochée, rien n'apparaît nulle part dans le site.",
+      },
+      {
+        q: "Comment relever une température ?",
+        a: "Depuis la page Suivi HACCP, ajoutez d'abord un équipement (frigo, chambre froide...) avec ses seuils min/max. Ensuite, chaque relevé se fait en indiquant l'équipement et la température lue — la conformité est calculée automatiquement. La cuisine et la salle ont aussi un raccourci « Relever une température » directement sur leur écran d'accueil, sans passer par un sous-menu.",
+      },
+      {
+        q: "Une tâche de nettoyage à faire avant ET après le service, comment je fais ?",
+        a: "Créez-la deux fois, une par moment (« Avant service » et « Après service » au moment de la création) — chacune garde son propre suivi, sans se mélanger.",
+      },
+      {
+        q: "Que veut dire le taux de complétion affiché sur chaque équipement ?",
+        a: "C'est le nombre de jours avec au moins un relevé, sur les 30 derniers jours — un repère honnête sur la régularité du suivi, pas un objectif à atteindre à tout prix. Un historique avec quelques trous mais un vrai effort régulier reste tout à fait normal.",
+      },
+      {
+        q: "Comment obtenir une preuve pour un contrôle sanitaire ?",
+        a: "Sur la page Suivi HACCP, les boutons « Compte-rendu — ce mois » et « — cette année » génèrent un document téléchargeable avec tous les relevés de température et tout le nettoyage enregistré sur la période, non-conformités mises en évidence.",
+      },
+      {
+        q: "Qui peut faire les relevés et le nettoyage ?",
+        a: "Patron, manager, cuisine et salle peuvent tous enregistrer un relevé ou marquer un nettoyage fait. Seuls le patron et le manager peuvent ajouter ou supprimer un équipement ou une tâche (la configuration), pas juste l'utiliser au quotidien.",
       },
     ],
   },
@@ -5628,7 +5732,8 @@ function viewLivraisons(){
 function viewCuisineAccueil(){
   const mine = REQUESTS.filter(r=>r.from==='Cuisine');
   const restoForTile = RESTOS.find(r=>r.id===state.resto);
-  const showHaccpTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
+  const showHaccpTempTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
+  const showHaccpCleaningTile = restoForTile && restoForTile.haccpEnabled && HACCP_CLEANING_TASKS.length>0;
   return `
     ${haccpDashboardReminderHTML()}
     <div class="tile-grid" style="margin-bottom:22px;">
@@ -5652,11 +5757,17 @@ function viewCuisineAccueil(){
         <div class="tile-label">Achat personnalisé</div>
         <div class="tile-sub">Proposer au patron</div>
       </button>
-      ${showHaccpTile ? `
+      ${showHaccpTempTile ? `
       <button class="tile" onclick="openQuickHaccpTempModal()">
         <div class="tile-icon">${I.thermometer}</div>
         <div class="tile-label">Relever une température</div>
         <div class="tile-sub">Un geste, sans quitter l'accueil</div>
+      </button>` : ''}
+      ${showHaccpCleaningTile ? `
+      <button class="tile" onclick="openQuickHaccpCleaningModal()">
+        <div class="tile-icon">${I.check}</div>
+        <div class="tile-label">Nettoyage du jour</div>
+        <div class="tile-sub">Cochez ce qui vient d'être fait</div>
       </button>` : ''}
     </div>
     <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
@@ -5709,7 +5820,8 @@ function viewDemandesList(role){
 function viewSalleAccueil(){
   const mine = REQUESTS.filter(r=>r.from==='Salle');
   const restoForTile = RESTOS.find(r=>r.id===state.resto);
-  const showHaccpTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
+  const showHaccpTempTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
+  const showHaccpCleaningTile = restoForTile && restoForTile.haccpEnabled && HACCP_CLEANING_TASKS.length>0;
   return `
     ${haccpDashboardReminderHTML()}
     <div class="tile-grid" style="margin-bottom:22px;">
@@ -5733,11 +5845,17 @@ function viewSalleAccueil(){
         <div class="tile-label">Achat personnalisé</div>
         <div class="tile-sub">Proposer au patron</div>
       </button>
-      ${showHaccpTile ? `
+      ${showHaccpTempTile ? `
       <button class="tile" onclick="openQuickHaccpTempModal()">
         <div class="tile-icon">${I.thermometer}</div>
         <div class="tile-label">Relever une température</div>
         <div class="tile-sub">Un geste, sans quitter l'accueil</div>
+      </button>` : ''}
+      ${showHaccpCleaningTile ? `
+      <button class="tile" onclick="openQuickHaccpCleaningModal()">
+        <div class="tile-icon">${I.check}</div>
+        <div class="tile-label">Nettoyage du jour</div>
+        <div class="tile-sub">Cochez ce qui vient d'être fait</div>
       </button>` : ''}
     </div>
     <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
