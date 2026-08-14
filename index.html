@@ -3791,6 +3791,10 @@ function setStatsTrendPeriod(period){
   state.statsTrendPeriod = period;
   render();
 }
+function setParametresTab(tab){
+  state.parametresTab = tab;
+  render();
+}
 function viewStats(){
   const spendSupplier = achatsBySupplier();
   const spendCategory = spendByCategoryData();
@@ -5842,36 +5846,22 @@ function viewParametres(){
   }
   const draft = state.appearanceDraft || {};
   const patronDisplayName = ACCOUNT ? escapeHtml(`${escapeHtml(ACCOUNT.firstName)} ${escapeHtml(ACCOUNT.lastName)}`.trim()) : 'Patron';
+  // Regroupées en onglets plutôt qu'empilées en vrac : la page a accumulé une dizaine de cartes
+  // au fil du temps (établissement, apparence, compte, HACCP, export...) sans plus aucune
+  // hiérarchie visuelle claire. Chaque carte reste strictement identique à avant — seul son
+  // regroupement change, pas une seule fonctionnalité n'est retirée ni modifiée.
+  const tab = state.parametresTab || 'general';
   return `
     <div class="section-head" style="margin-top:0;"><div><h2>Paramètres</h2><div class="sub">Personnalisation et accès</div></div></div>
-    <div class="card" style="margin-bottom:18px;">
-      <div class="card-title">${iconSm(I.lock)} Accès &amp; identifiants</div>
-      <div class="small muted" style="margin-bottom:14px;">Chaque personne a son identifiant et son mot de passe personnels. Seul le patron peut les modifier.</div>
-      <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
-        <div><div style="font-weight:600;font-size:13.5px;">${patronDisplayName}</div><div class="small muted mono">${escapeHtml(CREDENTIALS.patron.username)}</div></div>
-        <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal(null)">Modifier les identifiants</button>
-      </div>
-      ${TEAM.map(t=>`
-        <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
-          <div><div style="font-weight:600;font-size:13.5px;">${escapeHtml(t.name)}</div><div class="small muted mono">${escapeHtml(t.username)}</div></div>
-          <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal('${t.id}')">Modifier les identifiants</button>
-        </div>
-      `).join('')}
+    <div class="pill-nav">
+      <button class="${tab==='general'?'active':''}" onclick="setParametresTab('general')">Général</button>
+      <button class="${tab==='apparence'?'active':''}" onclick="setParametresTab('apparence')">Apparence</button>
+      <button class="${tab==='compte'?'active':''}" onclick="setParametresTab('compte')">Compte</button>
+      <button class="${tab==='donnees'?'active':''}" onclick="setParametresTab('donnees')">Données</button>
     </div>
+
+    ${tab==='general' ? `
     <div class="grid grid-2b">
-      ${ACCOUNT ? `
-      <div class="card">
-        <div class="card-title">Informations du compte</div>
-        <div class="small muted" style="margin-bottom:14px;">Vos informations personnelles, associées à votre abonnement.</div>
-        <div class="field-row">
-          <div class="field"><label>Prénom</label><input id="acct-firstname" value="${escapeHtml(ACCOUNT.firstName||'')}"></div>
-          <div class="field"><label>Nom</label><input id="acct-lastname" value="${escapeHtml(ACCOUNT.lastName||'')}"></div>
-        </div>
-        <div class="field"><label>Téléphone</label><input id="acct-phone" type="tel" value="${escapeHtml(ACCOUNT.phone||'')}"></div>
-        <div class="field"><label>Email du compte</label><input id="acct-email" type="email" value="${escapeHtml(ACCOUNT.email||'')}"></div>
-        <button class="btn btn-primary" onclick="saveAccountInfo()">Enregistrer</button>
-      </div>
-      ` : ''}
       <div class="card">
         <div class="card-title">Informations établissement</div>
         <div class="field"><label>Nom du restaurant</label><input id="set-name" value="${escapeHtml(resto.name)}"></div>
@@ -5887,14 +5877,6 @@ function viewParametres(){
           <div class="small" id="siret-hint" style="margin-top:4px;color:${siretHintColor(resto.siret)};">${siretHintText(resto.siret)}</div>
         </div>
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
-      </div>
-      <div class="card">
-        <div class="card-title">Vos données</div>
-        <div class="small muted" style="margin-bottom:14px;">Le site l'annonce sur la page tarifs : vos données vous appartiennent, exportables à tout moment. Deux formats au choix — un document lisible à garder ou imprimer, ou un fichier technique si vous voulez les réimporter ailleurs.</div>
-        <div class="flex gap8" style="flex-wrap:wrap;">
-          <button class="btn btn-primary" onclick="openDataExportPreviewModal()">${iconSm(I.doc)} Document visuel</button>
-          <button class="btn btn-ghost" onclick="exportAllRestaurantData()">${iconSm(I.download)} Export technique (JSON)</button>
-        </div>
       </div>
       <div class="card">
         <div class="card-title">Suivi HACCP</div>
@@ -5938,6 +5920,11 @@ function viewParametres(){
           <div class="flex gap8"><input id="new-zone-name" placeholder="Ex : Terrasse, Bar, Cave" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addZoneFromSettings()">Ajouter</button></div>
         </div>
       </div>
+    </div>
+    ` : ''}
+
+    ${tab==='apparence' ? `
+    <div class="grid grid-2b">
       <div class="card">
         <div class="card-title">Apparence de cet établissement</div>
         <div class="small muted" style="margin-bottom:16px;">Couleur, police, photo et logo propres à ${escapeHtml(resto.name)} — chaque établissement peut avoir les siens, visibles par toute l'équipe. Rien ne s'applique tant que vous n'avez pas cliqué sur « Enregistrer l'apparence ».</div>
@@ -5991,6 +5978,38 @@ function viewParametres(){
 
         <button class="btn btn-primary" onclick="saveAppearance()">Enregistrer l'apparence</button>
       </div>
+    </div>
+    ` : ''}
+
+    ${tab==='compte' ? `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-title">${iconSm(I.lock)} Accès &amp; identifiants</div>
+      <div class="small muted" style="margin-bottom:14px;">Chaque personne a son identifiant et son mot de passe personnels. Seul le patron peut les modifier.</div>
+      <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
+        <div><div style="font-weight:600;font-size:13.5px;">${patronDisplayName}</div><div class="small muted mono">${escapeHtml(CREDENTIALS.patron.username)}</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal(null)">Modifier les identifiants</button>
+      </div>
+      ${TEAM.map(t=>`
+        <div class="flex between center" style="padding:10px 0;border-bottom:1px solid var(--border);">
+          <div><div style="font-weight:600;font-size:13.5px;">${escapeHtml(t.name)}</div><div class="small muted mono">${escapeHtml(t.username)}</div></div>
+          <button class="btn btn-ghost btn-sm" onclick="openChangePasswordModal('${t.id}')">Modifier les identifiants</button>
+        </div>
+      `).join('')}
+    </div>
+    <div class="grid grid-2b">
+      ${ACCOUNT ? `
+      <div class="card">
+        <div class="card-title">Informations du compte</div>
+        <div class="small muted" style="margin-bottom:14px;">Vos informations personnelles, associées à votre abonnement.</div>
+        <div class="field-row">
+          <div class="field"><label>Prénom</label><input id="acct-firstname" value="${escapeHtml(ACCOUNT.firstName||'')}"></div>
+          <div class="field"><label>Nom</label><input id="acct-lastname" value="${escapeHtml(ACCOUNT.lastName||'')}"></div>
+        </div>
+        <div class="field"><label>Téléphone</label><input id="acct-phone" type="tel" value="${escapeHtml(ACCOUNT.phone||'')}"></div>
+        <div class="field"><label>Email du compte</label><input id="acct-email" type="email" value="${escapeHtml(ACCOUNT.email||'')}"></div>
+        <button class="btn btn-primary" onclick="saveAccountInfo()">Enregistrer</button>
+      </div>
+      ` : ''}
       <div class="card">
         <div class="card-title">${iconSm(I.mobile)} Application mobile</div>
         <p class="small muted">L'équipe cuisine et salle peut signaler une commande directement depuis l'application mobile, même en plein service — installée sur un téléphone ou une tablette, elle s'ouvre comme une vraie application.</p>
@@ -6002,6 +6021,19 @@ function viewParametres(){
           </select>
         </div>
         <button class="btn btn-ghost btn-block" onclick="openInstallAppModalForSelection()">Voir le lien et les instructions</button>
+      </div>
+    </div>
+    ` : ''}
+
+    ${tab==='donnees' ? `
+    <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">Vos données</div>
+        <div class="small muted" style="margin-bottom:14px;">Le site l'annonce sur la page tarifs : vos données vous appartiennent, exportables à tout moment. Deux formats au choix — un document lisible à garder ou imprimer, ou un fichier technique si vous voulez les réimporter ailleurs.</div>
+        <div class="flex gap8" style="flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="openDataExportPreviewModal()">${iconSm(I.doc)} Document visuel</button>
+          <button class="btn btn-ghost" onclick="exportAllRestaurantData()">${iconSm(I.download)} Export technique (JSON)</button>
+        </div>
       </div>
       ${state.identity==='patron' ? `
       <div class="card" style="border:1.5px solid var(--urgent);">
@@ -6015,6 +6047,7 @@ function viewParametres(){
       </div>
       ` : ''}
     </div>
+    ` : ''}
   `;
 }
 // ============================================================
