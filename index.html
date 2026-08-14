@@ -2666,8 +2666,8 @@ let CREDENTIALS = {
 };
 
 let NOTIF_STATE = {
-  patron:{email:'', enabled:true, events:{urgent:true, commandes:true}},
-  manager:{email:'', enabled:true, events:{demandes:true, commandes:true}},
+  patron:{email:'', enabled:true, events:{urgent:true, commandes:true, demande_normale:true, ecart:true, achat_personnalise:true}},
+  manager:{email:'', enabled:true, events:{demandes:true, commandes:true, demande_normale:true, ecart:true}},
   cuisine:{email:'', enabled:true, events:{decision:true}},
   salle:{email:'', enabled:true, events:{decision:true}},
 };
@@ -6579,8 +6579,19 @@ async function saveRestoInfo(){
 ============================================================ */
 function notifEventsForRole(role){
   if(role==='cuisine' || role==='salle') return [{key:'decision', label:'Ma demande est approuvée ou refusée'}];
-  if(role==='manager') return [{key:'demandes', label:'Nouvelle demande urgente signalée'},{key:'commandes', label:'Commande validée ou refusée par le patron'}];
-  if(role==='patron') return [{key:'urgent', label:'Commande urgente signalée en cuisine ou en salle'},{key:'commandes', label:'Commande fournisseur en attente de validation'}];
+  if(role==='manager') return [
+    {key:'demandes', label:'Nouvelle demande urgente signalée'},
+    {key:'demande_normale', label:'Nouvelle demande de la salle, même non urgente'},
+    {key:'commandes', label:'Commande validée ou refusée par le patron'},
+    {key:'ecart', label:'Écart détecté à la réception d\u2019une livraison'},
+  ];
+  if(role==='patron') return [
+    {key:'urgent', label:'Commande urgente signalée en cuisine ou en salle'},
+    {key:'demande_normale', label:'Nouvelle demande de la cuisine, même non urgente'},
+    {key:'commandes', label:'Commande fournisseur en attente de validation'},
+    {key:'ecart', label:'Écart détecté à la réception d\u2019une livraison'},
+    {key:'achat_personnalise', label:'Achat personnalisé proposé par l\u2019équipe'},
+  ];
   return [];
 }
 /* ============================================================
@@ -7385,6 +7396,10 @@ async function confirmReceiveOrder(id){
       return { ...li, productId: localProduct ? localProduct.id : null };
     });
     o.amount = parseFloat(data.order.amount);
+    if(data.order.has_discrepancy){
+      notifyByEmail('patron', `écart détecté à la réception de la commande ${o.id}.`, 'ecart');
+      notifyByEmail('manager', `écart détecté à la réception de la commande ${o.id}.`, 'ecart');
+    }
     if(updateCatalogPrices){
       receivedLineItems.forEach(li=>{
         if(!li.productId || !li.received) return;
@@ -7700,6 +7715,8 @@ async function submitSignal(from, urgent){
     if(urgent){
       if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`, 'demandes');
       notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`, 'urgent');
+    } else {
+      notifyByEmail(recipient, `nouvelle demande : ${item} (par ${author}).`, 'demande_normale');
     }
     render();
   } catch(err){
@@ -7782,7 +7799,7 @@ async function submitCustomRequest(){
     CUSTOM_REQUESTS.unshift({id:'P-'+nextId(), remoteId:data.customRequest.id, from: ROLE_META[state.role].label, by: author, itemName, note, status:'attente', time: fmtTime(now), createdAt: now});
     closeModal();
     toast('Proposition envoyée au patron');
-    notifyByEmail('patron', `nouvelle proposition d'achat : ${itemName} (par ${author}).`, 'commandes');
+    notifyByEmail('patron', `nouvelle proposition d'achat : ${itemName} (par ${author}).`, 'achat_personnalise');
     render();
   } catch(err){
     toast(err.message, 'alert');
