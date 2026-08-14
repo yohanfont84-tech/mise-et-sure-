@@ -4081,6 +4081,7 @@ function ticketDemande(r, viewerRole){
         <span class="mini-label">${r.time}</span>
       </div>
       <div class="ticket-item">${escapeHtml(r.item)}</div>
+      ${r.remainingQty!=null ? `<div class="small" style="margin-top:2px;color:${r.remainingQty<=0?'var(--urgent)':'var(--muted)'};font-weight:${r.remainingQty<=0?'600':'400'};">${iconXs(I.alertTriangle)} Il reste ${r.remainingQty} ${escapeHtml(r.unit||'')}</div>` : ''}
       <div class="ticket-meta">${escapeHtml(r.by)}${r.note?' · '+escapeHtml(r.note):''}</div>
       ${canAct ? `<div class="ticket-actions">
         <button class="btn btn-primary btn-sm" onclick="openApproveDemandeModal('${r.id}')">${iconXs(I.check)} Approuver</button>
@@ -5639,6 +5640,7 @@ async function syncRequestsFromServer(localId){
     d.requests = data.requests.map(r => ({
       id: 'D-'+r.id, remoteId: r.id, from: r.from_dept, by: r.by_name, item: r.item_name,
       unit: r.unit, qty: r.qty ? parseFloat(r.qty) : null, urgent: r.urgent, note: r.note,
+      remainingQty: r.remaining_qty!=null ? parseFloat(r.remaining_qty) : null,
       status: r.status, time: fmtTime(new Date(r.created_at)), createdAt: new Date(r.created_at),
       createdByMemberId: r.created_by_member_id,
     }));
@@ -7532,6 +7534,7 @@ function openApproveDemandeModal(id){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Approuver la demande</h3>
     <div class="modal-sub">${escapeHtml(r.item)} — demandé par ${escapeHtml(r.by)}${r.note?' · '+escapeHtml(r.note):''}</div>
+    ${r.remainingQty!=null ? `<div class="small" style="margin:-8px 0 14px 0;padding:8px 10px;border-radius:8px;background:${r.remainingQty<=0?'var(--urgent-tint)':'var(--surface-subtle)'};color:${r.remainingQty<=0?'var(--urgent)':'var(--text)'};font-weight:600;">${iconXs(I.alertTriangle)} Il reste ${r.remainingQty} ${escapeHtml(r.unit||'')} d'après ${escapeHtml(r.by)}</div>` : ''}
     <div class="field"><label>Quantité à commander (${unit})</label><input id="app-qty" type="number" min="1" step="1" value="${Math.round(defaultQty)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmValidateDemande('${id}')">${iconXs(I.check)} Approuver et commander</button>
   `);
@@ -7592,6 +7595,7 @@ function openEditMyRequestModal(id){
     <h3>Modifier votre demande</h3>
     <div class="modal-sub">Vous pouvez corriger votre demande tant qu'elle n'a pas encore été traitée.</div>
     <div class="field"><label>Produit</label><input id="emr-item" value="${escapeHtml(r.item)}"></div>
+    <div class="field"><label>Il en reste combien, environ ? (facultatif)</label><input id="emr-remaining" type="number" min="0" step="0.1" value="${r.remainingQty!=null?r.remainingQty:''}" placeholder="Ex : 2 ${escapeHtml(r.unit||'')}"></div>
     <div class="field"><label>Note (facultatif)</label><input id="emr-note" value="${escapeHtml(r.note||'')}"></div>
     <label class="flex center gap8" style="margin:4px 0 16px 0;"><input type="checkbox" id="emr-urgent" ${r.urgent?'checked':''}> Urgent</label>
     <button class="btn btn-primary btn-block" onclick="saveMyRequestEdit('${id}')">Enregistrer</button>
@@ -7603,12 +7607,14 @@ async function saveMyRequestEdit(id){
   if(!itemName){ toast('Le produit est requis','alert'); return; }
   const note = document.getElementById('emr-note').value.trim();
   const urgent = document.getElementById('emr-urgent').checked;
+  const remainingInput = document.getElementById('emr-remaining');
+  const remainingQty = remainingInput && remainingInput.value !== '' ? parseFloat(remainingInput.value) : null;
   const resto = RESTOS.find(rr=>rr.id===state.resto);
   try{
     await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, {
-      method:'PATCH', body:{ itemName, note, urgent },
+      method:'PATCH', body:{ itemName, note, urgent, remainingQty },
     });
-    r.item = itemName; r.note = note; r.urgent = urgent;
+    r.item = itemName; r.note = note; r.urgent = urgent; r.remainingQty = remainingQty;
     closeModal();
     toast('Demande mise à jour');
     render();
@@ -7671,6 +7677,8 @@ async function submitSignal(from, urgent){
   const item = document.getElementById('sig-item').value;
   const note = document.getElementById('sig-note').value;
   if(!item){ toast('Merci de sélectionner un produit','alert'); return; }
+  const remainingInput = document.getElementById('sig-remaining');
+  const remainingQty = remainingInput && remainingInput.value !== '' ? parseFloat(remainingInput.value) : null;
   const prod = PRODUCTS.find(p=>p.name===item);
   const author = currentPersonDisplayName();
   const now = new Date();
@@ -7679,11 +7687,11 @@ async function submitSignal(from, urgent){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/requests`, {
       method:'POST',
-      body:{ fromDept: from, itemName: item, unit: prod?prod.unit:'unité', urgent, note, byName },
+      body:{ fromDept: from, itemName: item, unit: prod?prod.unit:'unité', urgent, note, byName, remainingQty },
     });
     REQUESTS.unshift({
       id:'D-'+nextId(), remoteId: data.request.id, from, by: byName,
-      item, unit: prod?prod.unit:'unité', urgent, note, status:'attente', time: fmtTime(now), createdAt: now,
+      item, unit: prod?prod.unit:'unité', urgent, note, remainingQty, status:'attente', time: fmtTime(now), createdAt: now,
       createdByMemberId: data.request.created_by_member_id,
     });
     closeModal();
@@ -7718,8 +7726,13 @@ function openSignalModal(from, urgent){
       <input type="text" id="sig-search" placeholder="🔎 Nom, catégorie, lieu…" oninput="filterProductPicker('sig-picker')" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
       <input type="hidden" id="sig-item" value="">
       <div id="sig-picker" class="zone-checklist" style="max-height:200px;">
-        ${list.map(p=>`<div class="product-picker-row" data-name="${escapeHtml(p.name)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase())}" onclick="selectProductPickerRow(this,'sig-item','sig-picker')">${escapeHtml(p.name)}${p.cat?` <span class="muted small">· ${escapeHtml(p.cat)}</span>`:''}</div>`).join('')}
+        ${list.map(p=>`<div class="product-picker-row" data-name="${escapeHtml(p.name)}" data-unit="${escapeHtml(p.unit||'unité')}" data-search="${escapeHtml((p.name+' '+(p.cat||'')+' '+(p.zoneIds||[]).map(zid=>{const z=ZONES.find(zz=>zz.id===zid);return z?z.name:'';}).join(' ')).toLowerCase())}" onclick="selectProductPickerRow(this,'sig-item','sig-picker','sig-unit-label')">${escapeHtml(p.name)}${p.cat?` <span class="muted small">· ${escapeHtml(p.cat)}</span>`:''}</div>`).join('')}
       </div>
+    </div>
+    <div class="field">
+      <label>Il en reste combien, environ ? (facultatif)</label>
+      <div class="small muted" style="margin:-2px 0 8px 0;">Aide le patron ou le manager à juger l'urgence — pas obligatoire si vous ne savez pas précisément.</div>
+      <div class="flex center gap8"><input id="sig-remaining" type="number" min="0" step="0.1" placeholder="Ex : 2" style="max-width:140px;"><span class="small muted" id="sig-unit-label">— choisissez d'abord un produit</span></div>
     </div>
     <div class="field"><label>Note (optionnel)</label><textarea id="sig-note" rows="2" placeholder="Ex : besoin avant le coup de feu de ce soir"></textarea></div>
     <button class="btn ${urgent?'btn-danger':'btn-primary'} btn-block" onclick="submitSignal('${from}', ${urgent})">${urgent?'Signaler la commande urgente':'Envoyer la demande'}</button>
@@ -7732,10 +7745,14 @@ function filterProductPicker(pickerId){
     row.style.display = row.dataset.search.includes(q) ? '' : 'none';
   });
 }
-function selectProductPickerRow(el, hiddenInputId, pickerId){
+function selectProductPickerRow(el, hiddenInputId, pickerId, unitLabelId){
   document.getElementById(hiddenInputId).value = el.dataset.name;
   document.querySelectorAll('#'+pickerId+' .product-picker-row').forEach(r=>r.classList.remove('selected'));
   el.classList.add('selected');
+  if(unitLabelId){
+    const label = document.getElementById(unitLabelId);
+    if(label) label.textContent = 'en ' + (el.dataset.unit || 'unité');
+  }
 }
 
 /* ============================================================
