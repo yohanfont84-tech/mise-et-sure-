@@ -1613,6 +1613,22 @@ tr.group-row:hover td{background:var(--gray-100);}
 
 /* Écran de connexion */
 .login-shell{min-height:100vh;width:100%;display:flex;}
+/* ============================================================
+   PANNEAU ADMINISTRATEUR — page autonome (pas de sidebar liée à un établissement, puisque
+   l'administrateur n'en a pas). Réutilise .card/.tag/.pill-nav déjà définis ailleurs, pour
+   rester visuellement cohérent avec le reste du site sans dupliquer de styles.
+============================================================ */
+.admin-shell{min-height:100vh;width:100%;background:var(--paper);}
+.admin-topbar{background:var(--black);color:#fff;padding:16px 28px;display:flex;justify-content:space-between;align-items:center;}
+.admin-topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;}
+.admin-body{max-width:1100px;margin:0 auto;padding:28px 24px 60px 24px;}
+.admin-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+@media(max-width:900px){.admin-kpi-grid{grid-template-columns:repeat(2,1fr);}}
+.admin-kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.admin-kpi .val{font-size:26px;font-weight:700;margin-top:4px;font-family:var(--heading-font);}
+.admin-account-row{border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface);}
+.admin-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+.admin-filter-bar input, .admin-filter-bar select{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13.5px;}
 .login-brand{background:var(--black);color:#EDEDE8;flex:0 0 40%;display:flex;flex-direction:column;justify-content:center;padding:60px;}
 .login-brand h1{color:#fff;font-size:28px;margin:18px 0 10px 0;}
 .login-brand p{color:#B8B8B1;font-size:14px;line-height:1.6;max-width:320px;margin:0 0 26px 0;}
@@ -3058,28 +3074,94 @@ async function signOutAccount(){
 
 /* ============================================================
    PANNEAU ADMINISTRATEUR — réservé au créateur de la plateforme (compte marqué is_admin en
-   base de données). Permet d'accorder ou retirer un accès gratuit à n'importe quel compte,
-   indépendamment de tout paiement réel via Stripe.
+   base de données).
 ============================================================ */
 async function goToAdminPage(){
-  state.adminUsers = null;
+  state.adminTab = 'dashboard';
+  state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null;
+  state.adminExpandedUserId = null; state.adminUserDetail = null; state.adminUserFilters = {};
   state.adminError = null;
   goToSite('admin');
+  await loadAdminTabData('dashboard');
+}
+async function setAdminTab(tab){
+  state.adminTab = tab;
+  render();
+  await loadAdminTabData(tab);
+}
+async function loadAdminTabData(tab){
   try{
-    const data = await apiRequest('/api/admin/users');
-    state.adminUsers = data.users;
+    if(tab==='dashboard' && !state.adminStats){
+      const data = await apiRequest('/api/admin/stats');
+      state.adminStats = data;
+    }
+    if(tab==='comptes' && !state.adminUsers){
+      await adminFilterUsers(true);
+    }
+    if(tab==='aide' && !state.adminQuestions){
+      const data = await apiRequest('/api/admin/support-questions');
+      state.adminQuestions = data.questions;
+    }
+    if(tab==='journal' && !state.adminActivity){
+      const data = await apiRequest('/api/admin/activity-log');
+      state.adminActivity = data.activity;
+    }
+    // Le nombre de questions en attente (affiché en badge sur l'onglet) a besoin des stats,
+    // même si on n'est pas sur le tableau de bord — on les charge silencieusement si absentes.
+    if(!state.adminStats){
+      const data = await apiRequest('/api/admin/stats');
+      state.adminStats = data;
+    }
+    render();
   } catch(err){
     state.adminError = err.message;
+    render();
   }
+}
+let adminFilterDebounce = null;
+async function adminFilterUsers(skipDebounce){
+  const doFilter = async () => {
+    const search = (document.getElementById('admin-search')||{}).value || '';
+    const plan = (document.getElementById('admin-filter-plan')||{}).value || '';
+    const status = (document.getElementById('admin-filter-status')||{}).value || '';
+    state.adminUserFilters = { search, plan, status };
+    try{
+      const params = new URLSearchParams();
+      if(search) params.set('search', search);
+      if(plan) params.set('plan', plan);
+      if(status) params.set('status', status);
+      const data = await apiRequest(`/api/admin/users?${params.toString()}`);
+      state.adminUsers = data.users;
+      render();
+    } catch(err){
+      state.adminError = err.message;
+      render();
+    }
+  };
+  if(skipDebounce){ await doFilter(); return; }
+  // Recherche "au fil de la frappe" avec un léger délai, pour ne pas envoyer une requête à
+  // chaque lettre tapée — seulement une fois que la personne s'arrête un instant.
+  clearTimeout(adminFilterDebounce);
+  adminFilterDebounce = setTimeout(doFilter, 300);
+}
+async function toggleAdminAccountDetail(userId){
+  if(state.adminExpandedUserId === userId){ state.adminExpandedUserId = null; render(); return; }
+  state.adminExpandedUserId = userId;
+  state.adminUserDetail = null;
   render();
+  try{
+    const data = await apiRequest(`/api/admin/users/${userId}/detail`);
+    state.adminUserDetail = { id: userId, ...data.user, restaurants: data.restaurants };
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 async function toggleFreeAccess(userId, currentlyGranted){
   try{
     await apiRequest(`/api/admin/users/${userId}/access`, { method:'PATCH', body:{ granted: !currentlyGranted } });
     toast(!currentlyGranted ? 'Accès gratuit accordé' : 'Accès gratuit retiré');
-    const data = await apiRequest('/api/admin/users');
-    state.adminUsers = data.users;
-    render();
+    await adminFilterUsers(true);
   } catch(err){
     toast(err.message, 'alert');
   }
@@ -3087,9 +3169,75 @@ async function toggleFreeAccess(userId, currentlyGranted){
 async function changeUserPlan(userId, newPlan){
   try{
     await apiRequest(`/api/admin/users/${userId}/plan`, { method:'PATCH', body:{ plan: newPlan } });
-    toast('Forfait mis à jour — ' + (newPlan==='pro' ? 'Pro' : 'Essentiel'));
-    const data = await apiRequest('/api/admin/users');
-    state.adminUsers = data.users;
+    toast('Forfait mis à jour — ' + newPlan);
+    await adminFilterUsers(true);
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function toggleUserSuspension(userId, currentlySuspended){
+  try{
+    await apiRequest(`/api/admin/users/${userId}/suspend`, { method:'PATCH', body:{ suspended: !currentlySuspended } });
+    toast(!currentlySuspended ? 'Compte suspendu' : 'Compte réactivé');
+    await adminFilterUsers(true);
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+function openAdminDeleteUserModal(userId, email){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3 style="color:var(--urgent);">Supprimer ce compte ?</h3>
+    <p class="small muted" style="margin-bottom:16px;">Supprime immédiatement et définitivement le compte <b>${escapeHtml(email)}</b> et tous ses établissements — contrairement à la suppression en libre-service, aucun délai de grâce ici. Réservé aux cas exceptionnels.</p>
+    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmAdminDeleteUser(${userId})">Je confirme, supprimer définitivement</button>
+  `);
+}
+async function confirmAdminDeleteUser(userId){
+  try{
+    await apiRequest(`/api/admin/users/${userId}`, { method:'DELETE' });
+    closeModal();
+    toast('Compte supprimé');
+    state.adminExpandedUserId = null;
+    await adminFilterUsers(true);
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+// Génère une session valide pour le compte ciblé et bascule dessus, pour voir le site
+// exactement comme cette personne — utile en support ou pour déboguer un problème signalé.
+// Le jeton administrateur d'origine est conservé de côté pour permettre de revenir ensuite.
+async function adminImpersonateUser(userId, label){
+  try{
+    const originalToken = AUTH_TOKEN;
+    const data = await apiRequest(`/api/admin/users/${userId}/impersonate`, { method:'POST' });
+    ACCOUNT = data.user;
+    state.impersonating = { active:true, label, originalToken };
+    toast(`Vous visualisez maintenant le compte de ${label}`);
+    goToSite('team-login');
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+function exitImpersonation(){
+  if(!state.impersonating) return;
+  AUTH_TOKEN = state.impersonating.originalToken;
+  if(AUTH_TOKEN) localStorage.setItem(AUTH_TOKEN_KEY, AUTH_TOKEN); else localStorage.removeItem(AUTH_TOKEN_KEY);
+  ACCOUNT = null;
+  state.impersonating = null;
+  toast('Retour à votre session administrateur');
+  goToAdminPage();
+}
+async function submitAdminAnswer(questionId){
+  const textarea = document.getElementById('admin-answer-'+questionId);
+  const answer = textarea ? textarea.value.trim() : '';
+  if(!answer){ toast('Merci de rédiger une réponse', 'alert'); return; }
+  try{
+    await apiRequest(`/api/admin/support-questions/${questionId}/answer`, { method:'PATCH', body:{ answer } });
+    toast('Réponse envoyée');
+    const data = await apiRequest('/api/admin/support-questions');
+    state.adminQuestions = data.questions;
+    const statsData = await apiRequest('/api/admin/stats');
+    state.adminStats = statsData;
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -6910,6 +7058,34 @@ function viewAide(){
         `;}).join('')}
       </div>
     `).join('')}
+    ${state.role==='patron' ? viewSupportQuestionsWidget() : ''}
+  `;
+}
+function viewSupportQuestionsWidget(){
+  const questions = state.mySupportQuestions;
+  return `
+    <div class="card" style="margin-top:8px;">
+      <div class="card-title">Vous n'avez pas trouvé votre réponse ?</div>
+      <div class="small muted" style="margin-bottom:14px;">Posez directement votre question — l'équipe de Mise &amp; Sûre vous répond par email dès que possible.</div>
+      <textarea id="support-question-text" rows="3" placeholder="Votre question…" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:10px;"></textarea>
+      <button class="btn btn-primary" onclick="submitSupportQuestion()">Envoyer ma question</button>
+
+      ${questions===undefined ? '' : !questions ? `<div class="small muted" style="margin-top:18px;">Chargement de vos questions précédentes…</div>` : questions.length===0 ? '' : `
+        <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+          <div class="small muted" style="margin-bottom:12px;font-weight:600;">Vos questions précédentes</div>
+          ${questions.map(q => `
+            <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+              <div class="flex between center" style="margin-bottom:6px;flex-wrap:wrap;gap:8px;">
+                <div class="small muted">${fmtDateLong(new Date(q.created_at))}</div>
+                ${q.status==='ouverte' ? `<span class="tag tag-neutral">${iconXs(I.clock)} En attente de réponse</span>` : `<span class="tag tag-subtle">${iconXs(I.check)} Répondu</span>`}
+              </div>
+              <div class="small" style="margin-bottom:${q.status==='repondue'?'8px':'0'};">${escapeHtml(q.question)}</div>
+              ${q.status==='repondue' ? `<div class="small" style="background:var(--paper);border-radius:8px;padding:10px 12px;white-space:pre-wrap;">${escapeHtml(q.answer)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </div>
   `;
 }
 function filterAideFaq(value){
@@ -6921,6 +7097,40 @@ function filterAideFaq(value){
 function toggleAideItem(key){
   state.aideOpenItem = (state.aideOpenItem === key) ? null : key;
   render();
+}
+// Chargé une seule fois (pas à chaque rendu) — state.mySupportQuestions reste `undefined` tant
+// que rien n'a jamais été demandé, `null` pendant le chargement, puis le tableau une fois prêt.
+let mySupportQuestionsLoading = false;
+async function ensureMySupportQuestionsLoaded(){
+  if(state.mySupportQuestions !== undefined || mySupportQuestionsLoading) return;
+  mySupportQuestionsLoading = true;
+  state.mySupportQuestions = null;
+  try{
+    const data = await apiRequest('/api/account/support-questions');
+    state.mySupportQuestions = data.questions;
+  } catch(err){
+    state.mySupportQuestions = [];
+  }
+  mySupportQuestionsLoading = false;
+  render();
+}
+async function submitSupportQuestion(){
+  const textarea = document.getElementById('support-question-text');
+  const question = textarea ? textarea.value.trim() : '';
+  if(!question){ toast('Merci de rédiger votre question', 'alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest('/api/account/support-questions', {
+      method:'POST', body:{ question, restaurantId: resto ? resto.remoteId : null },
+    });
+    toast('Question envoyée — vous recevrez une réponse par email');
+    textarea.value = '';
+    const data = await apiRequest('/api/account/support-questions');
+    state.mySupportQuestions = data.questions;
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 function escapeHtml(str){
   // Échappe aussi les guillemets (en plus de < > &), pour être sûr même quand le texte est
@@ -9348,7 +9558,10 @@ async function addResto(){
 function renderContent(){
   const {role, view} = state;
   if(view==='notifications') return viewNotifications(role);
-  if(view==='aide') return viewAide();
+  if(view==='aide'){
+    if(role==='patron') ensureMySupportQuestionsLoaded();
+    return viewAide();
+  }
   if(view==='carte-fournisseurs') return soloModeEnabled() ? viewPatronDashboard() : viewSupplierMap();
   if(view==='haccp'){
     const restoForHaccp = RESTOS.find(r=>r.id===state.resto);
@@ -10244,48 +10457,170 @@ function togglePricingFaq(idx){
   render();
 }
 function renderAdminPage(){
-  const rows = state.adminUsers;
+  const tab = state.adminTab || 'dashboard';
   return `
-    <div class="login-shell">
-      <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
-        <h1>Mise &amp; Sûre</h1>
-        <p>Panneau administrateur — changez le forfait ou accordez un accès gratuit à n'importe quel compte, sans passer par Stripe.</p>
-      </div>
-      <div class="login-form-side">
-        <div class="login-form-inner" style="max-width:640px;">
-          <button class="back-link" onclick="goToSite('team-login')">← Retour</button>
-          <div class="login-step-label">Comptes de la plateforme</div>
-          ${state.adminError ? `<div class="login-error">${state.adminError}</div>` : ''}
-          ${!rows ? `<div class="small muted">Chargement…</div>` : rows.length===0 ? `<div class="small muted">Aucun compte pour l'instant.</div>` : `
-            <div style="display:flex;flex-direction:column;gap:10px;">
-              ${rows.map(u => `
-                <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
-                  <div style="min-width:0;">
-                    <div style="font-weight:700;font-size:14px;">${u.first_name||''} ${u.last_name||''} ${u.is_admin?'· <span class="small muted">(admin)</span>':''}</div>
-                    <div class="small muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(u.email)}</div>
-                    <div class="small muted">${u.stripe_subscription_status==='active' ? 'Abonnement Stripe actif' : (u.free_access_granted ? 'Accès gratuit accordé' : 'Aucun accès payant actif')}</div>
-                  </div>
-                  ${u.is_admin ? '' : `
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                      <select id="plan-select-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
-                        <option value="solo" ${u.plan==='solo'?'selected':''}>Solo</option>
-                        <option value="essentiel" ${u.plan==='essentiel'?'selected':''}>Essentiel</option>
-                        <option value="pro" ${u.plan==='pro'?'selected':''}>Pro</option>
-                      </select>
-                      <button class="btn btn-ghost btn-sm" onclick="changeUserPlan(${u.id}, document.getElementById('plan-select-${u.id}').value)">Changer le forfait</button>
-                      <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="toggleFreeAccess(${u.id}, ${u.free_access_granted})">
-                        ${u.free_access_granted ? 'Retirer cet accès gratuit' : 'Accorder un accès gratuit'}
-                      </button>
-                    </div>
-                  `}
-                </div>
-              `).join('')}
-            </div>
-          `}
+    <div class="admin-shell">
+      <div class="admin-topbar">
+        <div class="brand">
+          <div class="brand-mark" style="width:28px;height:28px;font-size:13px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+          Mise &amp; Sûre — Panneau administrateur
         </div>
+        <button class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,0.3);" onclick="goToSite('team-login')">← Retour au site</button>
+      </div>
+      <div class="admin-body">
+        <div class="pill-nav">
+          <button class="${tab==='dashboard'?'active':''}" onclick="setAdminTab('dashboard')">Tableau de bord</button>
+          <button class="${tab==='comptes'?'active':''}" onclick="setAdminTab('comptes')">Comptes</button>
+          <button class="${tab==='aide'?'active':''}" onclick="setAdminTab('aide')">Centre d'aide${state.adminStats && state.adminStats.open_questions>0 ? ` <span class="tag tag-red" style="margin-left:4px;">${state.adminStats.open_questions}</span>` : ''}</button>
+          <button class="${tab==='journal'?'active':''}" onclick="setAdminTab('journal')">Journal d'activité</button>
+        </div>
+        ${state.adminError ? `<div class="login-error" style="margin-bottom:16px;">${escapeHtml(state.adminError)}</div>` : ''}
+        ${tab==='dashboard' ? renderAdminDashboard() : ''}
+        ${tab==='comptes' ? renderAdminAccounts() : ''}
+        ${tab==='aide' ? renderAdminSupport() : ''}
+        ${tab==='journal' ? renderAdminActivityLog() : ''}
       </div>
     </div>
+  `;
+}
+function renderAdminDashboard(){
+  const s = state.adminStats;
+  if(!s) return `<div class="small muted">Chargement…</div>`;
+  const mrr = s.plan_solo*19 + s.plan_essentiel*39 + s.plan_pro*79;
+  return `
+    <div class="admin-kpi-grid">
+      <div class="admin-kpi"><div class="small muted">Comptes vérifiés</div><div class="val">${s.total_accounts}</div></div>
+      <div class="admin-kpi"><div class="small muted">Abonnements Stripe actifs</div><div class="val">${s.active_subscriptions}</div></div>
+      <div class="admin-kpi"><div class="small muted">MRR estimé</div><div class="val">${mrr.toLocaleString('fr-FR')} €</div><div class="small muted">à partir des forfaits assignés</div></div>
+      <div class="admin-kpi"><div class="small muted">Accès gratuits accordés</div><div class="val">${s.free_access_count}</div></div>
+      <div class="admin-kpi"><div class="small muted">Inscriptions — 7 derniers jours</div><div class="val">${s.signups_7d}</div></div>
+      <div class="admin-kpi"><div class="small muted">Inscriptions — 30 derniers jours</div><div class="val">${s.signups_30d}</div></div>
+      <div class="admin-kpi"><div class="small muted">Établissements créés</div><div class="val">${s.restaurant_count}</div></div>
+      <div class="admin-kpi"><div class="small muted">Commandes passées (toute la plateforme)</div><div class="val">${s.order_count}</div></div>
+    </div>
+    <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">Répartition par forfait</div>
+        <div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span class="small">Solo — 19€/mois</span><span style="font-weight:600;">${s.plan_solo}</span></div>
+        <div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span class="small">Essentiel — 39€/mois</span><span style="font-weight:600;">${s.plan_essentiel}</span></div>
+        <div class="flex between" style="padding:8px 0;"><span class="small">Pro — 79€/mois</span><span style="font-weight:600;">${s.plan_pro}</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">À surveiller</div>
+        <div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span class="small">Comptes suspendus</span><span style="font-weight:600;color:${s.suspended_count>0?'var(--urgent)':'inherit'};">${s.suspended_count}</span></div>
+        <div class="flex between" style="padding:8px 0;"><span class="small">Questions du centre d'aide en attente</span><span style="font-weight:600;color:${s.open_questions>0?'var(--urgent)':'inherit'};">${s.open_questions}</span></div>
+      </div>
+    </div>
+  `;
+}
+function renderAdminAccounts(){
+  const rows = state.adminUsers;
+  const f = state.adminUserFilters || {};
+  return `
+    <div class="admin-filter-bar">
+      <input type="text" id="admin-search" placeholder="🔎 Nom ou email…" value="${escapeHtml(f.search||'')}" oninput="adminFilterUsers()" style="flex:1;min-width:200px;">
+      <select id="admin-filter-plan" onchange="adminFilterUsers()">
+        <option value="">Tous les forfaits</option>
+        <option value="solo" ${f.plan==='solo'?'selected':''}>Solo</option>
+        <option value="essentiel" ${f.plan==='essentiel'?'selected':''}>Essentiel</option>
+        <option value="pro" ${f.plan==='pro'?'selected':''}>Pro</option>
+      </select>
+      <select id="admin-filter-status" onchange="adminFilterUsers()">
+        <option value="">Tous les statuts</option>
+        <option value="actif" ${f.status==='actif'?'selected':''}>Accès actif</option>
+        <option value="sans_acces" ${f.status==='sans_acces'?'selected':''}>Sans accès payant</option>
+        <option value="suspendu" ${f.status==='suspendu'?'selected':''}>Suspendu</option>
+      </select>
+    </div>
+    ${!rows ? `<div class="small muted">Chargement…</div>` : rows.length===0 ? `<div class="small muted">Aucun compte ne correspond à ces critères.</div>` : rows.map(u => renderAdminAccountRow(u)).join('')}
+  `;
+}
+function renderAdminAccountRow(u){
+  const expanded = state.adminExpandedUserId === u.id;
+  const detail = state.adminUserDetail && state.adminUserDetail.id===u.id ? state.adminUserDetail : null;
+  return `
+    <div class="admin-account-row">
+      <div class="flex between center" style="flex-wrap:wrap;gap:10px;cursor:pointer;" onclick="toggleAdminAccountDetail(${u.id})">
+        <div style="min-width:0;">
+          <div style="font-weight:700;font-size:14px;">${escapeHtml(u.first_name||'')} ${escapeHtml(u.last_name||'')} ${u.is_admin?'· <span class="small muted">(admin)</span>':''}</div>
+          <div class="small muted">${escapeHtml(u.email)} · ${u.restaurant_count} établissement${u.restaurant_count>1?'s':''}</div>
+        </div>
+        <div class="flex gap8 center" style="flex-wrap:wrap;">
+          ${u.suspended ? `<span class="tag tag-red">Suspendu</span>` : u.stripe_subscription_status==='active' ? `<span class="tag tag-subtle">Abonnement actif</span>` : u.free_access_granted ? `<span class="tag tag-neutral">Accès gratuit</span>` : `<span class="tag tag-neutral">Sans accès</span>`}
+          <span class="small muted mono">${escapeHtml(u.plan||'—')}</span>
+        </div>
+      </div>
+      ${expanded && !u.is_admin ? `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+          <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:14px;">
+            <select id="plan-select-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
+              <option value="solo" ${u.plan==='solo'?'selected':''}>Solo</option>
+              <option value="essentiel" ${u.plan==='essentiel'?'selected':''}>Essentiel</option>
+              <option value="pro" ${u.plan==='pro'?'selected':''}>Pro</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();changeUserPlan(${u.id}, document.getElementById('plan-select-${u.id}').value)">Changer le forfait</button>
+            <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="event.stopPropagation();toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l\u2019accès gratuit' : 'Accorder un accès gratuit'}</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();adminImpersonateUser(${u.id}, '${escapeHtml((u.first_name||'')+' '+(u.last_name||''))}')">${iconXs(I.mobile)} Voir en tant que</button>
+            <button class="btn ${u.suspended?'btn-primary':'btn-ghost'} btn-sm" onclick="event.stopPropagation();toggleUserSuspension(${u.id}, ${u.suspended})">${u.suspended ? 'Réactiver' : 'Suspendre'}</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openAdminDeleteUserModal(${u.id}, '${escapeHtml(u.email)}')">${iconXs(I.trash)} Supprimer</button>
+          </div>
+          ${!detail ? `<div class="small muted">Chargement du détail…</div>` : !detail.restaurants || detail.restaurants.length===0 ? `<div class="small muted">Aucun établissement créé pour l'instant.</div>` : `
+            <table class="stack-mobile">
+              <tr><th>Établissement</th><th>Ville</th><th>Commandes</th><th>Produits</th><th>Équipe</th><th>Total achats</th></tr>
+              ${detail.restaurants.map(r=>`<tr>
+                <td data-label="Établissement" style="font-weight:600;">${escapeHtml(r.name)}</td>
+                <td data-label="Ville">${escapeHtml(r.city||'—')}</td>
+                <td data-label="Commandes">${r.order_count}</td>
+                <td data-label="Produits">${r.product_count}</td>
+                <td data-label="Équipe">${r.team_count}</td>
+                <td data-label="Total achats">${Number(r.total_spend||0).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</td>
+              </tr>`).join('')}
+            </table>
+          `}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+function renderAdminSupport(){
+  const questions = state.adminQuestions;
+  if(!questions) return `<div class="small muted">Chargement…</div>`;
+  if(questions.length===0) return emptyState('Aucune question posée pour le moment.');
+  return questions.map(q => `
+    <div class="card" style="margin-bottom:14px;${q.status==='ouverte'?'border:1.5px solid var(--urgent);':''}">
+      <div class="flex between center" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">${escapeHtml(q.asked_by_name||q.user_email)}</div>
+          <div class="small muted">${escapeHtml(q.user_email)}${q.restaurant_name?' · '+escapeHtml(q.restaurant_name):''} · ${fmtDateLong(new Date(q.created_at))}</div>
+        </div>
+        ${q.status==='ouverte' ? `<span class="tag tag-red">En attente</span>` : `<span class="tag tag-subtle">Répondu</span>`}
+      </div>
+      <div class="small" style="background:var(--paper);border-radius:8px;padding:10px 12px;margin-bottom:12px;white-space:pre-wrap;">${escapeHtml(q.question)}</div>
+      ${q.status==='repondue' ? `
+        <div class="small muted" style="margin-bottom:4px;">Votre réponse, le ${fmtDateLong(new Date(q.answered_at))} :</div>
+        <div class="small" style="background:var(--surface-subtle);border-radius:8px;padding:10px 12px;white-space:pre-wrap;">${escapeHtml(q.answer)}</div>
+      ` : `
+        <textarea id="admin-answer-${q.id}" rows="3" placeholder="Votre réponse…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:8px;"></textarea>
+        <button class="btn btn-primary btn-sm" onclick="submitAdminAnswer(${q.id})">Répondre</button>
+      `}
+    </div>
+  `).join('');
+}
+function renderAdminActivityLog(){
+  const activity = state.adminActivity;
+  if(!activity) return `<div class="small muted">Chargement…</div>`;
+  if(activity.length===0) return emptyState('Aucune activité enregistrée pour le moment.');
+  const eventLabels = { inscription:'Inscription', changement_forfait:'Changement de forfait', acces_gratuit:'Accès gratuit', suspension:'Suspension', reactivation:'Réactivation', suppression:'Suppression', impersonation:'Vu en tant que' };
+  return `
+    <table class="stack-mobile">
+      <tr><th>Quand</th><th>Événement</th><th>Compte</th><th>Détail</th></tr>
+      ${activity.map(a=>`<tr>
+        <td data-label="Quand" class="small muted">${fmtDateLong(new Date(a.created_at))} à ${fmtTime(new Date(a.created_at))}</td>
+        <td data-label="Événement"><span class="tag tag-neutral">${eventLabels[a.event_type]||a.event_type}</span></td>
+        <td data-label="Compte" class="small">${escapeHtml(a.user_email||'—')}</td>
+        <td data-label="Détail" class="small muted">${escapeHtml(a.details||'')}</td>
+      </tr>`).join('')}
+    </table>
   `;
 }
 function renderAccountAuthPage(){
@@ -10489,8 +10824,10 @@ function renderLoginScreen(){
   const stepPassword = selectedMember ? selectedMember.password : CREDENTIALS.patron.password;
   const activeResto = RESTOS.find(r=>r.id===state.resto) || RESTOS[0] || {name:'Mon restaurant'};
   return `
-    <div class="login-shell">
-      <div class="login-brand" ${activeResto.coverPhotoDataUrl ? `style="background-image:linear-gradient(rgba(10,10,10,0.55),rgba(10,10,10,0.75)),url('${activeResto.coverPhotoDataUrl}');background-size:cover;background-position:center;"` : ''}>
+    <div style="display:flex;flex-direction:column;width:100%;">
+      ${renderBanner()}
+      <div class="login-shell">
+        <div class="login-brand" ${activeResto.coverPhotoDataUrl ? `style="background-image:linear-gradient(rgba(10,10,10,0.55),rgba(10,10,10,0.75)),url('${activeResto.coverPhotoDataUrl}');background-size:cover;background-position:center;"` : ''}>
         <div class="brand-mark" style="width:40px;height:40px;font-size:18px;overflow:hidden;">${activeResto.logoDataUrl ? `<img src="${activeResto.logoDataUrl}" alt="${escapeHtml(activeResto.name)}" style="width:100%;height:100%;object-fit:cover;">` : 'M'}</div>
         <h1>${escapeHtml(activeResto.name)}</h1>
         <p>${activeResto.tagline ? escapeHtml(activeResto.tagline) : "La gestion de restaurant, sans friction. Un espace dédié pour chaque rôle, du service jusqu'au bureau."}</p>
@@ -10548,6 +10885,7 @@ function renderLoginScreen(){
         </div>
       </div>
     </div>
+    </div>
   `;
 }
 function openRecoverPatronCredentialsModal(){
@@ -10585,6 +10923,15 @@ async function confirmRecoverPatronCredentials(){
 }
 function renderBanner(){
   let html = '';
+  // Imitation d'un compte par l'administrateur — priorité absolue d'affichage (avant même la
+  // suppression en attente) : jamais d'ambiguïté possible sur le fait qu'on ne regarde pas son
+  // propre compte, avec un chemin de sortie toujours visible.
+  if(state.impersonating && state.impersonating.active){
+    html += `<div class="demo-banner" style="background:var(--urgent);">
+      ${iconXs(I.alertTriangle)} <span><b>Vous visualisez le compte de ${escapeHtml(state.impersonating.label)}</b> en tant qu'administrateur. <a href="#" onclick="exitImpersonation();return false;" style="color:#fff;text-decoration:underline;font-weight:700;">Quitter cette vue</a></span>
+    </div>`;
+    return html; // rien d'autre ne doit se superposer à ce bandeau tant qu'on imite un compte
+  }
   // Compte en cours de suppression (délai de grâce) — visible partout dans le site, pas
   // seulement dans Paramètres, pour que personne ne découvre ça par accident en fin de délai.
   if(ACCOUNT && ACCOUNT.pending_deletion_at){
