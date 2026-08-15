@@ -1600,19 +1600,19 @@ const NAV = {
   patron: [
     {id:'dashboard', label:'Tableau de bord', icon:I.dash},
     {id:'demandes', label:'Demandes internes', icon:I.bell, badgeKey:'demandes'},
-    {id:'stocks', label:'Produits', icon:I.doc},
-    {id:'recettes', label:'Fiches techniques', icon:I.chef},
-    {id:'commandes', label:'Commandes', icon:I.cart},
-    {id:'ecarts', label:'Écarts de livraison', icon:I.alertTriangle},
-    {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
-    {id:'stats', label:'Statistiques', icon:I.chart},
-    {id:'fournisseurs', label:'Fournisseurs', icon:I.truck},
-    {id:'carte-fournisseurs', label:'Carte des fournisseurs', icon:I.mapPin},
-    {id:'equipe', label:'Équipe', icon:I.team},
-    {id:'multi', label:'Multi-établissements', icon:I.building},
-    {id:'notifications', label:'Notifications', icon:I.mail},
-    {id:'parametres', label:'Paramètres', icon:I.settings},
-    {id:'aide', label:'Aide', icon:I.help},
+    {id:'stocks', label:'Produits', icon:I.doc, section:'Catalogue'},
+    {id:'recettes', label:'Fiches techniques', icon:I.chef, section:'Catalogue'},
+    {id:'commandes', label:'Commandes', icon:I.cart, section:'Achats'},
+    {id:'ecarts', label:'Écarts de livraison', icon:I.alertTriangle, section:'Achats'},
+    {id:'fournisseurs', label:'Fournisseurs', icon:I.truck, section:'Achats'},
+    {id:'carte-fournisseurs', label:'Carte des fournisseurs', icon:I.mapPin, section:'Achats'},
+    {id:'stats', label:'Statistiques', icon:I.chart, section:'Pilotage'},
+    {id:'haccp', label:'Suivi HACCP', icon:I.thermometer, section:'Pilotage'},
+    {id:'equipe', label:'Équipe', icon:I.team, section:'Organisation'},
+    {id:'multi', label:'Multi-établissements', icon:I.building, section:'Organisation'},
+    {id:'notifications', label:'Notifications', icon:I.mail, section:'Compte'},
+    {id:'parametres', label:'Paramètres', icon:I.settings, section:'Compte'},
+    {id:'aide', label:'Aide', icon:I.help, section:'Compte'},
   ],
   manager: [
     {id:'dashboard', label:'Vue du jour', icon:I.dash},
@@ -2675,14 +2675,25 @@ function renderShell(){
       </div>
       <div class="role-tag">Espace ${meta.label}${state.identity==='patron' && state.role!=='patron' ? ' · aperçu' : ''}</div>
       <div class="nav">
-        ${nav.map(item=>{
-          let badge = '';
-          if(item.badgeKey==='demandes'){
-            const count = state.role==='patron' ? pendingDemandes() : pendingDemandesFor('Salle');
-            if(count>0) badge = `<span class="nav-badge">${count}</span>`;
-          }
-          return `<button class="nav-item ${state.view===item.id?'active':''}" data-nav-id="${item.id}" onclick="setView('${item.id}');closeSidebar();">${item.icon}<span>${item.label}</span>${badge}</button>`;
-        }).join('')}
+        ${(() => {
+          let lastSection = undefined;
+          return nav.map(item=>{
+            let badge = '';
+            if(item.badgeKey==='demandes'){
+              const count = state.role==='patron' ? pendingDemandes() : pendingDemandesFor('Salle');
+              if(count>0) badge = `<span class="nav-badge">${count}</span>`;
+            }
+            // Un en-tête de section apparaît seulement au moment où elle commence — pas de
+            // répétition à chaque entrée, et rien du tout pour les rôles qui n'en définissent
+            // pas (manager, cuisine, salle : leur menu reste assez court pour ne pas en avoir besoin).
+            let sectionHeader = '';
+            if(item.section && item.section !== lastSection){
+              sectionHeader = `<div class="nav-section-label">${escapeHtml(item.section)}</div>`;
+            }
+            lastSection = item.section;
+            return sectionHeader + `<button class="nav-item ${state.view===item.id?'active':''}" data-nav-id="${item.id}" onclick="setView('${item.id}');closeSidebar();">${item.icon}<span>${item.label}</span>${badge}</button>`;
+          }).join('');
+        })()}
       </div>
       <div class="sidebar-foot">
         Mise&nbsp;&amp;&nbsp;Sûre
@@ -5341,6 +5352,11 @@ function viewParametres(){
 
     ${tab==='donnees' ? `
     <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">${iconSm(I.doc)} Mode contrôle</div>
+        <div class="small muted" style="margin-bottom:14px;">Un contrôle sanitaire ou un rendez-vous comptable, et il faut tout retrouver d'un coup ? Ce bouton télécharge en une fois le compte-rendu HACCP du mois${(RESTOS.find(r=>r.id===state.resto)||{}).haccpEnabled?'':' (si activé)'}, l'historique des achats et l'export comptable — les documents déjà existants, réunis plutôt qu'à chercher un par un.</div>
+        <button class="btn btn-primary" onclick="downloadControlBundle('month')">${iconSm(I.download)} Tout télécharger — ce mois</button>
+      </div>
       <div class="card">
         <div class="card-title">Vos données</div>
         <div class="small muted" style="margin-bottom:14px;">Le site l'annonce sur la page tarifs : vos données vous appartiennent, exportables à tout moment. Deux formats au choix — un document lisible à garder ou imprimer, ou un fichier technique si vous voulez les réimporter ailleurs.</div>
@@ -8371,6 +8387,24 @@ function downloadAccountingExport(period){
     XLSX.writeFile(wb, filename);
     toast('Export comptable téléchargé');
   });
+}
+// ============================================================
+// MODE CONTRÔLE — rassemble en un clic les documents qu'on cherche dans l'urgence d'un
+// contrôle sanitaire ou d'un rendez-vous comptable : le compte-rendu HACCP du mois (s'il est
+// activé), l'historique des achats du mois, et l'export comptable du mois. Aucun nouveau
+// document créé — seulement les trois déjà existants, réunis en un seul geste plutôt qu'à
+// chercher un par un au pire moment pour le faire calmement.
+// ============================================================
+function downloadControlBundle(period){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const steps = [];
+  if(resto && resto.haccpEnabled) steps.push(()=>downloadHaccpReport(period));
+  steps.push(()=>downloadHistoryDocument(period));
+  steps.push(()=>downloadAccountingExport(period));
+  toast(`Préparation de ${steps.length} document${steps.length>1?'s':''}…`);
+  // Un léger délai entre chaque téléchargement : certains navigateurs bloquent ou demandent une
+  // confirmation si plusieurs fichiers se déclenchent exactement au même instant.
+  steps.forEach((step,i)=>setTimeout(step, i*450));
 }
 
 /* ============================================================
