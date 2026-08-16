@@ -444,6 +444,8 @@ tr.group-row:hover td{background:var(--gray-100);}
 .admin-kpi .val{font-size:26px;font-weight:700;margin-top:4px;font-family:var(--heading-font);}
 .admin-account-row{border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface);}
 .admin-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+.btn-link-quiet{background:none;border:none;padding:0;color:var(--text);cursor:pointer;font-size:inherit;text-decoration:none;border-bottom:1px dashed var(--muted);}
+.btn-link-quiet:hover{border-bottom-color:var(--text);}
 .admin-filter-bar input, .admin-filter-bar select{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13.5px;}
 .login-brand{background:var(--black);color:#EDEDE8;flex:0 0 40%;display:flex;flex-direction:column;justify-content:center;padding:60px;}
 .login-brand h1{color:#fff;font-size:28px;margin:18px 0 10px 0;}
@@ -1196,10 +1198,15 @@ function staleSuppliersReminderHTML(){
 function fmtEUR(n){ if(financialsHidden()) return ''; const v = Number(n); return (Number.isFinite(v) ? v : 0).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
 // ============================================================
 // FICHES TECHNIQUES — conversion d'unités et calcul de coût. Un produit est acheté dans une
-// unité (souvent le Kg ou le Litre), mais utilisé en cuisine dans une autre (200g, 5cl...) —
-// ces fonctions relient les deux. En dehors du poids et du volume (ex. "Pièce", "Bouteille"),
-// aucune conversion fiable n'est possible : l'unité de la recette doit alors correspondre
-// exactement à celle du produit.
+// unité, mais utilisé en cuisine dans une autre — deux façons de relier les deux :
+//   1. Conversion directe : l'unité d'achat est déjà un poids ou un volume (Kg, Litre...) —
+//      g/Kg ou mL/cl/Litre sont alors interchangeables sans rien à renseigner de plus.
+//   2. Via le contenu net : l'unité d'achat n'est PAS un poids/volume (Caisse, Carton,
+//      Bouteille...) — un produit acheté "par Caisse" ne peut alors être utilisé en grammes
+//      dans une recette QUE si quelqu'un a renseigné, une fois sur le produit, "cette Caisse
+//      contient 10 Kg" (voir net_content_qty/net_content_unit). Sans cette information, la
+//      seule unité disponible reste celle de l'achat lui-même — mieux vaut un choix limité
+//      mais honnête qu'une fausse conversion inventée.
 // ============================================================
 const RECIPE_UNIT_GROUPS = {
   weight: { g:1, Kg:1000 },
@@ -1211,30 +1218,62 @@ function recipeUnitGroup(unit){
   if(RECIPE_UNIT_GROUPS.volume[u] !== undefined) return 'volume';
   return null;
 }
-function recipeCompatibleUnits(productUnit){
-  const group = recipeUnitGroup(productUnit);
-  if(group==='weight') return ['g','Kg'];
-  if(group==='volume') return ['mL','cl','Litre'];
-  return [productUnit || 'unité'];
+// Unités utilisables dans une recette pour ce produit — l'unité d'achat elle-même reste
+// toujours proposée, complétée par g/Kg ou mL/cl/Litre si une conversion existe (directe, ou
+// via le contenu net renseigné sur le produit).
+function recipeCompatibleUnits(product){
+  const directGroup = recipeUnitGroup(product.unit);
+  if(directGroup) return directGroup==='weight' ? ['g','Kg'] : ['mL','cl','Litre'];
+  const options = [product.unit || 'unité'];
+  if(product.netContentQty && product.netContentUnit){
+    const netGroup = recipeUnitGroup(product.netContentUnit);
+    if(netGroup) options.push(...(netGroup==='weight' ? ['g','Kg'] : ['mL','cl','Litre']));
+  }
+  return options;
 }
-// Convertit une quantité de recette (dans `unit`) vers l'unité d'achat du produit, pour
-// pouvoir la multiplier par son prix — renvoie null si la conversion n'est pas possible
-// (groupes différents, ex. essayer de convertir des grammes en litres).
-function convertToProductUnit(quantity, unit, productUnit){
-  const group = recipeUnitGroup(productUnit);
-  if(!group) return unit === productUnit ? quantity : null;
-  const table = RECIPE_UNIT_GROUPS[group];
-  if(table[unit] === undefined || table[productUnit] === undefined) return null;
-  return quantity * table[unit] / table[productUnit];
+// Convertit une quantité de recette (dans `unit`) en une FRACTION D'UNITÉ D'ACHAT du produit,
+// pour pouvoir la multiplier directement par son prix — renvoie null si aucune conversion
+// fiable n'existe entre les deux (ex. grammes vers litres, ou pas de contenu net renseigné
+// pour un produit acheté par Caisse).
+function convertToProductUnit(quantity, unit, product){
+  const productUnit = product.unit;
+  const directGroup = recipeUnitGroup(productUnit);
+  if(directGroup){
+    const table = RECIPE_UNIT_GROUPS[directGroup];
+    if(table[unit] !== undefined && table[productUnit] !== undefined){
+      return quantity * table[unit] / table[productUnit];
+    }
+  }
+  if(unit === productUnit) return quantity;
+  // Passe par le contenu net : ex. 200g vers "Caisse", sachant qu'une Caisse = 10 Kg.
+  if(product.netContentQty && product.netContentUnit){
+    const netGroup = recipeUnitGroup(product.netContentUnit);
+    if(netGroup){
+      const table = RECIPE_UNIT_GROUPS[netGroup];
+      if(table[unit] !== undefined && table[product.netContentUnit] !== undefined){
+        const qtyInNetUnit = quantity * table[unit] / table[product.netContentUnit];
+        return qtyInNetUnit / product.netContentQty;
+      }
+    }
+  }
+  return null;
 }
-// Coût d'un ingrédient — toujours calculé à partir du prix ACTUEL du produit lié (jamais un
-// prix figé au moment de l'ajout), pour que le coût de revient reste juste après une hausse ou
-// une baisse tarifaire fournisseur, sans que personne n'ait à y repenser.
+// Coût d'un ingrédient — toujours calculé à partir du produit ACTUEL en mémoire (pas d'un
+// instantané figé au moment de l'ajout de l'ingrédient), pour que changer un prix ou un
+// contenu net se répercute immédiatement sur le coût de revient, sans attendre une
+// resynchronisation. Si le produit a été supprimé du catalogue depuis, on retombe sur le
+// dernier instantané connu plutôt que de perdre le coût du jour au jour.
 function recipeIngredientCost(ing){
-  if(ing.currentProductPrice == null || !ing.currentProductUnit) return null; // produit supprimé du catalogue depuis
-  const convertedQty = convertToProductUnit(ing.quantity, ing.unit, ing.currentProductUnit);
+  const liveProduct = ing.productId ? PRODUCTS.find(p=>p.id===ing.productId) : null;
+  const price = liveProduct ? liveProduct.price : ing.currentProductPrice;
+  const unit = liveProduct ? liveProduct.unit : ing.currentProductUnit;
+  const netContentQty = liveProduct ? liveProduct.netContentQty : ing.currentProductNetContentQty;
+  const netContentUnit = liveProduct ? liveProduct.netContentUnit : ing.currentProductNetContentUnit;
+  if(price == null || !unit) return null; // produit supprimé du catalogue et jamais synchronisé
+  const product = { unit, netContentQty, netContentUnit };
+  const convertedQty = convertToProductUnit(ing.quantity, ing.unit, product);
   if(convertedQty == null) return null;
-  return convertedQty * ing.currentProductPrice;
+  return convertedQty * price;
 }
 function recipeCostBreakdown(recipeId){
   const lines = RECIPE_INGREDIENTS.filter(i=>i.recipeId===recipeId).map(ing=>({ ...ing, cost: recipeIngredientCost(ing) }));
@@ -3400,7 +3439,7 @@ function renderRecipeCard(recipe){
               const cost = recipeIngredientCost(ing);
               return `<tr class="tr-hover">
                 <td data-label="Ingrédient">${escapeHtml(ing.productNameSnapshot)}${!ing.productId?' <span class="small muted">(retiré du catalogue)</span>':''}</td>
-                <td data-label="Quantité" class="mono">${ing.quantity} ${escapeHtml(ing.unit)}</td>
+                <td data-label="Quantité"><button class="btn-link-quiet mono" onclick="event.stopPropagation();openEditIngredientModal('${recipe.id}','${ing.id}')" title="Modifier la quantité">${ing.quantity} ${escapeHtml(ing.unit)}</button></td>
                 ${!financialsHidden()?`<td data-label="Coût" class="mono">${cost!=null?fmtEUR(cost):'—'}</td>`:''}
                 <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteRecipeIngredient('${recipe.id}','${ing.id}')" title="Retirer">${iconXs(I.trash)}</button></td>
               </tr>`;
@@ -3520,17 +3559,33 @@ function openAddIngredientModal(recipeId){
     </div>
     <div class="field-row">
       <div class="field"><label>Quantité utilisée</label><input id="ing-quantity" type="number" step="0.001" min="0" placeholder="Ex : 200"></div>
-      <div class="field"><label>Unité</label><select id="ing-unit"><option>—</option></select></div>
+      <div class="field"><label>Unité</label><select id="ing-unit" onchange="updateIngredientUnitHint()"><option>—</option></select></div>
     </div>
+    <div id="ing-unit-hint" class="small muted" style="margin:-8px 0 14px 0;"></div>
     <button class="btn btn-primary btn-block" onclick="saveNewIngredient('${recipeId}')">Ajouter</button>
   `);
 }
 function selectIngredientProduct(el){
   selectProductPickerRow(el, 'ing-product-id', 'ing-picker');
-  const productUnit = el.dataset.unit;
-  const compatible = recipeCompatibleUnits(productUnit);
+  const product = PRODUCTS.find(p=>p.name===el.dataset.name);
+  const compatible = product ? recipeCompatibleUnits(product) : [];
   const select = document.getElementById('ing-unit');
   select.innerHTML = compatible.map(u=>`<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+  updateIngredientUnitHint();
+}
+// Quand la seule unité proposée est celle de l'achat lui-même (ex. "Caisse"), c'est presque
+// toujours parce qu'aucun contenu net n'a été renseigné sur le produit — plutôt que de laisser
+// deviner pourquoi, on l'explique directement ici, avec le geste exact pour le corriger.
+function updateIngredientUnitHint(){
+  const productName = document.getElementById('ing-product-id').value;
+  const product = PRODUCTS.find(p=>p.name===productName);
+  const hint = document.getElementById('ing-unit-hint');
+  if(!product || !hint) return;
+  const compatible = recipeCompatibleUnits(product);
+  const onlyPurchaseUnit = compatible.length===1 && compatible[0]===(product.unit||'unité') && !recipeUnitGroup(product.unit);
+  hint.innerHTML = onlyPurchaseUnit
+    ? `Seule l'unité d'achat (${escapeHtml(product.unit||'unité')}) est disponible pour ce produit. Pour pouvoir utiliser des grammes ou des cl dans une recette, renseignez son contenu net dans <a href="#" onclick="closeModal();editProduct('${product.id}');return false;">sa fiche produit</a> — ex. « cette Caisse contient 10 Kg ».`
+    : '';
 }
 async function saveNewIngredient(recipeId){
   const r = RECIPES.find(x=>x.id===recipeId); if(!r) return;
@@ -3549,6 +3604,7 @@ async function saveNewIngredient(recipeId){
       id:'ri'+data.ingredient.id, remoteId:data.ingredient.id, recipeId,
       productId: product.id, productNameSnapshot: product.name, quantity, unit,
       currentProductPrice: product.price, currentProductUnit: product.unit, currentProductTvaRate: product.tvaRate,
+      currentProductNetContentQty: product.netContentQty, currentProductNetContentUnit: product.netContentUnit,
     });
     closeModal();
     toast('Ingrédient ajouté');
@@ -3564,6 +3620,39 @@ async function deleteRecipeIngredient(recipeId, ingredientId){
     RECIPE_INGREDIENTS = RECIPE_INGREDIENTS.filter(x=>x.id!==ingredientId);
     ensureRestoData(state.resto).recipeIngredients = RECIPE_INGREDIENTS;
     toast('Ingrédient retiré');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+// Corriger une quantité ne devrait jamais obliger à supprimer puis recréer tout l'ingrédient —
+// une simple faute de frappe (2000g au lieu de 200g) mérite une correction, pas une suppression.
+function openEditIngredientModal(recipeId, ingredientId){
+  const ing = RECIPE_INGREDIENTS.find(x=>x.id===ingredientId); if(!ing) return;
+  const liveProduct = ing.productId ? PRODUCTS.find(p=>p.id===ing.productId) : null;
+  const compatible = liveProduct ? recipeCompatibleUnits(liveProduct) : [ing.unit];
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Modifier « ${escapeHtml(ing.productNameSnapshot)} »</h3>
+    <div class="field-row">
+      <div class="field"><label>Quantité utilisée</label><input id="ing-edit-quantity" type="number" step="0.001" min="0" value="${ing.quantity}"></div>
+      <div class="field"><label>Unité</label><select id="ing-edit-unit">${compatible.map(u=>`<option value="${escapeHtml(u)}" ${u===ing.unit?'selected':''}>${escapeHtml(u)}</option>`).join('')}</select></div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveIngredientEdit('${recipeId}','${ingredientId}')">Enregistrer</button>
+  `);
+}
+async function saveIngredientEdit(recipeId, ingredientId){
+  const r = RECIPES.find(x=>x.id===recipeId); if(!r) return;
+  const ing = RECIPE_INGREDIENTS.find(x=>x.id===ingredientId); if(!ing) return;
+  const quantity = parseFloat(document.getElementById('ing-edit-quantity').value);
+  if(!quantity || quantity<=0){ toast('Merci de saisir une quantité valide', 'alert'); return; }
+  const unit = document.getElementById('ing-edit-unit').value;
+  const resto = RESTOS.find(rr=>rr.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}/ingredients/${ing.remoteId}`, {
+      method:'PATCH', body:{ quantity, unit },
+    });
+    ing.quantity = quantity; ing.unit = unit;
+    closeModal();
+    toast('Ingrédient mis à jour');
     render();
   } catch(err){ toast(err.message, 'alert'); }
 }
@@ -4852,6 +4941,8 @@ async function syncProductsFromServer(localId){
         cat: p.category, department: p.department,
         packaging: p.packaging, supplierReference: p.supplier_reference,
         zoneIds: localZoneIds, tvaRate: p.tva_rate != null ? parseFloat(p.tva_rate) : 5.5,
+        netContentQty: p.net_content_qty != null ? parseFloat(p.net_content_qty) : null,
+        netContentUnit: p.net_content_unit || null,
       };
     });
     if(state.resto === localId) PRODUCTS = d.products;
@@ -4950,6 +5041,8 @@ async function syncRecipesFromServer(localId){
       currentProductPrice: i.product_price!=null ? parseFloat(i.product_price) : null,
       currentProductUnit: i.product_unit || null,
       currentProductTvaRate: i.product_tva_rate!=null ? parseFloat(i.product_tva_rate) : null,
+      currentProductNetContentQty: i.product_net_content_qty!=null ? parseFloat(i.product_net_content_qty) : null,
+      currentProductNetContentUnit: i.product_net_content_unit || null,
     }));
     if(state.resto === localId){ RECIPES = d.recipes; RECIPE_INGREDIENTS = d.recipeIngredients; }
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRecipesFromServer —', err); }
@@ -7324,6 +7417,14 @@ function openNewProductModal(prefill){
       <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${escapeHtml(p ? (p.packaging||'') : '')}">
       <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
     </div>
+    <div class="field">
+      <label>Contenu net, pour le coût de revient des recettes (facultatif)</label>
+      <div class="small muted" style="margin:-2px 0 8px 0;">Pour un produit acheté à la pièce, au carton ou à la caisse : combien pèse ou contient réellement une unité — c'est ce qui permet ensuite d'utiliser des grammes ou des cl dans une fiche technique, même si vous achetez par Caisse.</div>
+      <div class="field-row">
+        <div class="field"><input id="np-net-content-qty" type="number" step="0.001" min="0" placeholder="Ex : 10" value="${p && p.netContentQty!=null ? p.netContentQty : ''}"></div>
+        <div class="field"><select id="np-net-content-unit"><option value="">—</option><option value="g" ${p && p.netContentUnit==='g'?'selected':''}>g</option><option value="Kg" ${p && p.netContentUnit==='Kg'?'selected':''}>Kg</option><option value="mL" ${p && p.netContentUnit==='mL'?'selected':''}>mL</option><option value="cl" ${p && p.netContentUnit==='cl'?'selected':''}>cl</option><option value="Litre" ${p && p.netContentUnit==='Litre'?'selected':''}>Litre</option></select></div>
+      </div>
+    </div>
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${escapeHtml(p ? (p.supplierReference||'') : '')}"></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${p && p.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="np-department">
@@ -7497,6 +7598,10 @@ async function addProduct(){
   const unit = document.getElementById('np-unit').value.trim() || 'unité';
   const packaging = document.getElementById('np-packaging').value.trim();
   const supplierReference = document.getElementById('np-reference').value.trim();
+  const netContentQtyEl = document.getElementById('np-net-content-qty');
+  const netContentUnitEl = document.getElementById('np-net-content-unit');
+  const netContentQty = netContentQtyEl && netContentQtyEl.value !== '' ? parseFloat(netContentQtyEl.value) : null;
+  const netContentUnit = netContentUnitEl && netContentUnitEl.value !== '' ? netContentUnitEl.value : null;
   const priceEl = document.getElementById('np-price');
   const price = priceEl ? (parseNum(priceEl.value)||0) : 0;
   const tvaEl = document.getElementById('np-tva');
@@ -7510,9 +7615,9 @@ async function addProduct(){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
-      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate },
+      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate, netContentQty, netContentUnit },
     });
-    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds, tvaRate:parseFloat(data.product.tva_rate)});
+    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds, tvaRate:parseFloat(data.product.tva_rate), netContentQty, netContentUnit});
     closeModal();
     toast('Produit « '+escapeHtml(name)+' » créé');
     render();
@@ -7705,6 +7810,14 @@ function editProduct(id){
       <input id="ep-packaging" value="${escapeHtml(p.packaging||'')}" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg">
       <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
     </div>
+    <div class="field">
+      <label>Contenu net, pour le coût de revient des recettes (facultatif)</label>
+      <div class="small muted" style="margin:-2px 0 8px 0;">Pour un produit acheté à la pièce, au carton ou à la caisse : combien pèse ou contient réellement une unité — c'est ce qui permet ensuite d'utiliser des grammes ou des cl dans une fiche technique, même si vous achetez par Caisse.</div>
+      <div class="field-row">
+        <div class="field"><input id="ep-net-content-qty" type="number" step="0.001" min="0" placeholder="Ex : 10" value="${p.netContentQty!=null ? p.netContentQty : ''}"></div>
+        <div class="field"><select id="ep-net-content-unit"><option value="">—</option><option value="g" ${p.netContentUnit==='g'?'selected':''}>g</option><option value="Kg" ${p.netContentUnit==='Kg'?'selected':''}>Kg</option><option value="mL" ${p.netContentUnit==='mL'?'selected':''}>mL</option><option value="cl" ${p.netContentUnit==='cl'?'selected':''}>cl</option><option value="Litre" ${p.netContentUnit==='Litre'?'selected':''}>Litre</option></select></div>
+      </div>
+    </div>
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${escapeHtml(p.supplierReference||'')}"></div>
     <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="ep-department">
@@ -7770,6 +7883,10 @@ async function saveProduct(id){
   const unit = document.getElementById('ep-unit').value.trim() || p.unit;
   const packaging = document.getElementById('ep-packaging').value.trim();
   const supplierReference = document.getElementById('ep-reference').value.trim();
+  const netContentQtyEl = document.getElementById('ep-net-content-qty');
+  const netContentUnitEl = document.getElementById('ep-net-content-unit');
+  const netContentQty = netContentQtyEl && netContentQtyEl.value !== '' ? parseFloat(netContentQtyEl.value) : null;
+  const netContentUnit = netContentUnitEl && netContentUnitEl.value !== '' ? netContentUnitEl.value : null;
   const priceEl = document.getElementById('ep-price');
   // Avant : `parseNum(...) || p.price` — un piège classique de JavaScript, où 0 est
   // "faux" au même titre qu'une valeur vide : impossible de remettre un produit à 0,00 €,
@@ -7789,13 +7906,14 @@ async function saveProduct(id){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
       method:'PATCH',
-      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate },
+      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate, netContentQty, netContentUnit },
     });
     p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
     p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
     p.supplier = supplier; p.department = data.product.department;
     p.packaging = packaging; p.supplierReference = supplierReference; p.zoneIds = zoneIds;
     p.tvaRate = parseFloat(data.product.tva_rate);
+    p.netContentQty = netContentQty; p.netContentUnit = netContentUnit;
     closeModal();
     toast('Produit mis à jour');
     render();
