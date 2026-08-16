@@ -7413,7 +7413,12 @@ function openSignalModal(from, urgent){
   `);
 }
 function filterProductPicker(pickerId){
-  const input = document.getElementById(pickerId==='sig-picker'?'sig-search':pickerId+'-search');
+  // L'identifiant du champ de recherche se déduit du PRÉFIXE commun (ex. "ing", "ing-edit",
+  // "sig"), pas d'une simple concaténation sur pickerId — sinon "ing-picker" donnerait
+  // "ing-picker-search" au lieu du vrai "ing-search", et la recherche resterait silencieusement
+  // sans effet (elle ne trouve jamais le champ, donc ne filtre jamais rien).
+  const prefix = pickerId.endsWith('-picker') ? pickerId.slice(0, -'-picker'.length) : pickerId;
+  const input = document.getElementById(prefix+'-search');
   const q = (input ? input.value : '').toLowerCase();
   document.querySelectorAll('#'+pickerId+' .product-picker-row').forEach(row=>{
     row.style.display = row.dataset.search.includes(q) ? '' : 'none';
