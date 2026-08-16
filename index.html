@@ -733,7 +733,7 @@ tr.group-row:hover td{background:var(--gray-100);}
    de pro. Seule l'infobulle elle-même (voir .tour-tooltip, pointer-events:auto) reste
    cliquable — le reste de l'écran, y compris la zone mise en avant, est volontairement
    figé : on avance uniquement via les boutons du guide, jamais en cliquant à travers. */
-.tour-overlay{position:fixed;inset:0;z-index:250;pointer-events:auto;cursor:default;}
+.tour-overlay{position:fixed;inset:0;z-index:250;pointer-events:auto;cursor:default;touch-action:none;}
 .tour-spotlight{
   position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(10,10,10,0.68);
   transition:left .25s ease,top .25s ease,width .25s ease,height .25s ease;pointer-events:none;
@@ -2452,12 +2452,23 @@ function startGuidedTour(){
   TOUR_STATE.stepIndex = 0;
   TOUR_STATE.wasSidebarOpen = state.sidebarOpen;
   if(window.innerWidth <= 900 && !state.sidebarOpen){ state.sidebarOpen = true; render(); }
+  // pointer-events:auto sur l'overlay (voir CSS) bloque déjà les clics, mais ne suffit pas
+  // contre un geste de glissement tactile : sur mobile, le navigateur peut reconnaître un
+  // balayage comme un défilement natif de la page AVANT même que le CSS ne l'en empêche. La
+  // seule façon fiable de vraiment figer l'arrière-plan est de bloquer le défilement lui-même,
+  // le temps du guide — restauré exactement à l'identique dans endTour().
+  TOUR_STATE.savedBodyOverflow = document.body.style.overflow;
+  TOUR_STATE.savedHtmlOverflow = document.documentElement.style.overflow;
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
   renderTourStep();
 }
 function endTour(){
   TOUR_STATE.active = false;
   const el = document.getElementById('tour-overlay');
   if(el) el.remove();
+  document.body.style.overflow = TOUR_STATE.savedBodyOverflow || '';
+  document.documentElement.style.overflow = TOUR_STATE.savedHtmlOverflow || '';
   localStorage.setItem('mise_et_sure_tour_seen', '1');
   if(window.innerWidth <= 900 && state.sidebarOpen && !TOUR_STATE.wasSidebarOpen){ state.sidebarOpen = false; render(); }
 }
@@ -3023,6 +3034,14 @@ function achatsBySupplier(){
   ORDERS.filter(o=>o.status!=='refusee').forEach(o=>{ map[o.supplier] = (map[o.supplier]||0) + o.amount; });
   return SUPPLIERS.map(s=>({label:s.name, value:Math.round((map[s.id]||0)*100)/100})).filter(x=>x.value>0);
 }
+// Équivalent de achatsBySupplier() mais en nombre de commandes plutôt qu'en montant — utilisé
+// à la place du graphique de dépenses quand le suivi financier est désactivé, pour ne jamais
+// laisser un montant en euros s'afficher malgré tout sur le tableau de bord.
+function commandesCountBySupplier(){
+  const map = {};
+  ORDERS.filter(o=>o.status!=='refusee').forEach(o=>{ map[o.supplier] = (map[o.supplier]||0) + 1; });
+  return SUPPLIERS.map(s=>({label:s.name, value:map[s.id]||0})).filter(x=>x.value>0);
+}
 function buildAIInsights(){
   const insights = [];
   if(PRODUCTS.length===0 && ORDERS.length===0){
@@ -3131,8 +3150,9 @@ function viewPatronDashboard(){
       <div class="card kpi">
         <div class="kpi-icon">${I.invoice}</div>
         <div class="card-title">Achats fournisseurs (historique)</div>
-        <div class="val">${achatsTotal.toLocaleString('fr-FR',{maximumFractionDigits:0})} €</div>
-        <div class="delta good">${ORDERS.length} commande${ORDERS.length>1?'s':''} au total</div>
+        ${financialsHidden()
+          ? `<div class="val">${ORDERS.length}</div><div class="delta good">commande${ORDERS.length>1?'s':''} au total</div>`
+          : `<div class="val">${achatsTotal.toLocaleString('fr-FR',{maximumFractionDigits:0})} €</div><div class="delta good">${ORDERS.length} commande${ORDERS.length>1?'s':''} au total</div>`}
       </div>
       <div class="card kpi">
         <div class="kpi-icon strong">${I.chef}</div>
@@ -3156,8 +3176,8 @@ function viewPatronDashboard(){
 
     <div class="grid grid-2" style="margin-top:18px;align-items:start;">
       <div class="card">
-        <div class="card-title">Achats par fournisseur</div>
-        ${achatsBySupplier().length ? `<div class="chart-box"><canvas id="chartStockValue"></canvas></div>` : emptyState("La répartition de vos achats apparaîtra ici une fois vos premières commandes passées.")}
+        <div class="card-title">${financialsHidden() ? 'Commandes par fournisseur' : 'Achats par fournisseur'}</div>
+        ${(financialsHidden() ? commandesCountBySupplier() : achatsBySupplier()).length ? `<div class="chart-box"><canvas id="chartStockValue"></canvas></div>` : emptyState("La répartition de vos achats apparaîtra ici une fois vos premières commandes passées.")}
       </div>
       <div class="ai-box">
         <div class="ai-head">${I.spark}<span class="ai-title">Informations clés</span></div>
@@ -6064,10 +6084,10 @@ function buildDataExportDocumentHTML(){
       </div>
 
       ${section('Produits ('+data.produits.length+')', data.produits.length ? `<table class="invoice-table history">
-        <thead><tr><th>Nom</th><th>Catégorie</th><th>Fournisseur</th><th>Prix HT</th><th>Unité</th></tr></thead>
+        <thead><tr><th>Nom</th><th>Catégorie</th><th>Fournisseur</th>${financialsHidden()?'':'<th>Prix HT</th>'}<th>Unité</th></tr></thead>
         <tbody>${data.produits.map(p=>`<tr>
           <td>${escapeHtml(p.nom)}</td><td>${escapeHtml(p.categorie||'—')}</td><td>${escapeHtml(p.fournisseur||'—')}</td>
-          <td>${p.prix_achat!=null ? Number(p.prix_achat).toFixed(2)+' €' : '—'}</td><td>${escapeHtml(p.unite||'—')}</td>
+          ${financialsHidden()?'':`<td>${p.prix_achat!=null ? Number(p.prix_achat).toFixed(2)+' €' : '—'}</td>`}<td>${escapeHtml(p.unite||'—')}</td>
         </tr>`).join('')}</tbody>
       </table>` : `<div class="small muted">Aucun produit enregistré.</div>`)}
 
@@ -6088,7 +6108,7 @@ function buildDataExportDocumentHTML(){
         <thead><tr><th>Nom</th><th>Rôle</th><th>Horaires</th><th>Statut</th><th>Commande directe</th></tr></thead>
         <tbody>${data.equipe.map(t=>`<tr>
           <td>${escapeHtml(t.nom)}</td><td>${escapeHtml(t.role||'—')}</td><td>${escapeHtml(t.horaires||'—')}</td>
-          <td>${escapeHtml(t.statut||'—')}</td><td>${t.peut_commander_directement ? `Oui${t.plafond_commande_avant_validation!=null?' (jusqu\u2019à '+t.plafond_commande_avant_validation+' €)':''}` : 'Non'}</td>
+          <td>${escapeHtml(t.statut||'—')}</td><td>${t.peut_commander_directement ? `Oui${(t.plafond_commande_avant_validation!=null && !financialsHidden())?' (jusqu\u2019à '+t.plafond_commande_avant_validation+' €)':''}` : 'Non'}</td>
         </tr>`).join('')}</tbody>
       </table>` : `<div class="small muted">Aucun membre d'équipe enregistré.</div>`)}
 
@@ -7366,7 +7386,7 @@ function quickOrder(productId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Commander « ${escapeHtml(p.name)} »</h3>
-    <div class="modal-sub">${supplierName(p.supplier)} · ${(p.price||0).toFixed(2)} € / ${p.unit}</div>
+    <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${(p.price||0).toFixed(2)} € / ${p.unit}`}</div>
     <div class="field"><label>Quantité (${p.unit})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
   `);
@@ -9372,7 +9392,8 @@ function drawChartsNow(){
   safeChart('Valeur des achats (fournisseurs)', () => {
     const stockValCanvas = document.getElementById('chartStockValue');
     if(!stockValCanvas) return;
-    const data = achatsBySupplier();
+    const hideFin = financialsHidden();
+    const data = hideFin ? commandesCountBySupplier() : achatsBySupplier();
     charts.stockVal = new Chart(stockValCanvas, {
       type:'bar',
       data:{
@@ -9382,7 +9403,7 @@ function drawChartsNow(){
       options:{
         indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins:{legend:{display:false}},
-        scales:{x:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
+        scales:{x:{grid:{color:gridColor}, ticks:{callback:v=>hideFin?v:v+' €'}}, y:{grid:{display:false}}}
       }
     });
   });
