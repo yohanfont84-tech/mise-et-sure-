@@ -1270,7 +1270,29 @@ function convertToProductUnit(quantity, unit, product){
 // contenu net se répercute immédiatement sur le coût de revient, sans attendre une
 // resynchronisation. Si le produit a été supprimé du catalogue depuis, on retombe sur le
 // dernier instantané connu plutôt que de perdre le coût du jour au jour.
-function recipeIngredientCost(ing){
+//
+// Un ingrédient peut aussi venir d'une AUTRE fiche technique (sous-recette, ex. une sauce
+// maison) plutôt que d'un produit — visitedRecipeIds trace les fiches déjà traversées dans la
+// chaîne d'appel, pour ne jamais tourner en boucle si une recette finissait par se référencer
+// elle-même, même indirectement (A utilise B qui utilise A).
+function recipeIngredientCost(ing, visitedRecipeIds){
+  visitedRecipeIds = visitedRecipeIds || new Set();
+  if(ing.subRecipeId){
+    const subRecipe = RECIPES.find(r=>r.id===ing.subRecipeId);
+    if(!subRecipe || !subRecipe.yieldQty || !subRecipe.yieldUnit) return null; // pas (ou plus) utilisable comme sous-recette
+    const subBreakdown = recipeCostBreakdown(subRecipe.id, visitedRecipeIds);
+    // Pas seulement la boucle elle-même : si LA SOUS-RECETTE a le moindre ingrédient de coût
+    // inconnu (boucle plus profonde, produit supprimé...), son propre total ne veut rien dire —
+    // mieux vaut remonter "coût inconnu" ici aussi que d'afficher un chiffre silencieusement
+    // sous-évalué, calculé à partir d'un total partiel.
+    if(subBreakdown.circular || subBreakdown.hasUnknownCost) return null;
+    const costPerYieldUnit = subBreakdown.totalCostHT / subRecipe.yieldQty;
+    // Le rendement EST déjà une unité de poids/volume (ex. "500g") — on le traite comme
+    // l'unité d'achat d'un produit, pour réutiliser exactement la même logique de conversion.
+    const convertedQty = convertToProductUnit(ing.quantity, ing.unit, { unit: subRecipe.yieldUnit });
+    if(convertedQty == null) return null;
+    return convertedQty * costPerYieldUnit;
+  }
   const liveProduct = ing.productId ? PRODUCTS.find(p=>p.id===ing.productId) : null;
   const price = liveProduct ? liveProduct.price : ing.currentProductPrice;
   const unit = liveProduct ? liveProduct.unit : ing.currentProductUnit;
@@ -1282,11 +1304,18 @@ function recipeIngredientCost(ing){
   if(convertedQty == null) return null;
   return convertedQty * price;
 }
-function recipeCostBreakdown(recipeId){
-  const lines = RECIPE_INGREDIENTS.filter(i=>i.recipeId===recipeId).map(ing=>({ ...ing, cost: recipeIngredientCost(ing) }));
+function recipeCostBreakdown(recipeId, visitedRecipeIds){
+  visitedRecipeIds = visitedRecipeIds || new Set();
+  if(visitedRecipeIds.has(recipeId)){
+    // Boucle détectée (une chaîne de sous-recettes qui finit par se référencer elle-même) — on
+    // arrête net plutôt que de planter, et on le signale plutôt que d'afficher un faux chiffre.
+    return { lines:[], totalCostHT:0, hasUnknownCost:true, circular:true };
+  }
+  const nextVisited = new Set(visitedRecipeIds); nextVisited.add(recipeId);
+  const lines = RECIPE_INGREDIENTS.filter(i=>i.recipeId===recipeId).map(ing=>({ ...ing, cost: recipeIngredientCost(ing, nextVisited) }));
   const totalCostHT = Math.round(lines.reduce((a,l)=>a+(l.cost||0),0)*100)/100;
   const hasUnknownCost = lines.some(l=>l.cost==null);
-  return { lines, totalCostHT, hasUnknownCost };
+  return { lines, totalCostHT, hasUnknownCost, circular:false };
 }
 // Le prix de vente est saisi TTC (c'est ce qui figure sur la carte) ; le coût matière est HT
 // (c'est ce que facture le fournisseur). Comparer les deux donne un food cost indicatif, pas
@@ -2696,7 +2725,7 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
 ============================================================ */
 function renderShell(){
   const restoForNav = RESTOS.find(r=>r.id===state.resto);
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)));
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)) && !(n.id==='recettes' && restoForNav && restoForNav.recipesEnabled===false));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -3426,7 +3455,7 @@ function renderRecipeCard(recipe){
       <div class="flex between center" style="cursor:pointer;flex-wrap:wrap;gap:10px;" onclick="toggleRecipeExpanded('${recipe.id}')">
         <div>
           <div style="font-weight:700;font-size:15px;">${escapeHtml(recipe.name)}</div>
-          <div class="small muted">${ingredients.length} ingrédient${ingredients.length>1?'s':''}${recipe.category ? ' · '+escapeHtml(recipe.category) : ''}${hasUnknownCost ? ' · un ingrédient a un coût inconnu' : ''}</div>
+          <div class="small muted">${ingredients.length} ingrédient${ingredients.length>1?'s':''}${recipe.category ? ' · '+escapeHtml(recipe.category) : ''}${recipe.yieldQty && recipe.yieldUnit ? ` · rendement ${recipe.yieldQty} ${escapeHtml(recipe.yieldUnit)} — utilisable comme sous-recette` : ''}${hasUnknownCost ? ' · un ingrédient a un coût inconnu' : ''}</div>
         </div>
         <div class="flex gap8 center" style="flex-wrap:wrap;">
           ${!financialsHidden() ? `
@@ -3444,8 +3473,15 @@ function renderRecipeCard(recipe){
             <tr><th>Ingrédient</th><th>Quantité</th>${!financialsHidden()?'<th>Coût</th>':''}<th></th></tr>
             ${ingredients.map(ing=>{
               const cost = recipeIngredientCost(ing);
+              // "Retiré" ne veut dire quelque chose que si NI productId NI subRecipeId n'a
+              // survécu — sinon un ingrédient de sous-recette (qui a productId=null par
+              // construction, puisqu'il vient d'une fiche technique et non du catalogue)
+              // s'afficherait à tort comme supprimé.
+              const isSubRecipe = !!ing.subRecipeId;
+              const subRecipeStillExists = isSubRecipe && RECIPES.some(r=>r.id===ing.subRecipeId);
+              const wasRemoved = isSubRecipe ? !subRecipeStillExists : !ing.productId;
               return `<tr class="tr-hover">
-                <td data-label="Ingrédient">${escapeHtml(ing.productNameSnapshot)}${!ing.productId?' <span class="small muted">(retiré du catalogue)</span>':''}</td>
+                <td data-label="Ingrédient">${isSubRecipe ? iconXs(I.chef)+' ' : ''}${escapeHtml(ing.productNameSnapshot)}${isSubRecipe && subRecipeStillExists ? ' <span class="small muted">(fiche technique)</span>' : ''}${wasRemoved ? ' <span class="small muted">(retiré du catalogue)</span>' : ''}</td>
                 <td data-label="Quantité"><button class="btn-link-quiet mono" onclick="event.stopPropagation();openEditIngredientModal('${recipe.id}','${ing.id}')" title="Modifier la quantité">${ing.quantity} ${escapeHtml(ing.unit)}</button></td>
                 ${!financialsHidden()?`<td data-label="Coût" class="mono">${cost!=null?fmtEUR(cost):'—'}</td>`:''}
                 <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteRecipeIngredient('${recipe.id}','${ing.id}')" title="Retirer">${iconXs(I.trash)}</button></td>
@@ -3475,6 +3511,14 @@ function openNewRecipeModal(){
       <div class="field"><label>Prix de vente — TTC (€)</label><input id="rc-price" type="number" step="0.01" placeholder="18.00"></div>
       <div class="field"><label>Catégorie (facultatif)</label><input id="rc-category" placeholder="Ex : Plats"></div>
     </div>
+    <div class="field">
+      <label>Rendement (facultatif)</label>
+      <div class="small muted" style="margin:-2px 0 8px 0;">Ce que produit cette recette au total — à renseigner seulement si c'est une préparation de base (sauce, fond...) que vous voulez pouvoir utiliser au grammage voulu dans une autre fiche technique.</div>
+      <div class="field-row">
+        <div class="field"><input id="rc-yield-qty" type="number" step="0.001" min="0" placeholder="Ex : 500"></div>
+        <div class="field"><select id="rc-yield-unit"><option value="">—</option><option value="g">g</option><option value="Kg">Kg</option><option value="mL">mL</option><option value="cl">cl</option><option value="Litre">Litre</option></select></div>
+      </div>
+    </div>
     <div class="small muted" style="margin-bottom:14px;">Vous pourrez ajouter les ingrédients juste après avoir créé la fiche.</div>
     <button class="btn btn-primary btn-block" onclick="saveNewRecipe()">Créer la fiche</button>
   `);
@@ -3485,12 +3529,16 @@ async function saveNewRecipe(){
   const priceEl = document.getElementById('rc-price');
   const sellingPriceTtc = priceEl.value !== '' ? parseFloat(priceEl.value) : null;
   const category = document.getElementById('rc-category').value.trim();
+  const yieldQtyEl = document.getElementById('rc-yield-qty');
+  const yieldUnitEl = document.getElementById('rc-yield-unit');
+  const yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
+  const yieldUnit = yieldUnitEl && yieldUnitEl.value !== '' ? yieldUnitEl.value : null;
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/recipes`, {
-      method:'POST', body:{ name, sellingPriceTtc, category },
+      method:'POST', body:{ name, sellingPriceTtc, category, yieldQty, yieldUnit },
     });
-    const newRecipe = { id:'rc'+data.recipe.id, remoteId:data.recipe.id, name:data.recipe.name, sellingPriceTtc:data.recipe.selling_price_ttc!=null?parseFloat(data.recipe.selling_price_ttc):null, category:data.recipe.category };
+    const newRecipe = { id:'rc'+data.recipe.id, remoteId:data.recipe.id, name:data.recipe.name, sellingPriceTtc:data.recipe.selling_price_ttc!=null?parseFloat(data.recipe.selling_price_ttc):null, category:data.recipe.category, yieldQty, yieldUnit };
     RECIPES.push(newRecipe);
     closeModal();
     toast('Fiche créée — ajoutez ses ingrédients');
@@ -3508,6 +3556,14 @@ function openEditRecipeModal(id){
       <div class="field"><label>Prix de vente — TTC (€)</label><input id="rc-edit-price" type="number" step="0.01" value="${r.sellingPriceTtc!=null?r.sellingPriceTtc:''}"></div>
       <div class="field"><label>Catégorie (facultatif)</label><input id="rc-edit-category" value="${escapeHtml(r.category||'')}"></div>
     </div>
+    <div class="field">
+      <label>Rendement (facultatif)</label>
+      <div class="small muted" style="margin:-2px 0 8px 0;">Ce que produit cette recette au total — à renseigner seulement si c'est une préparation de base (sauce, fond...) que vous voulez pouvoir utiliser au grammage voulu dans une autre fiche technique.</div>
+      <div class="field-row">
+        <div class="field"><input id="rc-edit-yield-qty" type="number" step="0.001" min="0" placeholder="Ex : 500" value="${r.yieldQty!=null?r.yieldQty:''}"></div>
+        <div class="field"><select id="rc-edit-yield-unit"><option value="">—</option><option value="g" ${r.yieldUnit==='g'?'selected':''}>g</option><option value="Kg" ${r.yieldUnit==='Kg'?'selected':''}>Kg</option><option value="mL" ${r.yieldUnit==='mL'?'selected':''}>mL</option><option value="cl" ${r.yieldUnit==='cl'?'selected':''}>cl</option><option value="Litre" ${r.yieldUnit==='Litre'?'selected':''}>Litre</option></select></div>
+      </div>
+    </div>
     <button class="btn btn-primary btn-block" onclick="saveRecipeEdit('${id}')">Enregistrer</button>
   `);
 }
@@ -3518,12 +3574,17 @@ async function saveRecipeEdit(id){
   const priceEl = document.getElementById('rc-edit-price');
   const sellingPriceTtc = priceEl.value !== '' ? parseFloat(priceEl.value) : null;
   const category = document.getElementById('rc-edit-category').value.trim();
+  const yieldQtyEl = document.getElementById('rc-edit-yield-qty');
+  const yieldUnitEl = document.getElementById('rc-edit-yield-unit');
+  const yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
+  const yieldUnit = yieldUnitEl && yieldUnitEl.value !== '' ? yieldUnitEl.value : null;
   const resto = RESTOS.find(rr=>rr.id===state.resto);
   try{
     await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}`, {
-      method:'PATCH', body:{ name, sellingPriceTtc, category },
+      method:'PATCH', body:{ name, sellingPriceTtc, category, yieldQty, yieldUnit },
     });
     r.name = name; r.sellingPriceTtc = sellingPriceTtc; r.category = category;
+    r.yieldQty = yieldQty; r.yieldUnit = yieldUnit;
     closeModal();
     toast('Fiche mise à jour');
     render();
@@ -3545,6 +3606,10 @@ async function confirmDeleteRecipe(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}`, { method:'DELETE' });
     RECIPES = RECIPES.filter(x=>x.id!==id);
     RECIPE_INGREDIENTS = RECIPE_INGREDIENTS.filter(x=>x.recipeId!==id);
+    // Si d'autres fiches utilisaient celle-ci comme sous-recette, leur référence doit refléter
+    // sa disparition — exactement ce que fait déjà le serveur (ON DELETE SET NULL), reproduit
+    // ici pour ne pas attendre une resynchronisation avant que ça s'affiche correctement.
+    RECIPE_INGREDIENTS.forEach(ing => { if(ing.subRecipeId===id) ing.subRecipeId = null; });
     ensureRestoData(state.resto).recipes = RECIPES;
     ensureRestoData(state.resto).recipeIngredients = RECIPE_INGREDIENTS;
     closeModal();
@@ -3554,14 +3619,21 @@ async function confirmDeleteRecipe(id){
 }
 function openAddIngredientModal(recipeId){
   const list = PRODUCTS.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  // Une fiche technique n'est utilisable comme sous-recette QUE si son rendement est renseigné
+  // (sinon impossible de calculer un coût par gramme) — et jamais elle-même, pour empêcher une
+  // auto-référence directe dès la sélection (la protection contre les boucles plus indirectes
+  // reste de toute façon assurée par le calcul lui-même, voir recipeCostBreakdown).
+  const subRecipeOptions = RECIPES.filter(r=>r.id!==recipeId && r.yieldQty && r.yieldUnit).sort((a,b)=>a.name.localeCompare(b.name));
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Ajouter un ingrédient</h3>
-    <div class="field"><label>Produit</label>
+    <div class="field"><label>Produit, ou une autre fiche technique (préparation maison)</label>
       <input type="text" id="ing-search" placeholder="🔎 Nom, catégorie…" oninput="filterProductPicker('ing-picker')" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
       <input type="hidden" id="ing-product-id" value="">
-      <div id="ing-picker" class="zone-checklist" style="max-height:200px;">
-        ${list.map(p=>`<div class="product-picker-row" data-name="${escapeHtml(p.name)}" data-id="${p.id}" data-unit="${escapeHtml(p.unit||'unité')}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}" onclick="selectIngredientProduct(this)">${escapeHtml(p.name)}${p.cat?` <span class="muted small">· ${escapeHtml(p.cat)}</span>`:''} <span class="muted small">— ${p.price!=null?fmtEUR(p.price):'—'} / ${escapeHtml(p.unit||'unité')}</span></div>`).join('') || '<div class="small muted">Aucun produit dans le catalogue</div>'}
+      <input type="hidden" id="ing-source-type" value="">
+      <div id="ing-picker" class="zone-checklist" style="max-height:220px;">
+        ${subRecipeOptions.length ? subRecipeOptions.map(r=>`<div class="product-picker-row" data-name="${escapeHtml(r.name)}" data-type="recipe" data-unit="${escapeHtml(r.yieldUnit)}" data-search="${escapeHtml((r.name+' fiche technique').toLowerCase())}" onclick="selectIngredientProduct(this)">${iconXs(I.chef)} ${escapeHtml(r.name)} <span class="muted small">— fiche technique, rendement ${r.yieldQty} ${escapeHtml(r.yieldUnit)}</span></div>`).join('') : ''}
+        ${list.map(p=>`<div class="product-picker-row" data-name="${escapeHtml(p.name)}" data-type="product" data-id="${p.id}" data-unit="${escapeHtml(p.unit||'unité')}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}" onclick="selectIngredientProduct(this)">${escapeHtml(p.name)}${p.cat?` <span class="muted small">· ${escapeHtml(p.cat)}</span>`:''} <span class="muted small">— ${p.price!=null?fmtEUR(p.price):'—'} / ${escapeHtml(p.unit||'unité')}</span></div>`).join('') || (subRecipeOptions.length ? '' : '<div class="small muted">Aucun produit dans le catalogue</div>')}
       </div>
     </div>
     <div class="field-row">
@@ -3574,20 +3646,30 @@ function openAddIngredientModal(recipeId){
 }
 function selectIngredientProduct(el){
   selectProductPickerRow(el, 'ing-product-id', 'ing-picker');
-  const product = PRODUCTS.find(p=>p.name===el.dataset.name);
-  const compatible = product ? recipeCompatibleUnits(product) : [];
+  const type = el.dataset.type;
+  document.getElementById('ing-source-type').value = type;
+  // Une sous-recette n'a pas d'"unité d'achat" à proprement parler, mais son rendement (ex.
+  // "500g") joue exactement le même rôle pour le calcul — on le fait donc passer par la même
+  // fonction de conversion, en le présentant comme si c'était l'unité d'un produit.
+  const source = type==='recipe' ? RECIPES.find(r=>r.name===el.dataset.name) : PRODUCTS.find(p=>p.name===el.dataset.name);
+  const compatible = source ? recipeCompatibleUnits(type==='recipe' ? { unit: source.yieldUnit } : source) : [];
   const select = document.getElementById('ing-unit');
   select.innerHTML = compatible.map(u=>`<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
   updateIngredientUnitHint();
 }
 // Quand la seule unité proposée est celle de l'achat lui-même (ex. "Caisse"), c'est presque
 // toujours parce qu'aucun contenu net n'a été renseigné sur le produit — plutôt que de laisser
-// deviner pourquoi, on l'explique directement ici, avec le geste exact pour le corriger.
+// deviner pourquoi, on l'explique directement ici, avec le geste exact pour le corriger. Ne
+// s'applique qu'aux produits : une sous-recette propose toujours g/Kg ou mL/cl/Litre dès lors
+// qu'elle apparaît dans la liste (son rendement est alors forcément déjà renseigné).
 function updateIngredientUnitHint(){
+  const type = document.getElementById('ing-source-type').value;
+  const hint = document.getElementById('ing-unit-hint');
+  if(!hint) return;
+  if(type==='recipe'){ hint.innerHTML = ''; return; }
   const productName = document.getElementById('ing-product-id').value;
   const product = PRODUCTS.find(p=>p.name===productName);
-  const hint = document.getElementById('ing-unit-hint');
-  if(!product || !hint) return;
+  if(!product){ hint.innerHTML = ''; return; }
   const compatible = recipeCompatibleUnits(product);
   const onlyPurchaseUnit = compatible.length===1 && compatible[0]===(product.unit||'unité') && !recipeUnitGroup(product.unit);
   hint.innerHTML = onlyPurchaseUnit
@@ -3596,23 +3678,37 @@ function updateIngredientUnitHint(){
 }
 async function saveNewIngredient(recipeId){
   const r = RECIPES.find(x=>x.id===recipeId); if(!r) return;
-  const productName = document.getElementById('ing-product-id').value;
-  const product = PRODUCTS.find(p=>p.name===productName);
-  if(!product){ toast('Merci de sélectionner un produit', 'alert'); return; }
+  const sourceType = document.getElementById('ing-source-type').value;
+  const sourceName = document.getElementById('ing-product-id').value;
+  if(!sourceName){ toast('Merci de sélectionner un produit ou une fiche technique', 'alert'); return; }
   const quantity = parseFloat(document.getElementById('ing-quantity').value);
   if(!quantity || quantity<=0){ toast('Merci de saisir une quantité valide', 'alert'); return; }
   const unit = document.getElementById('ing-unit').value;
   const resto = RESTOS.find(rr=>rr.id===state.resto);
   try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}/ingredients`, {
-      method:'POST', body:{ productId: product.remoteId, productName: product.name, quantity, unit },
-    });
-    RECIPE_INGREDIENTS.push({
-      id:'ri'+data.ingredient.id, remoteId:data.ingredient.id, recipeId,
-      productId: product.id, productNameSnapshot: product.name, quantity, unit,
-      currentProductPrice: product.price, currentProductUnit: product.unit, currentProductTvaRate: product.tvaRate,
-      currentProductNetContentQty: product.netContentQty, currentProductNetContentUnit: product.netContentUnit,
-    });
+    if(sourceType==='recipe'){
+      const subRecipe = RECIPES.find(x=>x.name===sourceName);
+      if(!subRecipe){ toast('Fiche technique introuvable', 'alert'); return; }
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}/ingredients`, {
+        method:'POST', body:{ subRecipeId: subRecipe.remoteId, productName: subRecipe.name, quantity, unit },
+      });
+      RECIPE_INGREDIENTS.push({
+        id:'ri'+data.ingredient.id, remoteId:data.ingredient.id, recipeId,
+        subRecipeId: subRecipe.id, productId: null, productNameSnapshot: subRecipe.name, quantity, unit,
+      });
+    } else {
+      const product = PRODUCTS.find(p=>p.name===sourceName);
+      if(!product){ toast('Merci de sélectionner un produit', 'alert'); return; }
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}/ingredients`, {
+        method:'POST', body:{ productId: product.remoteId, productName: product.name, quantity, unit },
+      });
+      RECIPE_INGREDIENTS.push({
+        id:'ri'+data.ingredient.id, remoteId:data.ingredient.id, recipeId,
+        productId: product.id, subRecipeId: null, productNameSnapshot: product.name, quantity, unit,
+        currentProductPrice: product.price, currentProductUnit: product.unit, currentProductTvaRate: product.tvaRate,
+        currentProductNetContentQty: product.netContentQty, currentProductNetContentUnit: product.netContentUnit,
+      });
+    }
     closeModal();
     toast('Ingrédient ajouté');
     render();
@@ -3634,8 +3730,14 @@ async function deleteRecipeIngredient(recipeId, ingredientId){
 // une simple faute de frappe (2000g au lieu de 200g) mérite une correction, pas une suppression.
 function openEditIngredientModal(recipeId, ingredientId){
   const ing = RECIPE_INGREDIENTS.find(x=>x.id===ingredientId); if(!ing) return;
-  const liveProduct = ing.productId ? PRODUCTS.find(p=>p.id===ing.productId) : null;
-  const compatible = liveProduct ? recipeCompatibleUnits(liveProduct) : [ing.unit];
+  let compatible;
+  if(ing.subRecipeId){
+    const subRecipe = RECIPES.find(r=>r.id===ing.subRecipeId);
+    compatible = subRecipe && subRecipe.yieldUnit ? recipeCompatibleUnits({ unit: subRecipe.yieldUnit }) : [ing.unit];
+  } else {
+    const liveProduct = ing.productId ? PRODUCTS.find(p=>p.id===ing.productId) : null;
+    compatible = liveProduct ? recipeCompatibleUnits(liveProduct) : [ing.unit];
+  }
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Modifier « ${escapeHtml(ing.productNameSnapshot)} »</h3>
@@ -5037,10 +5139,13 @@ async function syncRecipesFromServer(localId){
       id:'rc'+r.id, remoteId:r.id, name:r.name,
       sellingPriceTtc: r.selling_price_ttc!=null ? parseFloat(r.selling_price_ttc) : null,
       category: r.category,
+      yieldQty: r.yield_qty!=null ? parseFloat(r.yield_qty) : null,
+      yieldUnit: r.yield_unit || null,
     }));
     d.recipeIngredients = data.ingredients.map(i => ({
       id:'ri'+i.id, remoteId:i.id, recipeId:'rc'+i.recipe_id,
       productId: i.product_id ? 'p'+i.product_id : null,
+      subRecipeId: i.sub_recipe_id ? 'rc'+i.sub_recipe_id : null,
       productNameSnapshot: i.product_name_snapshot,
       quantity: parseFloat(i.quantity), unit: i.unit,
       // Prix et unité ACTUELS du produit lié (peuvent différer de ceux utilisés à la création
@@ -5128,6 +5233,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.defaultDarkMode = data.restaurant.default_dark_mode;
     resto.siret = data.restaurant.siret;
     resto.haccpEnabled = data.restaurant.haccp_enabled;
+    resto.recipesEnabled = data.restaurant.recipes_enabled;
     applyAppearance(resto);
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRestaurantInfoFromServer —', err); }
 }
@@ -5309,6 +5415,14 @@ function viewParametres(){
         <label class="flex center gap8" style="cursor:pointer;">
           <input type="checkbox" id="haccp-toggle" ${resto.haccpEnabled?'checked':''} onchange="toggleHaccpEnabled(this.checked)">
           <span>Activer le suivi HACCP pour cet établissement</span>
+        </label>
+      </div>
+      <div class="card">
+        <div class="card-title">Fiches techniques</div>
+        <div class="small muted" style="margin-bottom:14px;">Coût de revient par plat, calculé à partir de vos produits. Désactivez-le si vous n'en avez pas l'usage — la page, le champ "contenu net" sur vos produits, et tout ce qui s'y rattache disparaissent complètement.</div>
+        <label class="flex center gap8" style="cursor:pointer;">
+          <input type="checkbox" id="recipes-toggle" ${resto.recipesEnabled!==false?'checked':''} onchange="toggleRecipesEnabled(this.checked)">
+          <span>Activer les fiches techniques pour cet établissement</span>
         </label>
       </div>
       <div class="card">
@@ -5792,6 +5906,22 @@ async function toggleHaccpEnabled(checked){
     } else {
       toast('Suivi HACCP désactivé');
     }
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+// Contrairement à HACCP, désactiver les fiches techniques ne vide aucune donnée déjà saisie —
+// les fiches et leurs ingrédients restent en base, simplement invisibles tant que le module
+// reste désactivé. Le champ "contenu net" sur les produits (qui n'a de sens que pour calculer
+// un coût de revient) disparaît lui aussi des formulaires, pour ne pas laisser un champ sans
+// utilité visible nulle part.
+async function toggleRecipesEnabled(checked){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ recipesEnabled: checked } });
+    resto.recipesEnabled = data.restaurant.recipes_enabled;
+    toast(checked ? 'Fiches techniques activées — retrouvez-les dans le menu' : 'Fiches techniques désactivées');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -7401,6 +7531,7 @@ function openNewProductModal(prefill){
   const p = prefill || null;
   const prefillZoneIds = p ? (p.zoneIds||[]) : [];
   const initialUnit = p ? p.unit : 'Kg';
+  const restoForNp = RESTOS.find(r=>r.id===state.resto);
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>${p ? 'Dupliquer le produit' : 'Nouveau produit'}</h3>
@@ -7424,6 +7555,7 @@ function openNewProductModal(prefill){
       <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${escapeHtml(p ? (p.packaging||'') : '')}">
       <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
     </div>
+    ${restoForNp && restoForNp.recipesEnabled!==false ? `
     <div class="field">
       <label>Contenu net, pour le coût de revient des recettes (facultatif)</label>
       <div class="small muted" style="margin:-2px 0 8px 0;">Pour un produit acheté à la pièce, au carton ou à la caisse : combien pèse ou contient réellement une unité — c'est ce qui permet ensuite d'utiliser des grammes ou des cl dans une fiche technique, même si vous achetez par Caisse.</div>
@@ -7432,6 +7564,7 @@ function openNewProductModal(prefill){
         <div class="field"><select id="np-net-content-unit"><option value="">—</option><option value="g" ${p && p.netContentUnit==='g'?'selected':''}>g</option><option value="Kg" ${p && p.netContentUnit==='Kg'?'selected':''}>Kg</option><option value="mL" ${p && p.netContentUnit==='mL'?'selected':''}>mL</option><option value="cl" ${p && p.netContentUnit==='cl'?'selected':''}>cl</option><option value="Litre" ${p && p.netContentUnit==='Litre'?'selected':''}>Litre</option></select></div>
       </div>
     </div>
+    ` : ''}
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${escapeHtml(p ? (p.supplierReference||'') : '')}"></div>
     <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${p && p.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="np-department">
@@ -7795,6 +7928,7 @@ async function confirmImportProductsCSV(){
 function editProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
   const zoneIds = p.zoneIds || [];
+  const restoForEp = RESTOS.find(r=>r.id===state.resto);
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Modifier le produit</h3>
@@ -7817,6 +7951,7 @@ function editProduct(id){
       <input id="ep-packaging" value="${escapeHtml(p.packaging||'')}" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg">
       <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
     </div>
+    ${restoForEp && restoForEp.recipesEnabled!==false ? `
     <div class="field">
       <label>Contenu net, pour le coût de revient des recettes (facultatif)</label>
       <div class="small muted" style="margin:-2px 0 8px 0;">Pour un produit acheté à la pièce, au carton ou à la caisse : combien pèse ou contient réellement une unité — c'est ce qui permet ensuite d'utiliser des grammes ou des cl dans une fiche technique, même si vous achetez par Caisse.</div>
@@ -7825,6 +7960,7 @@ function editProduct(id){
         <div class="field"><select id="ep-net-content-unit"><option value="">—</option><option value="g" ${p.netContentUnit==='g'?'selected':''}>g</option><option value="Kg" ${p.netContentUnit==='Kg'?'selected':''}>Kg</option><option value="mL" ${p.netContentUnit==='mL'?'selected':''}>mL</option><option value="cl" ${p.netContentUnit==='cl'?'selected':''}>cl</option><option value="Litre" ${p.netContentUnit==='Litre'?'selected':''}>Litre</option></select></div>
       </div>
     </div>
+    ` : ''}
     <div class="field"><label>Référence fournisseur (facultatif)</label><input id="ep-reference" value="${escapeHtml(p.supplierReference||'')}"></div>
     <div class="field"><label>Fournisseur</label><select id="ep-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${s.id===p.supplier?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Utilisé en</label><select id="ep-department">
@@ -8902,7 +9038,10 @@ function renderContent(){
     if(view==='dashboard') return viewPatronDashboard();
     if(view==='demandes') return soloModeEnabled() ? viewPatronDashboard() : viewPatronDemandes();
     if(view==='stocks') return viewStocks();
-    if(view==='recettes') return financialsHidden() ? viewPatronDashboard() : viewRecipes();
+    if(view==='recettes'){
+      const restoForRecettes = RESTOS.find(r=>r.id===state.resto);
+      return (financialsHidden() || (restoForRecettes && restoForRecettes.recipesEnabled===false)) ? viewPatronDashboard() : viewRecipes();
+    }
     if(view==='commandes') return viewCommandes('patron');
     if(view==='ecarts') return viewEcarts();
     if(view==='stats') return financialsHidden() ? viewPatronDashboard() : viewStats();
