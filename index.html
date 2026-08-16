@@ -3617,57 +3617,70 @@ async function confirmDeleteRecipe(id){
     render();
   } catch(err){ toast(err.message, 'alert'); }
 }
-function openAddIngredientModal(recipeId){
+// Construit le sélecteur produit/sous-recette, partagé entre "ajouter" et "modifier" — un
+// préfixe distinct pour chaque contexte (identifiants HTML différents, pour ne jamais mélanger
+// les deux si un jour ils devaient coexister), et une présélection optionnelle pour l'édition
+// (le nom et le type de la source actuelle de l'ingrédient qu'on est en train de modifier).
+function renderIngredientPickerHtml(recipeId, prefix, preselectedName, preselectedType){
   const list = PRODUCTS.slice().sort((a,b)=>a.name.localeCompare(b.name));
   // Une fiche technique n'est utilisable comme sous-recette QUE si son rendement est renseigné
   // (sinon impossible de calculer un coût par gramme) — et jamais elle-même, pour empêcher une
   // auto-référence directe dès la sélection (la protection contre les boucles plus indirectes
   // reste de toute façon assurée par le calcul lui-même, voir recipeCostBreakdown).
   const subRecipeOptions = RECIPES.filter(r=>r.id!==recipeId && r.yieldQty && r.yieldUnit).sort((a,b)=>a.name.localeCompare(b.name));
+  const isSelected = (name, type) => preselectedName===name && preselectedType===type;
+  return `
+    <div class="field"><label>Produit, ou une autre fiche technique (préparation maison)</label>
+      <input type="text" id="${prefix}-search" placeholder="🔎 Nom, catégorie…" oninput="filterProductPicker('${prefix}-picker')" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+      <input type="hidden" id="${prefix}-product-id" value="${escapeHtml(preselectedName||'')}">
+      <input type="hidden" id="${prefix}-source-type" value="${escapeHtml(preselectedType||'')}">
+      <div id="${prefix}-picker" class="zone-checklist" style="max-height:220px;">
+        ${subRecipeOptions.length ? subRecipeOptions.map(r=>`<div class="product-picker-row ${isSelected(r.name,'recipe')?'selected':''}" data-name="${escapeHtml(r.name)}" data-type="recipe" data-unit="${escapeHtml(r.yieldUnit)}" data-search="${escapeHtml((r.name+' fiche technique').toLowerCase())}" onclick="selectIngredientProduct(this,'${prefix}')">${iconXs(I.chef)} ${escapeHtml(r.name)} <span class="muted small">— fiche technique, rendement ${r.yieldQty} ${escapeHtml(r.yieldUnit)}</span></div>`).join('') : ''}
+        ${list.map(p=>`<div class="product-picker-row ${isSelected(p.name,'product')?'selected':''}" data-name="${escapeHtml(p.name)}" data-type="product" data-id="${p.id}" data-unit="${escapeHtml(p.unit||'unité')}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}" onclick="selectIngredientProduct(this,'${prefix}')">${escapeHtml(p.name)}${p.cat?` <span class="muted small">· ${escapeHtml(p.cat)}</span>`:''} <span class="muted small">— ${p.price!=null?fmtEUR(p.price):'—'} / ${escapeHtml(p.unit||'unité')}</span></div>`).join('') || (subRecipeOptions.length ? '' : '<div class="small muted">Aucun produit dans le catalogue</div>')}
+      </div>
+    </div>
+  `;
+}
+function openAddIngredientModal(recipeId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Ajouter un ingrédient</h3>
-    <div class="field"><label>Produit, ou une autre fiche technique (préparation maison)</label>
-      <input type="text" id="ing-search" placeholder="🔎 Nom, catégorie…" oninput="filterProductPicker('ing-picker')" style="margin-bottom:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
-      <input type="hidden" id="ing-product-id" value="">
-      <input type="hidden" id="ing-source-type" value="">
-      <div id="ing-picker" class="zone-checklist" style="max-height:220px;">
-        ${subRecipeOptions.length ? subRecipeOptions.map(r=>`<div class="product-picker-row" data-name="${escapeHtml(r.name)}" data-type="recipe" data-unit="${escapeHtml(r.yieldUnit)}" data-search="${escapeHtml((r.name+' fiche technique').toLowerCase())}" onclick="selectIngredientProduct(this)">${iconXs(I.chef)} ${escapeHtml(r.name)} <span class="muted small">— fiche technique, rendement ${r.yieldQty} ${escapeHtml(r.yieldUnit)}</span></div>`).join('') : ''}
-        ${list.map(p=>`<div class="product-picker-row" data-name="${escapeHtml(p.name)}" data-type="product" data-id="${p.id}" data-unit="${escapeHtml(p.unit||'unité')}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}" onclick="selectIngredientProduct(this)">${escapeHtml(p.name)}${p.cat?` <span class="muted small">· ${escapeHtml(p.cat)}</span>`:''} <span class="muted small">— ${p.price!=null?fmtEUR(p.price):'—'} / ${escapeHtml(p.unit||'unité')}</span></div>`).join('') || (subRecipeOptions.length ? '' : '<div class="small muted">Aucun produit dans le catalogue</div>')}
-      </div>
-    </div>
+    ${renderIngredientPickerHtml(recipeId, 'ing', null, null)}
     <div class="field-row">
       <div class="field"><label>Quantité utilisée</label><input id="ing-quantity" type="number" step="0.001" min="0" placeholder="Ex : 200"></div>
-      <div class="field"><label>Unité</label><select id="ing-unit" onchange="updateIngredientUnitHint()"><option>—</option></select></div>
+      <div class="field"><label>Unité</label><select id="ing-unit" onchange="updateIngredientUnitHint('ing')"><option>—</option></select></div>
     </div>
     <div id="ing-unit-hint" class="small muted" style="margin:-8px 0 14px 0;"></div>
     <button class="btn btn-primary btn-block" onclick="saveNewIngredient('${recipeId}')">Ajouter</button>
   `);
 }
-function selectIngredientProduct(el){
-  selectProductPickerRow(el, 'ing-product-id', 'ing-picker');
+function selectIngredientProduct(el, prefix){
+  prefix = prefix || 'ing';
+  selectProductPickerRow(el, prefix+'-product-id', prefix+'-picker');
   const type = el.dataset.type;
-  document.getElementById('ing-source-type').value = type;
+  document.getElementById(prefix+'-source-type').value = type;
   // Une sous-recette n'a pas d'"unité d'achat" à proprement parler, mais son rendement (ex.
   // "500g") joue exactement le même rôle pour le calcul — on le fait donc passer par la même
   // fonction de conversion, en le présentant comme si c'était l'unité d'un produit.
   const source = type==='recipe' ? RECIPES.find(r=>r.name===el.dataset.name) : PRODUCTS.find(p=>p.name===el.dataset.name);
   const compatible = source ? recipeCompatibleUnits(type==='recipe' ? { unit: source.yieldUnit } : source) : [];
-  const select = document.getElementById('ing-unit');
-  select.innerHTML = compatible.map(u=>`<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
-  updateIngredientUnitHint();
+  const select = document.getElementById(prefix+'-unit');
+  const previousUnit = select.value;
+  select.innerHTML = compatible.map(u=>`<option value="${escapeHtml(u)}" ${u===previousUnit?'selected':''}>${escapeHtml(u)}</option>`).join('');
+  updateIngredientUnitHint(prefix);
 }
 // Quand la seule unité proposée est celle de l'achat lui-même (ex. "Caisse"), c'est presque
 // toujours parce qu'aucun contenu net n'a été renseigné sur le produit — plutôt que de laisser
 // deviner pourquoi, on l'explique directement ici, avec le geste exact pour le corriger. Ne
 // s'applique qu'aux produits : une sous-recette propose toujours g/Kg ou mL/cl/Litre dès lors
 // qu'elle apparaît dans la liste (son rendement est alors forcément déjà renseigné).
-function updateIngredientUnitHint(){
-  const type = document.getElementById('ing-source-type').value;
-  const hint = document.getElementById('ing-unit-hint');
+function updateIngredientUnitHint(prefix){
+  prefix = prefix || 'ing';
+  const type = document.getElementById(prefix+'-source-type').value;
+  const hint = document.getElementById(prefix+'-unit-hint');
   if(!hint) return;
   if(type==='recipe'){ hint.innerHTML = ''; return; }
-  const productName = document.getElementById('ing-product-id').value;
+  const productName = document.getElementById(prefix+'-product-id').value;
   const product = PRODUCTS.find(p=>p.name===productName);
   if(!product){ hint.innerHTML = ''; return; }
   const compatible = recipeCompatibleUnits(product);
@@ -3730,6 +3743,7 @@ async function deleteRecipeIngredient(recipeId, ingredientId){
 // une simple faute de frappe (2000g au lieu de 200g) mérite une correction, pas une suppression.
 function openEditIngredientModal(recipeId, ingredientId){
   const ing = RECIPE_INGREDIENTS.find(x=>x.id===ingredientId); if(!ing) return;
+  const preselectedType = ing.subRecipeId ? 'recipe' : 'product';
   let compatible;
   if(ing.subRecipeId){
     const subRecipe = RECIPES.find(r=>r.id===ing.subRecipeId);
@@ -3741,25 +3755,48 @@ function openEditIngredientModal(recipeId, ingredientId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Modifier « ${escapeHtml(ing.productNameSnapshot)} »</h3>
+    <div class="small muted" style="margin:-4px 0 12px 0;">Vous pouvez ajuster la quantité, ou choisir un tout autre produit — sans avoir à supprimer puis recréer cet ingrédient.</div>
+    ${renderIngredientPickerHtml(recipeId, 'ing-edit', ing.productNameSnapshot, preselectedType)}
     <div class="field-row">
       <div class="field"><label>Quantité utilisée</label><input id="ing-edit-quantity" type="number" step="0.001" min="0" value="${ing.quantity}"></div>
-      <div class="field"><label>Unité</label><select id="ing-edit-unit">${compatible.map(u=>`<option value="${escapeHtml(u)}" ${u===ing.unit?'selected':''}>${escapeHtml(u)}</option>`).join('')}</select></div>
+      <div class="field"><label>Unité</label><select id="ing-edit-unit" onchange="updateIngredientUnitHint('ing-edit')">${compatible.map(u=>`<option value="${escapeHtml(u)}" ${u===ing.unit?'selected':''}>${escapeHtml(u)}</option>`).join('')}</select></div>
     </div>
+    <div id="ing-edit-unit-hint" class="small muted" style="margin:-8px 0 14px 0;"></div>
     <button class="btn btn-primary btn-block" onclick="saveIngredientEdit('${recipeId}','${ingredientId}')">Enregistrer</button>
   `);
 }
 async function saveIngredientEdit(recipeId, ingredientId){
   const r = RECIPES.find(x=>x.id===recipeId); if(!r) return;
   const ing = RECIPE_INGREDIENTS.find(x=>x.id===ingredientId); if(!ing) return;
+  const sourceType = document.getElementById('ing-edit-source-type').value;
+  const sourceName = document.getElementById('ing-edit-product-id').value;
+  if(!sourceName){ toast('Merci de sélectionner un produit ou une fiche technique', 'alert'); return; }
   const quantity = parseFloat(document.getElementById('ing-edit-quantity').value);
   if(!quantity || quantity<=0){ toast('Merci de saisir une quantité valide', 'alert'); return; }
   const unit = document.getElementById('ing-edit-unit').value;
   const resto = RESTOS.find(rr=>rr.id===state.resto);
   try{
-    await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}/ingredients/${ing.remoteId}`, {
-      method:'PATCH', body:{ quantity, unit },
-    });
-    ing.quantity = quantity; ing.unit = unit;
+    if(sourceType==='recipe'){
+      const subRecipe = RECIPES.find(x=>x.name===sourceName);
+      if(!subRecipe){ toast('Fiche technique introuvable', 'alert'); return; }
+      await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}/ingredients/${ing.remoteId}`, {
+        method:'PATCH', body:{ quantity, unit, changeSource:true, subRecipeId: subRecipe.remoteId, productName: subRecipe.name },
+      });
+      ing.quantity = quantity; ing.unit = unit;
+      ing.subRecipeId = subRecipe.id; ing.productId = null; ing.productNameSnapshot = subRecipe.name;
+      ing.currentProductPrice = undefined; ing.currentProductUnit = undefined;
+      ing.currentProductNetContentQty = undefined; ing.currentProductNetContentUnit = undefined;
+    } else {
+      const product = PRODUCTS.find(p=>p.name===sourceName);
+      if(!product){ toast('Merci de sélectionner un produit', 'alert'); return; }
+      await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}/ingredients/${ing.remoteId}`, {
+        method:'PATCH', body:{ quantity, unit, changeSource:true, productId: product.remoteId, productName: product.name },
+      });
+      ing.quantity = quantity; ing.unit = unit;
+      ing.productId = product.id; ing.subRecipeId = null; ing.productNameSnapshot = product.name;
+      ing.currentProductPrice = product.price; ing.currentProductUnit = product.unit;
+      ing.currentProductNetContentQty = product.netContentQty; ing.currentProductNetContentUnit = product.netContentUnit;
+    }
     closeModal();
     toast('Ingrédient mis à jour');
     render();
