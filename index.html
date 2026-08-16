@@ -728,7 +728,12 @@ tr.group-row:hover td{background:var(--gray-100);}
    VISITE GUIDÉE — un halo lumineux (technique du box-shadow géant) qui assombrit tout l'écran
    sauf l'élément ciblé, plus une info-bulle avec le texte d'explication à côté.
    ============================================================ */
-.tour-overlay{position:fixed;inset:0;z-index:250;pointer-events:none;}
+/* pointer-events:auto (pas none) — sans ça, l'overlay était purement visuel : on pouvait
+   cliquer et faire défiler la page EN DESSOUS pendant une étape du guide, ce qui n'avait rien
+   de pro. Seule l'infobulle elle-même (voir .tour-tooltip, pointer-events:auto) reste
+   cliquable — le reste de l'écran, y compris la zone mise en avant, est volontairement
+   figé : on avance uniquement via les boutons du guide, jamais en cliquant à travers. */
+.tour-overlay{position:fixed;inset:0;z-index:250;pointer-events:auto;cursor:default;}
 .tour-spotlight{
   position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(10,10,10,0.68);
   transition:left .25s ease,top .25s ease,width .25s ease,height .25s ease;pointer-events:none;
@@ -2411,10 +2416,11 @@ function closeSidebar(){
 // depuis la page Aide.
 // ============================================================
 const GUIDED_TOUR_STEPS = [
-  { target: null, title: "Bienvenue sur Mise & Sûre 👋", text: "Une visite rapide de l'essentiel — 30 secondes, 12 étapes. Vous pourrez la revoir à tout moment depuis la page Aide." },
+  { target: null, title: "Bienvenue sur Mise & Sûre 👋", text: "Une visite rapide de l'essentiel — 30 secondes, 13 étapes. Vous pourrez la revoir à tout moment depuis la page Aide." },
   { target: 'parametres', title: 'Suivi HACCP (facultatif)', text: "Numéro de lot, relevés de température, suivi du nettoyage — inclus à tous les forfaits. Désactivé par défaut : activez-le dans Paramètres seulement si vous en avez besoin, sinon vous ne le verrez jamais." },
   { target: 'dashboard', title: 'Votre tableau de bord', text: "Vue d'ensemble : ce qui attend votre validation, vos dépenses récentes, les alertes importantes." },
   { target: 'stocks', title: 'Vos produits', text: "Le catalogue de tout ce que vous commandez — organisé par catégorie, avec fournisseur et prix pour chacun. Chaque produit a aussi son taux de TVA, pour que vos bons de commande soient exploitables par votre comptable." },
+  { target: 'recettes', title: 'Fiches techniques', text: "Le coût de revient réel de chaque plat, calculé à partir de vos prix fournisseurs — marge et food cost inclus. Une préparation maison (sauce, fond…) peut même servir d'ingrédient dans une autre fiche, au grammage voulu. Facultatif, désactivable dans Paramètres.", skipIf: 'recipes' },
   { target: 'parametres', title: 'Catégories et lieux', text: "Dans Paramètres, définissez vos catégories de marchandise (Boissons, Viande…) et vos lieux/zones (Bar, Terrasse…) — ça garde le catalogue lisible même avec beaucoup de produits." },
   { target: 'commandes', title: 'Vos commandes', text: "Un panier par fournisseur : vous ajoutez vos produits, vous envoyez — le bon de commande part directement. Depuis cette page, un export comptable complet (TVA ventilée, par fournisseur) se télécharge aussi en un clic." },
   { target: 'ecarts', title: 'Écarts de livraison', text: "À la réception, comparez ce qui a été livré à ce qui a été commandé — quantité, prix. Un écart est repéré automatiquement, sans ressaisie." },
@@ -2426,7 +2432,11 @@ const GUIDED_TOUR_STEPS = [
 ];
 let TOUR_STATE = { active:false, stepIndex:0, wasSidebarOpen:false };
 function tourStepsForContext(){
-  return GUIDED_TOUR_STEPS.filter(s => !(s.skipIf==='solo' && soloModeEnabled()));
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  return GUIDED_TOUR_STEPS.filter(s =>
+    !(s.skipIf==='solo' && soloModeEnabled()) &&
+    !(s.skipIf==='recipes' && resto && resto.recipesEnabled===false)
+  );
 }
 function maybeAutoStartTour(){
   // Ne se déclenche qu'une fois, pour un établissement encore entièrement vide (le même signal
@@ -6247,6 +6257,36 @@ const FAQ_CATEGORIES = [
       {
         q: "Comment supprimer un produit ?",
         a: "Dans le tableau des produits, cliquez sur l'icône de suppression (corbeille) à droite de la ligne concernée. Cette action est définitive.",
+      },
+    ],
+  },
+  {
+    id: 'recettes',
+    label: 'Fiches techniques',
+    items: [
+      {
+        q: "À quoi sert une fiche technique ?",
+        a: "À connaître le vrai coût de revient d'un plat — calculé automatiquement à partir du prix actuel de ses ingrédients dans votre catalogue. Renseignez un prix de vente et vous obtenez aussi la marge et le food cost (coût matière rapporté au prix de vente), un repère courant en restauration.",
+      },
+      {
+        q: "Comment activer ou désactiver les fiches techniques ?",
+        a: "Dans Paramètres, décochez « Activer les fiches techniques pour cet établissement » si vous n'en avez pas l'usage. Contrairement au suivi HACCP, c'est activé par défaut — vos fiches déjà créées restent intactes en base si vous désactivez, simplement invisibles tant que ça reste décoché.",
+      },
+      {
+        q: "Mon produit est acheté par Caisse ou par Carton, comment l'utiliser en grammes dans une recette ?",
+        a: "Renseignez son « contenu net » dans sa fiche produit (ex. « cette Caisse contient 10 Kg ») — ça permet ensuite de saisir n'importe quel ingrédient en grammes ou en cl dans une fiche technique, même si l'achat se fait par Caisse ou Carton. Sans cette information, seule l'unité d'achat elle-même reste utilisable.",
+      },
+      {
+        q: "J'ai une sauce ou une préparation maison que je ne vends pas telle quelle — puis-je l'utiliser dans d'autres plats ?",
+        a: "Oui : créez-la comme une fiche technique normale (sans forcément de prix de vente), puis renseignez son « rendement » (ex. « cette sauce donne 500g »). Elle devient alors sélectionnable comme ingrédient dans n'importe quelle autre fiche, au grammage voulu — le coût de la plat qui l'utilise recalcule automatiquement sa part de sauce.",
+      },
+      {
+        q: "Je me suis trompé de produit ou de quantité sur un ingrédient déjà ajouté, comment corriger ?",
+        a: "Cliquez directement sur la quantité affichée pour cet ingrédient — la modale qui s'ouvre permet aussi bien d'ajuster la quantité que de choisir un tout autre produit ou une autre fiche technique, sans avoir à supprimer puis recréer l'ingrédient.",
+      },
+      {
+        q: "Qui peut créer ou modifier une fiche technique ?",
+        a: "Patron et manager peuvent créer, modifier et supprimer des fiches techniques et leurs ingrédients. Cuisine et salle n'y ont pas accès — c'est une page réservée à l'espace patron.",
       },
     ],
   },
