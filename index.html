@@ -1392,7 +1392,7 @@ function fmtMonthYear(d){ return MONTHS_LONG[d.getMonth()] + ' ' + d.getFullYear
 ============================================================ */
 async function addToBasket(supplierId, productId, qty){
   qty = Math.round(qty);
-  if(!supplierId || !productId || !qty) return;
+  if(!supplierId || !productId || !qty || qty<=0) return;
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplierId);
   const productObj = PRODUCTS.find(p=>p.id===productId);
@@ -3520,6 +3520,11 @@ function viewInventaire(){
 async function saveInventoryCounts(){
   const inputs = Array.from(document.querySelectorAll('.inv-count-input')).filter(el=>el.value !== '');
   if(!inputs.length){ toast("Renseignez au moins une quantité avant d'enregistrer", 'alert'); return; }
+  // L'attribut HTML min="0" sur le champ n'empêche pas vraiment de saisir un nombre négatif
+  // (contournable) — la vraie vérification doit se faire ici, avec un message clair plutôt
+  // qu'un rejet silencieux côté serveur.
+  const negative = inputs.filter(el=>parseFloat(el.value) < 0);
+  if(negative.length){ toast('Une quantité ne peut pas être négative', 'alert'); return; }
   const resto = RESTOS.find(r=>r.id===state.resto);
   const countedByName = currentPersonDisplayName();
   const counts = inputs.map(el=>{
@@ -3661,6 +3666,10 @@ async function saveNewRecipe(){
   const yieldUnitEl = document.getElementById('rc-yield-unit');
   const yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
   const yieldUnit = yieldUnitEl && yieldUnitEl.value !== '' ? yieldUnitEl.value : null;
+  // Un rendement négatif ou nul n'a aucun sens (on ne peut pas diviser un coût par une quantité
+  // négative ou par zéro) — sans cette vérification, ça produirait un coût par gramme négatif
+  // ou infini partout où cette fiche est utilisée comme sous-recette.
+  if(yieldQty!=null && yieldQty<=0){ toast('Le rendement doit être supérieur à zéro', 'alert'); return; }
   const resto = RESTOS.find(r=>r.id===state.resto);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/recipes`, {
@@ -3706,6 +3715,7 @@ async function saveRecipeEdit(id){
   const yieldUnitEl = document.getElementById('rc-edit-yield-unit');
   const yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
   const yieldUnit = yieldUnitEl && yieldUnitEl.value !== '' ? yieldUnitEl.value : null;
+  if(yieldQty!=null && yieldQty<=0){ toast('Le rendement doit être supérieur à zéro', 'alert'); return; }
   const resto = RESTOS.find(rr=>rr.id===state.resto);
   try{
     await apiRequest(`/api/restaurants/${resto.remoteId}/recipes/${r.remoteId}`, {
@@ -8013,6 +8023,7 @@ async function addProduct(){
   const netContentUnitEl = document.getElementById('np-net-content-unit');
   const netContentQty = netContentQtyEl && netContentQtyEl.value !== '' ? parseFloat(netContentQtyEl.value) : null;
   const netContentUnit = netContentUnitEl && netContentUnitEl.value !== '' ? netContentUnitEl.value : null;
+  if(netContentQty!=null && netContentQty<=0){ toast('Le contenu net doit être supérieur à zéro', 'alert'); return; }
   const priceEl = document.getElementById('np-price');
   const price = priceEl ? (parseNum(priceEl.value)||0) : 0;
   const tvaEl = document.getElementById('np-tva');
@@ -8301,6 +8312,7 @@ async function saveProduct(id){
   const netContentUnitEl = document.getElementById('ep-net-content-unit');
   const netContentQty = netContentQtyEl && netContentQtyEl.value !== '' ? parseFloat(netContentQtyEl.value) : null;
   const netContentUnit = netContentUnitEl && netContentUnitEl.value !== '' ? netContentUnitEl.value : null;
+  if(netContentQty!=null && netContentQty<=0){ toast('Le contenu net doit être supérieur à zéro', 'alert'); return; }
   const priceEl = document.getElementById('ep-price');
   // Avant : `parseNum(...) || p.price` — un piège classique de JavaScript, où 0 est
   // "faux" au même titre qu'une valeur vide : impossible de remettre un produit à 0,00 €,
@@ -8359,6 +8371,11 @@ async function confirmDeleteProduct(id){
       BASKETS[sid] = BASKETS[sid].filter(li=>li.productId!==id);
       if(BASKETS[sid].length===0) delete BASKETS[sid];
     });
+    // Le serveur détache déjà proprement les ingrédients de recette qui pointaient vers ce
+    // produit (ON DELETE SET NULL) — sans ce nettoyage local, le coût de la recette continuerait
+    // d'afficher l'ancien prix jusqu'à la prochaine resynchronisation, comme si le produit
+    // existait toujours. On reproduit le même détachement ici, tout de suite.
+    RECIPE_INGREDIENTS.forEach(ing => { if(ing.productId===id) ing.productId = null; });
     closeModal();
     toast('Produit supprimé');
     render();
