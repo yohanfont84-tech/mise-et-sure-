@@ -1076,6 +1076,9 @@ let HACCP_CLEANING_LOGS = []; // {id, remoteId, taskId, taskName, frequency, don
 let RECIPES = []; // {id, remoteId, name, sellingPriceTtc, category}
 let RECIPE_INGREDIENTS = []; // {id, remoteId, recipeId, productId, productNameSnapshot, quantity, unit}
 
+// Inventaire — relevé simple de stock (quantité, date, auteur), sans réconciliation théorique.
+let STOCK_COUNTS = []; // {id, remoteId, productId, productNameSnapshot, quantity, unit, countedByName, createdAt}
+
 // Chaque établissement a son propre catalogue : fournisseurs, produits, commandes, demandes, paniers et équipe
 // ne sont jamais partagés entre deux restaurants d'un même compte patron.
 let RESTO_DATA = {};
@@ -1083,7 +1086,7 @@ function ensureRestoData(id){
   if(!RESTO_DATA[id]) RESTO_DATA[id] = {
     suppliers: [], products: [], requests: [], orders: [], baskets: {}, customRequests: [], team: [], categories: [], zones: [],
     haccpEquipment: [], haccpTempLogs: [], haccpCleaningTasks: [], haccpCleaningLogs: [],
-    recipes: [], recipeIngredients: [],
+    recipes: [], recipeIngredients: [], stockCounts: [],
   };
   return RESTO_DATA[id];
 }
@@ -1104,6 +1107,7 @@ function loadRestoData(id){
   HACCP_CLEANING_LOGS = d.haccpCleaningLogs;
   RECIPES = d.recipes;
   RECIPE_INGREDIENTS = d.recipeIngredients;
+  STOCK_COUNTS = d.stockCounts;
 }
 
 function identityForTeamRole(role){
@@ -1688,6 +1692,7 @@ const NAV = {
     {id:'carte-fournisseurs', label:'Carte des fournisseurs', icon:I.mapPin, section:'Achats'},
     {id:'stats', label:'Statistiques', icon:I.chart, section:'Pilotage'},
     {id:'haccp', label:'Suivi HACCP', icon:I.thermometer, section:'Pilotage'},
+    {id:'inventaire', label:'Inventaire', icon:I.box, section:'Pilotage'},
     {id:'equipe', label:'Équipe', icon:I.team, section:'Organisation'},
     {id:'multi', label:'Multi-établissements', icon:I.building, section:'Organisation'},
     {id:'notifications', label:'Notifications', icon:I.mail, section:'Compte'},
@@ -1701,6 +1706,7 @@ const NAV = {
     {id:'stocks', label:'Produits', icon:I.doc},
     {id:'livraisons', label:'Livraisons', icon:I.truck},
     {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
+    {id:'inventaire', label:'Inventaire', icon:I.box},
     {id:'notifications', label:'Notifications', icon:I.mail},
     {id:'aide', label:'Aide', icon:I.help},
   ],
@@ -1710,6 +1716,7 @@ const NAV = {
     {id:'stocks', label:'Catalogue', icon:I.doc},
     {id:'livraisons', label:'Livraisons', icon:I.truck},
     {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
+    {id:'inventaire', label:'Inventaire', icon:I.box},
     {id:'demandes', label:'Mes demandes', icon:I.tray},
     {id:'notifications', label:'Notifications', icon:I.mail},
     {id:'aide', label:'Aide', icon:I.help},
@@ -1719,6 +1726,7 @@ const NAV = {
     {id:'signaler', label:'Signaler un manque', icon:I.warn},
     {id:'stocks', label:'Catalogue', icon:I.doc},
     {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
+    {id:'inventaire', label:'Inventaire', icon:I.box},
     {id:'demandes', label:'Mes demandes', icon:I.clock},
     {id:'notifications', label:'Notifications', icon:I.mail},
     {id:'aide', label:'Aide', icon:I.help},
@@ -2746,7 +2754,7 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
 ============================================================ */
 function renderShell(){
   const restoForNav = RESTOS.find(r=>r.id===state.resto);
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)) && !(n.id==='recettes' && restoForNav && restoForNav.recipesEnabled===false));
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)) && !(n.id==='recettes' && restoForNav && restoForNav.recipesEnabled===false) && !(n.id==='inventaire' && !(restoForNav && restoForNav.stockCountsEnabled)));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -3450,6 +3458,72 @@ function viewStocks(){
       </table>` : emptyState(PRODUCTS.length ? 'Aucun produit ne correspond à ces critères' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
     </div>
   `;
+}
+// ============================================================
+// INVENTAIRE — relevé simple de stock, sans réconciliation théorique. Le dernier relevé de
+// chaque produit se déduit simplement du STOCK_COUNTS le plus récent le concernant (les
+// entrées arrivent déjà triées du plus récent au plus ancien depuis le serveur).
+// ============================================================
+function lastStockCountForProduct(productId){
+  return STOCK_COUNTS.find(c=>c.productId===productId) || null;
+}
+function viewInventaire(){
+  const sorted = PRODUCTS.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  return `
+    <div class="section-head" style="margin-top:0;">
+      <div><h2>Inventaire</h2><div class="sub">Un relevé simple de ce qu'il reste — remplissez seulement les produits que vous comptez aujourd'hui, le reste peut attendre la prochaine fois.</div></div>
+    </div>
+    ${sorted.length ? `
+      <div class="card">
+        <table class="stack-mobile">
+          <tr><th>Produit</th><th>Dernier relevé</th><th>Nouveau relevé</th></tr>
+          ${sorted.map(p=>{
+            const last = lastStockCountForProduct(p.id);
+            const lastText = last
+              ? `${last.quantity} ${escapeHtml(last.unit||p.unit||'')} <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`
+              : `<span class="small muted">Jamais compté</span>`;
+            return `<tr class="tr-hover">
+              <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}</td>
+              <td data-label="Dernier relevé">${lastText}</td>
+              <td data-label="Nouveau relevé"><input type="number" min="0" step="0.001" placeholder="Ex : ${p.unit==='Kg'||p.unit==='Litre'?'2.5':'10'}" data-inv-product-id="${p.id}" class="inv-count-input" style="width:110px;"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </div>
+      <button class="btn btn-primary" style="margin-top:16px;" onclick="saveInventoryCounts()">Enregistrer l'inventaire</button>
+    ` : emptyState("Aucun produit au catalogue pour l'instant — ajoutez vos produits avant de pouvoir faire un inventaire.")}
+  `;
+}
+async function saveInventoryCounts(){
+  const inputs = Array.from(document.querySelectorAll('.inv-count-input')).filter(el=>el.value !== '');
+  if(!inputs.length){ toast("Renseignez au moins une quantité avant d'enregistrer", 'alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const countedByName = currentPersonDisplayName();
+  const counts = inputs.map(el=>{
+    const p = PRODUCTS.find(x=>x.id===el.dataset.invProductId);
+    return { productId: p?p.remoteId:null, localId: el.dataset.invProductId, quantity: parseFloat(el.value), unit: p?p.unit:'' };
+  }).filter(c=>c.productId!=null && !isNaN(c.quantity));
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/stock-counts/bulk`, {
+      method:'POST', body:{ counts: counts.map(c=>({productId:c.productId, quantity:c.quantity})), countedByName },
+    });
+    // On reconstruit localement plutôt que de resynchroniser entièrement — plus rapide, et le
+    // serveur a de toute façon renvoyé exactement ce qu'il a enregistré.
+    const newEntries = data.stockCounts.map(c=>{
+      const localProduct = PRODUCTS.find(p=>p.remoteId===c.product_id);
+      return {
+        id:'sc'+c.id, remoteId:c.id, productId: localProduct?localProduct.id:null,
+        productNameSnapshot: c.product_name_snapshot, quantity: parseFloat(c.quantity), unit: c.unit,
+        countedByName: c.counted_by_name, createdAt: new Date(c.created_at),
+      };
+    });
+    STOCK_COUNTS = [...newEntries, ...STOCK_COUNTS];
+    ensureRestoData(state.resto).stockCounts = STOCK_COUNTS;
+    toast(`${newEntries.length} relevé${newEntries.length>1?'s':''} enregistré${newEntries.length>1?'s':''}`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 
 function ensureEcartsFilters(){
@@ -5226,6 +5300,25 @@ async function syncRecipesFromServer(localId){
     if(state.resto === localId){ RECIPES = d.recipes; RECIPE_INGREDIENTS = d.recipeIngredients; }
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRecipesFromServer —', err); }
 }
+// Comme HACCP, désactivé par défaut : on n'appelle même pas l'API si le module n'est pas
+// activé pour cet établissement — inutile de solliciter une route qui répondrait 403 de toute
+// façon, et ça évite un message d'erreur silencieux dans la console pour rien.
+async function syncStockCountsFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId || !resto.stockCountsEnabled) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/stock-counts`);
+    const d = ensureRestoData(localId);
+    d.stockCounts = data.stockCounts.map(c => ({
+      id:'sc'+c.id, remoteId:c.id,
+      productId: c.product_id ? 'p'+c.product_id : null,
+      productNameSnapshot: c.product_name_snapshot,
+      quantity: parseFloat(c.quantity), unit: c.unit,
+      countedByName: c.counted_by_name, createdAt: new Date(c.created_at),
+    }));
+    if(state.resto === localId) STOCK_COUNTS = d.stockCounts;
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncStockCountsFromServer —', err); }
+}
 async function syncRequestsFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
   if(!resto || !resto.remoteId) return;
@@ -5301,6 +5394,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.siret = data.restaurant.siret;
     resto.haccpEnabled = data.restaurant.haccp_enabled;
     resto.recipesEnabled = data.restaurant.recipes_enabled;
+    resto.stockCountsEnabled = data.restaurant.stock_counts_enabled;
     applyAppearance(resto);
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRestaurantInfoFromServer —', err); }
 }
@@ -5324,7 +5418,7 @@ async function syncRestoOperationalData(localId){
   // suivantes s'exécutent quand même, plutôt que de laisser le reste des données périmées.
   const steps = [
     syncRestaurantInfoFromServer, syncHaccpFromServer, syncNotificationSettingsFromServer, syncCategoriesFromServer,
-    syncZonesFromServer, syncSuppliersFromServer, syncProductsFromServer, syncRecipesFromServer, syncOrdersFromServer,
+    syncZonesFromServer, syncSuppliersFromServer, syncProductsFromServer, syncRecipesFromServer, syncStockCountsFromServer, syncOrdersFromServer,
     syncBasketsFromServer, syncRequestsFromServer, syncCustomRequestsFromServer, syncTeamFromServer,
   ];
   for(const step of steps){
@@ -5490,6 +5584,14 @@ function viewParametres(){
         <label class="flex center gap8" style="cursor:pointer;">
           <input type="checkbox" id="recipes-toggle" ${resto.recipesEnabled!==false?'checked':''} onchange="toggleRecipesEnabled(this.checked)">
           <span>Activer les fiches techniques pour cet établissement</span>
+        </label>
+      </div>
+      <div class="card">
+        <div class="card-title">Inventaire</div>
+        <div class="small muted" style="margin-bottom:14px;">Un relevé simple de stock — quantité, date, qui l'a fait. Pas de décompte automatique ni de rapprochement théorique : juste un constat, à faire quand vous en avez le temps. Désactivé par défaut, inclus à tous les forfaits.</div>
+        <label class="flex center gap8" style="cursor:pointer;">
+          <input type="checkbox" id="stock-counts-toggle" ${resto.stockCountsEnabled?'checked':''} onchange="toggleStockCountsEnabled(this.checked)">
+          <span>Activer l'inventaire pour cet établissement</span>
         </label>
       </div>
       <div class="card">
@@ -5989,6 +6091,22 @@ async function toggleRecipesEnabled(checked){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ recipesEnabled: checked } });
     resto.recipesEnabled = data.restaurant.recipes_enabled;
     toast(checked ? 'Fiches techniques activées — retrouvez-les dans le menu' : 'Fiches techniques désactivées');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function toggleStockCountsEnabled(checked){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ stockCountsEnabled: checked } });
+    resto.stockCountsEnabled = data.restaurant.stock_counts_enabled;
+    if(checked){
+      await syncStockCountsFromServer(state.resto);
+      toast('Inventaire activé — retrouvez-le dans le menu');
+    } else {
+      toast('Inventaire désactivé');
+    }
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -6498,6 +6616,28 @@ const FAQ_CATEGORIES = [
       {
         q: "Qui peut faire les relevés et le nettoyage ?",
         a: "Patron, manager, cuisine et salle peuvent tous enregistrer un relevé ou marquer un nettoyage fait. Seuls le patron et le manager peuvent ajouter ou supprimer un équipement ou une tâche (la configuration), pas juste l'utiliser au quotidien.",
+      },
+    ],
+  },
+  {
+    id: 'inventaire',
+    label: 'Inventaire',
+    items: [
+      {
+        q: "Comment activer l'inventaire ?",
+        a: "Dans Paramètres, cochez « Activer l'inventaire pour cet établissement ». Comme le suivi HACCP, c'est désactivé par défaut et inclus à tous les forfaits.",
+      },
+      {
+        q: "Est-ce que ça décompte automatiquement mon stock à chaque commande ?",
+        a: "Non, volontairement. C'est un relevé simple — vous notez ce qu'il reste, à un instant donné, sans rapprochement automatique avec les commandes ou les recettes. Moins puissant qu'un vrai logiciel de gestion de stock, mais bien plus réaliste à tenir au quotidien.",
+      },
+      {
+        q: "Je n'ai pas le temps de compter tout le stock d'un coup, c'est grave ?",
+        a: "Pas du tout — remplissez seulement les produits que vous comptez aujourd'hui, laissez les autres champs vides, et enregistrez. Les produits non renseignés gardent simplement leur dernier relevé connu, sans rien perdre.",
+      },
+      {
+        q: "Qui peut faire un relevé de stock ?",
+        a: "Patron, manager, cuisine et salle peuvent tous enregistrer un relevé — c'est pensé pour être fait par qui est sur place au moment de ranger la livraison ou de préparer le service, pas seulement par le patron.",
       },
     ],
   },
@@ -9135,6 +9275,16 @@ function renderContent(){
       return viewPatronDashboard();
     }
     return viewHaccp(role);
+  }
+  if(view==='inventaire'){
+    const restoForInv = RESTOS.find(r=>r.id===state.resto);
+    if(!restoForInv || !restoForInv.stockCountsEnabled){
+      if(role==='manager') return viewManagerDashboard();
+      if(role==='cuisine') return viewCuisineAccueil();
+      if(role==='salle') return viewSalleAccueil();
+      return viewPatronDashboard();
+    }
+    return viewInventaire();
   }
   if(role==='patron'){
     if(view==='dashboard') return viewPatronDashboard();
