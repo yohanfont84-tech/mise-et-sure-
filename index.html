@@ -3467,6 +3467,20 @@ function viewStocks(){
 function lastStockCountForProduct(productId){
   return STOCK_COUNTS.find(c=>c.productId===productId) || null;
 }
+// Filtre par simple affichage/masquage des lignes déjà présentes dans le DOM — surtout pas un
+// re-rendu de la page à chaque frappe, qui effacerait les quantités déjà saisies par quelqu'un
+// en train de parcourir sa réserve avec la recherche ouverte à côté.
+function filterInventaireRows(){
+  const q = (document.getElementById('inv-search')?.value || '').toLowerCase().trim();
+  let anyVisible = false;
+  document.querySelectorAll('#inv-table .inv-row').forEach(row=>{
+    const match = row.dataset.search.includes(q);
+    row.style.display = match ? '' : 'none';
+    if(match) anyVisible = true;
+  });
+  const noMatchEl = document.getElementById('inv-no-match');
+  if(noMatchEl) noMatchEl.style.display = anyVisible ? 'none' : '';
+}
 function viewInventaire(){
   const sorted = PRODUCTS.slice().sort((a,b)=>a.name.localeCompare(b.name));
   return `
@@ -3474,21 +3488,30 @@ function viewInventaire(){
       <div><h2>Inventaire</h2><div class="sub">Un relevé simple de ce qu'il reste — remplissez seulement les produits que vous comptez aujourd'hui, le reste peut attendre la prochaine fois.</div></div>
     </div>
     ${sorted.length ? `
+      <input type="text" id="inv-search" placeholder="🔎 Rechercher un produit…" oninput="filterInventaireRows()" style="margin-bottom:14px;width:100%;max-width:360px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
       <div class="card">
-        <table class="stack-mobile">
+        <table class="stack-mobile" id="inv-table">
           <tr><th>Produit</th><th>Dernier relevé</th><th>Nouveau relevé</th></tr>
           ${sorted.map(p=>{
             const last = lastStockCountForProduct(p.id);
-            const lastText = last
-              ? `${last.quantity} ${escapeHtml(last.unit||p.unit||'')} <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`
-              : `<span class="small muted">Jamais compté</span>`;
-            return `<tr class="tr-hover">
+            let lastText;
+            if(!last){
+              lastText = `<span class="small muted">Jamais compté</span>`;
+            } else if(last.source === 'commande'){
+              // Une estimation, jamais présentée comme un vrai comptage — le "≈" et la mention
+              // explicite évitent toute confusion avec un relevé fait à la main.
+              lastText = `<span title="Estimation : dernier comptage connu + quantité reçue depuis, pas un vrai comptage">≈ ${last.quantity} ${escapeHtml(last.unit||p.unit||'')} <span class="small muted">— estimation, via commande le ${fmtDateShort(last.createdAt)}</span></span>`;
+            } else {
+              lastText = `${last.quantity} ${escapeHtml(last.unit||p.unit||'')} <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
+            }
+            return `<tr class="tr-hover inv-row" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}">
               <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}</td>
               <td data-label="Dernier relevé">${lastText}</td>
               <td data-label="Nouveau relevé"><input type="number" min="0" step="0.001" placeholder="Ex : ${p.unit==='Kg'||p.unit==='Litre'?'2.5':'10'}" data-inv-product-id="${p.id}" class="inv-count-input" style="width:110px;"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
             </tr>`;
           }).join('')}
         </table>
+        <div id="inv-no-match" class="small muted" style="display:none;padding:14px 4px 4px 4px;">Aucun produit ne correspond à cette recherche.</div>
       </div>
       <button class="btn btn-primary" style="margin-top:16px;" onclick="saveInventoryCounts()">Enregistrer l'inventaire</button>
     ` : emptyState("Aucun produit au catalogue pour l'instant — ajoutez vos produits avant de pouvoir faire un inventaire.")}
@@ -3515,6 +3538,7 @@ async function saveInventoryCounts(){
         id:'sc'+c.id, remoteId:c.id, productId: localProduct?localProduct.id:null,
         productNameSnapshot: c.product_name_snapshot, quantity: parseFloat(c.quantity), unit: c.unit,
         countedByName: c.counted_by_name, createdAt: new Date(c.created_at),
+        source: c.source || 'manuel', orderId: c.order_id || null,
       };
     });
     STOCK_COUNTS = [...newEntries, ...STOCK_COUNTS];
@@ -5315,6 +5339,7 @@ async function syncStockCountsFromServer(localId){
       productNameSnapshot: c.product_name_snapshot,
       quantity: parseFloat(c.quantity), unit: c.unit,
       countedByName: c.counted_by_name, createdAt: new Date(c.created_at),
+      source: c.source || 'manuel', orderId: c.order_id || null,
     }));
     if(state.resto === localId) STOCK_COUNTS = d.stockCounts;
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncStockCountsFromServer —', err); }
@@ -7270,6 +7295,10 @@ async function confirmReceiveOrder(id){
     } else {
       toast(data.order.has_discrepancy ? 'Réception confirmée — écart détecté par rapport à la commande' : 'Livraison réceptionnée — tout correspond à la commande');
     }
+    // Le serveur vient peut-être d'ajouter une estimation de stock pour les produits reçus
+    // (voir la route /receive) — on la récupère pour que l'onglet Inventaire soit à jour sans
+    // attendre un rechargement complet de la page.
+    if(resto.stockCountsEnabled) await syncStockCountsFromServer(state.resto);
     render();
   } catch(err){
     toast(err.message, 'alert');
