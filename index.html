@@ -1641,11 +1641,11 @@ const state = {
 let ACCOUNT = null; // { email, plan, billing, via } une fois le compte connecté pendant la session (vient du vrai serveur)
 const PLANS = [
   { id:'solo', name:'Solo', monthly:19, tagline:"Pour un restaurateur qui travaille seul",
-    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Bons de commande et historique d’achats','Suivi HACCP inclus','Notifications par email'] },
+    features:['1 établissement','Sans gestion d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Bons de commande et historique d’achats','Fiches techniques (coût de revient)','Suivi HACCP inclus','Inventaire simple inclus','Notifications par email'] },
   { id:'essentiel', name:'Essentiel', monthly:39, tagline:"Pour un restaurant qui démarre",
-    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Suivi HACCP inclus','Notifications par email'] },
+    features:['1 établissement','Jusqu’à 10 membres d’équipe','Commandes fournisseurs illimitées','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Fiches techniques (coût de revient)','Suivi HACCP inclus','Inventaire simple inclus','Notifications par email'] },
   { id:'pro', name:'Pro', monthly:79, tagline:"Pour les groupes multi-établissements",
-    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Suivi HACCP inclus','Support prioritaire'] },
+    features:['Établissements illimités','Membres d’équipe illimités','Achats personnalisés','Export PDF des commandes','Carte des fournisseurs à proximité','Fiches techniques (coût de revient)','Suivi HACCP inclus','Inventaire simple inclus','Support prioritaire'] },
 ];
 function planAnnualPrice(monthly){ return monthly*10; }
 // Comparatif ligne par ligne — reflète exactement les fonctionnalités listées dans PLANS
@@ -1658,7 +1658,9 @@ const PRICING_COMPARISON = [
   { label:'Export PDF des commandes', solo:false, essentiel:true, pro:true },
   { label:'Bons de commande et historique d’achats', solo:true, essentiel:true, pro:true },
   { label:'Carte des fournisseurs à proximité', solo:false, essentiel:true, pro:true },
+  { label:'Fiches techniques (coût de revient par plat)', solo:true, essentiel:true, pro:true },
   { label:'Suivi HACCP (lots, températures, nettoyage)', solo:true, essentiel:true, pro:true },
+  { label:'Inventaire simple (relevé de stock)', solo:true, essentiel:true, pro:true },
   { label:'Notifications par email', solo:true, essentiel:true, pro:true },
   { label:'Support', solo:'Par email', essentiel:'Par email', pro:'Prioritaire' },
 ];
@@ -1672,7 +1674,9 @@ const PRICING_FAQ = [
 const SITE_FEATURES = [
   { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, un seul bon de commande." },
   { icon:'team', title:'Un accès par personne', desc:"Patron, manager, cuisine, salle : chacun son espace, ses permissions, son mot de passe." },
+  { icon:'chef', title:'Coût de revient par plat', desc:"Calculé automatiquement à partir de vos produits — marge et food cost inclus, sans tableur à tenir à jour." },
   { icon:'thermometer', title:'Suivi HACCP inclus', desc:"Numéro de lot, relevés de température, suivi du nettoyage — à tous les forfaits, activable en un clic." },
+  { icon:'box', title:'Inventaire simple', desc:"Un relevé de stock — quantité, date, qui l'a fait. Sans usine à gaz, activable en un clic." },
   { icon:'building', title:'Multi-établissements', desc:"Gérez plusieurs restaurants depuis un même compte, sans jamais mélanger les données." },
 ];
 
