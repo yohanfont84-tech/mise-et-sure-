@@ -5624,17 +5624,18 @@ function viewParametres(){
         </div>
         <div class="feature-toggle-row">
           <div>
-            <div class="feature-toggle-title">Fiches techniques</div>
-            <div class="small muted">Coût de revient par plat, calculé à partir de vos produits. Désactivez-la et le champ "contenu net" sur vos produits disparaît aussi.</div>
-          </div>
-          <input type="checkbox" id="recipes-toggle" aria-label="Activer les fiches techniques" ${resto.recipesEnabled!==false?'checked':''} onchange="toggleRecipesEnabled(this.checked)">
-        </div>
-        <div class="feature-toggle-row">
-          <div>
             <div class="feature-toggle-title">Inventaire</div>
             <div class="small muted">Un relevé simple de stock — quantité, date, qui l'a fait. Pas de décompte automatique ni de rapprochement théorique.</div>
           </div>
           <input type="checkbox" id="stock-counts-toggle" aria-label="Activer l'inventaire" ${resto.stockCountsEnabled?'checked':''} onchange="toggleStockCountsEnabled(this.checked)">
+        </div>
+        <div class="feature-toggle-row">
+          <div>
+            <div class="feature-toggle-title">Fiches techniques</div>
+            <div class="small muted">Coût de revient par plat, calculé à partir de vos produits. Désactivez-la et le champ "contenu net" sur vos produits disparaît aussi.</div>
+            ${resto.hideFinancials ? `<div class="small" style="color:var(--urgent);font-weight:600;margin-top:6px;">Reste invisible tant que le suivi financier est désactivé juste en dessous — cette page n'affiche que des coûts et des marges.</div>` : ''}
+          </div>
+          <input type="checkbox" id="recipes-toggle" aria-label="Activer les fiches techniques" ${resto.recipesEnabled!==false?'checked':''} onchange="toggleRecipesEnabled(this.checked)">
         </div>
         <div class="feature-toggle-row">
           <div>
@@ -5643,6 +5644,7 @@ function viewParametres(){
           </div>
           <input type="checkbox" id="hide-financials-toggle" aria-label="Masquer les prix et montants" ${resto.hideFinancials?'checked':''} onchange="toggleHideFinancials(this.checked)">
         </div>
+        ${resto.hideFinancials ? `<div class="small" style="color:var(--urgent);margin-top:2px;">Décochez le suivi financier ci-dessus si vous voulez retrouver les fiches techniques et les statistiques.</div>` : ''}
       </div>
       ${soloModeEnabled() ? `
       <div class="card">
