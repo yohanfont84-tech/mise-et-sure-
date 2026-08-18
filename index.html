@@ -451,6 +451,13 @@ tr.group-row:hover td{background:var(--gray-100);}
 .admin-kpi .val{font-size:26px;font-weight:700;margin-top:4px;font-family:var(--heading-font);}
 .admin-account-row{border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface);}
 .admin-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+/* Une ligne par fonctionnalité activable, toutes dans une seule carte plutôt qu'éparpillées en
+   cartes séparées — même langage visuel que la liste d'événements de la page Notifications
+   (bordure fine entre chaque ligne, case à cocher alignée à droite). */
+.feature-toggle-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:16px 0;border-bottom:1px solid var(--border);}
+.feature-toggle-row:last-child{border-bottom:none;padding-bottom:4px;}
+.feature-toggle-row input[type="checkbox"]{width:18px;height:18px;flex-shrink:0;margin-top:2px;cursor:pointer;}
+.feature-toggle-title{font-weight:600;font-size:13.5px;margin-bottom:3px;}
 .btn-link-quiet{background:none;border:none;padding:0;color:var(--text);cursor:pointer;font-size:inherit;text-decoration:none;border-bottom:1px dashed var(--muted);}
 .btn-link-quiet:hover{border-bottom-color:var(--text);}
 .admin-filter-bar input, .admin-filter-bar select{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:13.5px;}
@@ -5606,36 +5613,36 @@ function viewParametres(){
         <button class="btn btn-primary" onclick="saveRestoInfo()">Enregistrer</button>
       </div>
       <div class="card">
-        <div class="card-title">Suivi HACCP</div>
-        <div class="small muted" style="margin-bottom:14px;">Numéro de lot à la réception, relevés de température, suivi du nettoyage — inclus à tous les forfaits, entièrement facultatif. Activez-le seulement si vous en avez besoin ; sans ça, rien n'apparaît nulle part.</div>
-        <label class="flex center gap8" style="cursor:pointer;">
-          <input type="checkbox" id="haccp-toggle" ${resto.haccpEnabled?'checked':''} onchange="toggleHaccpEnabled(this.checked)">
-          <span>Activer le suivi HACCP pour cet établissement</span>
-        </label>
-      </div>
-      <div class="card">
-        <div class="card-title">Fiches techniques</div>
-        <div class="small muted" style="margin-bottom:14px;">Coût de revient par plat, calculé à partir de vos produits. Désactivez-le si vous n'en avez pas l'usage — la page, le champ "contenu net" sur vos produits, et tout ce qui s'y rattache disparaissent complètement.</div>
-        <label class="flex center gap8" style="cursor:pointer;">
-          <input type="checkbox" id="recipes-toggle" ${resto.recipesEnabled!==false?'checked':''} onchange="toggleRecipesEnabled(this.checked)">
-          <span>Activer les fiches techniques pour cet établissement</span>
-        </label>
-      </div>
-      <div class="card">
-        <div class="card-title">Inventaire</div>
-        <div class="small muted" style="margin-bottom:14px;">Un relevé simple de stock — quantité, date, qui l'a fait. Pas de décompte automatique ni de rapprochement théorique : juste un constat, à faire quand vous en avez le temps. Désactivé par défaut, inclus à tous les forfaits.</div>
-        <label class="flex center gap8" style="cursor:pointer;">
-          <input type="checkbox" id="stock-counts-toggle" ${resto.stockCountsEnabled?'checked':''} onchange="toggleStockCountsEnabled(this.checked)">
-          <span>Activer l'inventaire pour cet établissement</span>
-        </label>
-      </div>
-      <div class="card">
-        <div class="card-title">Suivi financier</div>
-        <div class="small muted" style="margin-bottom:14px;">Certains restaurateurs préfèrent un outil purement opérationnel, sans prix ni montants affichés nulle part.</div>
-        <label class="flex center gap8" style="cursor:pointer;">
-          <input type="checkbox" id="hide-financials-toggle" ${resto.hideFinancials?'checked':''} onchange="toggleHideFinancials(this.checked)">
-          <span>Masquer entièrement les prix, montants et statistiques de dépenses</span>
-        </label>
+        <div class="card-title">Fonctionnalités</div>
+        <div class="small muted" style="margin-bottom:4px;">Chaque module est indépendant et se désactive à tout moment — sans ça, rien n'en apparaît nulle part, ni dans le menu ni sur les formulaires.</div>
+        <div class="feature-toggle-row">
+          <div>
+            <div class="feature-toggle-title">Suivi HACCP</div>
+            <div class="small muted">Numéro de lot à la réception, relevés de température, suivi du nettoyage — inclus à tous les forfaits, entièrement facultatif.</div>
+          </div>
+          <input type="checkbox" id="haccp-toggle" aria-label="Activer le suivi HACCP" ${resto.haccpEnabled?'checked':''} onchange="toggleHaccpEnabled(this.checked)">
+        </div>
+        <div class="feature-toggle-row">
+          <div>
+            <div class="feature-toggle-title">Fiches techniques</div>
+            <div class="small muted">Coût de revient par plat, calculé à partir de vos produits. Désactivez-la et le champ "contenu net" sur vos produits disparaît aussi.</div>
+          </div>
+          <input type="checkbox" id="recipes-toggle" aria-label="Activer les fiches techniques" ${resto.recipesEnabled!==false?'checked':''} onchange="toggleRecipesEnabled(this.checked)">
+        </div>
+        <div class="feature-toggle-row">
+          <div>
+            <div class="feature-toggle-title">Inventaire</div>
+            <div class="small muted">Un relevé simple de stock — quantité, date, qui l'a fait. Pas de décompte automatique ni de rapprochement théorique.</div>
+          </div>
+          <input type="checkbox" id="stock-counts-toggle" aria-label="Activer l'inventaire" ${resto.stockCountsEnabled?'checked':''} onchange="toggleStockCountsEnabled(this.checked)">
+        </div>
+        <div class="feature-toggle-row">
+          <div>
+            <div class="feature-toggle-title">Suivi financier</div>
+            <div class="small muted">Certains restaurateurs préfèrent un outil purement opérationnel — cochez pour masquer entièrement prix, montants et statistiques de dépenses.</div>
+          </div>
+          <input type="checkbox" id="hide-financials-toggle" aria-label="Masquer les prix et montants" ${resto.hideFinancials?'checked':''} onchange="toggleHideFinancials(this.checked)">
+        </div>
       </div>
       ${soloModeEnabled() ? `
       <div class="card">
