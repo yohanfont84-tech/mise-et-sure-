@@ -48,6 +48,7 @@
   --gray-100:#EFEFEA;
   --urgent:#A93A2E;
   --urgent-tint:#F3E2DE;
+  --info:#2D5F7C;
   --paper:#F7F7F4;
   --surface:#FFFFFF;
   --border:#E1E1DA;
@@ -68,6 +69,7 @@ html.theme-dark{
   --gray-100:#201F1C;
   --urgent:#C85C4E;
   --urgent-tint:#3A211D;
+  --info:#7FA8C4;
   --paper:#121210;
   --surface:#1C1C19;
   --border:#333330;
@@ -3487,48 +3489,99 @@ function viewStocks(){
 function lastStockCountForProduct(productId){
   return STOCK_COUNTS.find(c=>c.productId===productId) || null;
 }
+// Repli/dépli d'une catégorie — volontairement PAS un render() complet, contrairement à la page
+// Produits : ça effacerait les quantités déjà saisies dans les autres lignes encore visibles.
+// L'état replié vit dans state (state.collapsedInventaireCategories), séparé de celui de la page
+// Produits, pour ne jamais faire disparaître une catégorie ici parce qu'elle était repliée
+// là-bas — chaque page garde sa propre mémoire.
+function toggleInventaireCategory(cat){
+  if(!state.collapsedInventaireCategories) state.collapsedInventaireCategories = {};
+  state.collapsedInventaireCategories[cat] = !state.collapsedInventaireCategories[cat];
+  const header = document.querySelector(`#inv-table .group-row[data-category-group="${CSS.escape(cat)}"]`);
+  header?.querySelector('.group-chevron')?.classList.toggle('open');
+  filterInventaireRows();
+}
+function setAllInventaireCategoryGroups(collapsedValue){
+  if(!state.collapsedInventaireCategories) state.collapsedInventaireCategories = {};
+  const collapsed = state.collapsedInventaireCategories;
+  Object.keys(collapsed).forEach(k=>delete collapsed[k]);
+  document.querySelectorAll('#inv-table .group-row').forEach(header=>{
+    if(collapsedValue) collapsed[header.dataset.categoryGroup] = true;
+    header.querySelector('.group-chevron')?.classList.toggle('open', !collapsedValue);
+  });
+  filterInventaireRows();
+}
 // Filtre par simple affichage/masquage des lignes déjà présentes dans le DOM — surtout pas un
 // re-rendu de la page à chaque frappe, qui effacerait les quantités déjà saisies par quelqu'un
-// en train de parcourir sa réserve avec la recherche ouverte à côté.
+// en train de parcourir sa réserve avec la recherche ouverte à côté. Combine recherche ET repli
+// de catégorie en une seule passe : une ligne n'est visible que si elle correspond à la
+// recherche ET que sa catégorie n'est pas repliée. Un groupe reste visible dès qu'il contient au
+// moins une correspondance, même replié — pour ne jamais faire disparaître une catégorie entière
+// juste parce qu'on cherche justement dedans pendant qu'elle est repliée.
 function filterInventaireRows(){
-  const q = (document.getElementById('inv-search')?.value || '').toLowerCase().trim();
-  let anyVisible = false;
+  const input = document.getElementById('inv-search');
+  const q = (input ? input.value : (state.inventaireSearchQuery||'')).toLowerCase().trim();
+  state.inventaireSearchQuery = q;
+  const collapsedCats = state.collapsedInventaireCategories || {};
+  const categoriesWithMatch = new Set();
   document.querySelectorAll('#inv-table .inv-row').forEach(row=>{
-    const match = row.dataset.search.includes(q);
-    row.style.display = match ? '' : 'none';
-    if(match) anyVisible = true;
+    const cat = row.dataset.category;
+    const matchesSearch = row.dataset.search.includes(q);
+    if(matchesSearch) categoriesWithMatch.add(cat);
+    row.style.display = (matchesSearch && !collapsedCats[cat]) ? '' : 'none';
+  });
+  document.querySelectorAll('#inv-table .group-row').forEach(header=>{
+    header.style.display = categoriesWithMatch.has(header.dataset.categoryGroup) ? '' : 'none';
   });
   const noMatchEl = document.getElementById('inv-no-match');
-  if(noMatchEl) noMatchEl.style.display = anyVisible ? 'none' : '';
+  if(noMatchEl) noMatchEl.style.display = categoriesWithMatch.size ? 'none' : '';
 }
 function viewInventaire(){
   const sorted = PRODUCTS.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const groups = groupProductsByCategory(sorted);
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Inventaire</h2><div class="sub">Un relevé simple de ce qu'il reste — remplissez seulement les produits que vous comptez aujourd'hui, le reste peut attendre la prochaine fois.</div></div>
     </div>
     ${sorted.length ? `
-      <input type="text" id="inv-search" placeholder="🔎 Rechercher un produit…" oninput="filterInventaireRows()" style="margin-bottom:14px;width:100%;max-width:360px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+      <input type="text" id="inv-search" placeholder="🔎 Rechercher un produit…" value="${escapeHtml(state.inventaireSearchQuery||'')}" oninput="filterInventaireRows()" style="margin-bottom:14px;width:100%;max-width:360px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+      ${groups.length>1 ? `<div class="flex gap8" style="margin:0 0 12px 0;">
+        <button class="btn btn-ghost btn-sm" onclick="setAllInventaireCategoryGroups(true)">${iconXs(I.chevronDown)} Tout réduire</button>
+        <button class="btn btn-ghost btn-sm" onclick="setAllInventaireCategoryGroups(false)">${iconXs(I.chevronDown)} Tout développer</button>
+      </div>` : ''}
       <div class="card">
         <table class="stack-mobile" id="inv-table">
           <tr><th>Produit</th><th>Dernier relevé</th><th>Nouveau relevé</th></tr>
-          ${sorted.map(p=>{
-            const last = lastStockCountForProduct(p.id);
-            let lastText;
-            if(!last){
-              lastText = `<span class="small muted">Jamais compté</span>`;
-            } else if(last.source === 'commande'){
-              // Une estimation, jamais présentée comme un vrai comptage — le "≈" et la mention
-              // explicite évitent toute confusion avec un relevé fait à la main.
-              lastText = `<span title="Estimation : dernier comptage connu + quantité reçue depuis, pas un vrai comptage">≈ ${last.quantity} ${escapeHtml(last.unit||p.unit||'')} <span class="small muted">— estimation, via commande le ${fmtDateShort(last.createdAt)}</span></span>`;
-            } else {
-              lastText = `${last.quantity} ${escapeHtml(last.unit||p.unit||'')} <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
-            }
-            return `<tr class="tr-hover inv-row" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}">
-              <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}</td>
-              <td data-label="Dernier relevé">${lastText}</td>
-              <td data-label="Nouveau relevé"><input type="number" min="0" step="0.001" placeholder="Ex : ${p.unit==='Kg'||p.unit==='Litre'?'2.5':'10'}" data-inv-product-id="${p.id}" class="inv-count-input" style="width:110px;"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
-            </tr>`;
+          ${groups.map(g=>{
+            const groupHeader = groups.length>1 ? `
+              <tr class="group-row" data-category-group="${escapeHtml(g.category)}" onclick="toggleInventaireCategory('${escapeHtml(g.category).replace(/'/g,"\\'")}')" style="cursor:pointer;background:var(--paper);">
+                <td colspan="3" style="font-weight:600;padding:9px 8px;">
+                  <span class="group-chevron open" style="display:inline-flex;margin-right:8px;vertical-align:middle;">${iconXs(I.chevronDown)}</span>
+                  ${escapeHtml(g.category)} <span class="muted small" style="font-weight:400;">(${g.items.length} produit${g.items.length>1?'s':''})</span>
+                </td>
+              </tr>` : '';
+            const itemRows = g.items.map(p=>{
+              const last = lastStockCountForProduct(p.id);
+              let lastText;
+              if(!last){
+                lastText = `<span class="small muted">Jamais compté</span>`;
+              } else if(last.source === 'commande'){
+                // Une estimation, jamais présentée comme un vrai comptage — le "≈", la mention
+                // explicite ET une couleur dédiée (var(--info)) évitent toute confusion avec un
+                // relevé fait à la main, y compris pour quelqu'un qui ne fait que survoler la liste.
+                lastText = `<span title="Estimation : dernier comptage connu + quantité reçue depuis, pas un vrai comptage"><span style="color:var(--info);font-weight:600;">≈ ${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— estimation, via commande le ${fmtDateShort(last.createdAt)}</span></span>`;
+              } else {
+                // Même logique de couleur pour un vrai comptage manuel — la valeur elle-même se
+                // distingue visuellement du reste de la ligne, pas seulement l'attribution.
+                lastText = `<span style="color:var(--info);font-weight:600;">${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
+              }
+              return `<tr class="tr-hover inv-row" data-category="${escapeHtml(g.category)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}">
+                <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}</td>
+                <td data-label="Dernier relevé">${lastText}</td>
+                <td data-label="Nouveau relevé"><input type="number" min="0" step="0.001" placeholder="Ex : ${p.unit==='Kg'||p.unit==='Litre'?'2.5':'10'}" data-inv-product-id="${p.id}" class="inv-count-input" style="width:110px;background:var(--surface);color:var(--text);"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
+              </tr>`;
+            }).join('');
+            return groupHeader + itemRows;
           }).join('')}
         </table>
         <div id="inv-no-match" class="small muted" style="display:none;padding:14px 4px 4px 4px;">Aucun produit ne correspond à cette recherche.</div>
@@ -10872,6 +10925,11 @@ function renderInner(){
   `;
   requestAnimationFrame(()=>drawCharts());
   requestAnimationFrame(initSupplierMap);
+  // filterInventaireRows() ne fait rien si on n'est pas sur la page Inventaire (les sélecteurs
+  // ne trouvent simplement rien) — appelée sans condition ici, comme initSupplierMap juste
+  // au-dessus, pour réappliquer recherche et catégories repliées après un vrai rechargement de
+  // page (changement de vue, par exemple), sans perturber le fonctionnement habituel en DOM pur.
+  requestAnimationFrame(filterInventaireRows);
   if(TOUR_STATE.active) renderTourStep(); else maybeAutoStartTour();
 }
 
