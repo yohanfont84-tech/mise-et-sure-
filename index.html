@@ -150,7 +150,7 @@ a{text-decoration:none;color:inherit;}
   #app{display:block;}
   .menu-toggle{display:flex;align-items:center;}
   .sidebar{
-    position:fixed;left:0;top:0;z-index:100;
+    position:fixed;left:0;top:0;z-index:2000;
     /* En portrait, 100vh est largement assez haut pour que tous les éléments du menu tiennent
        sans qu'on remarque le souci — mais en paysage (écran bien plus court), le contenu du
        menu dépasse largement cette hauteur. Comme la règle de base ne fixe qu'une hauteur
@@ -166,7 +166,7 @@ a{text-decoration:none;color:inherit;}
   }
   .sidebar.open{transform:translateX(0);}
   .sidebar-backdrop{
-    display:block;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:90;
+    display:block;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1999;
     opacity:0;pointer-events:none;transition:opacity .2s ease;
   }
   .sidebar-backdrop.open{opacity:1;pointer-events:auto;}
@@ -699,7 +699,7 @@ tr.group-row:hover td{background:var(--gray-100);}
   .site-plan-card.recommended{transform:none;margin-top:14px;}
 }
 
-#toast-zone{position:fixed;bottom:22px;right:22px;z-index:999;display:flex;flex-direction:column;gap:9px;}
+#toast-zone{position:fixed;bottom:22px;right:22px;z-index:3000;display:flex;flex-direction:column;gap:9px;}
 .toast{
   background:var(--black);color:#fff;padding:12px 18px;border-radius:9px;font-size:13.5px;font-weight:500;
   box-shadow:0 8px 24px rgba(0,0,0,0.25);display:flex;align-items:center;gap:9px;min-width:220px;
@@ -709,7 +709,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .toast.mail{background:var(--surface);color:var(--text);border:1px solid var(--black);}
 
 .notif-wrap{position:relative;}
-.notif-panel{position:absolute;top:calc(100% + 10px);right:0;width:320px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.16);z-index:60;overflow:hidden;}
+.notif-panel{position:absolute;top:calc(100% + 10px);right:0;width:320px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.16);z-index:1500;overflow:hidden;}
 @media(max-width:900px){
   /* Le panneau se positionnait à partir de la toute petite icône cloche (largeur fixe de
      320px, calée sur son bord droit) — sur un écran étroit, ça le faisait déborder largement
@@ -730,7 +730,15 @@ tr.group-row:hover td{background:var(--gray-100);}
 .empty{text-align:center;padding:40px 20px;color:var(--muted);}
 .empty svg{width:38px;height:38px;color:var(--muted-2);margin-bottom:10px;}
 
-.modal-bg{position:fixed;inset:0;background:rgba(10,10,10,0.5);display:none;align-items:center;justify-content:center;z-index:100;}
+/* Hiérarchie des superpositions du site — Leaflet (la carte des fournisseurs) fixe ses propres
+   z-index en interne, jusqu'à 1000 pour ses contrôles de zoom. Toute superposition du site
+   (barre latérale mobile, notifications, modale, toasts) doit rester confortablement au-dessus
+   de cette valeur, sous peine que la carte s'affiche par-dessus l'interface dès qu'elle est
+   visible à l'écran — exactement le bug initialement signalé sur mobile avec le menu ☰.
+   Du plus bas au plus haut : notif-panel(1500) < sidebar-backdrop/sidebar(1999/2000) <
+   tour-overlay(2200) < modal-bg(2500) < toast-zone(3000, toujours au sommet — une confirmation
+   ne doit jamais être masquée, même par une modale encore ouverte). */
+.modal-bg{position:fixed;inset:0;background:rgba(10,10,10,0.5);display:none;align-items:center;justify-content:center;z-index:2500;}
 /* ============================================================
    VISITE GUIDÉE — un halo lumineux (technique du box-shadow géant) qui assombrit tout l'écran
    sauf l'élément ciblé, plus une info-bulle avec le texte d'explication à côté.
@@ -740,7 +748,7 @@ tr.group-row:hover td{background:var(--gray-100);}
    de pro. Seule l'infobulle elle-même (voir .tour-tooltip, pointer-events:auto) reste
    cliquable — le reste de l'écran, y compris la zone mise en avant, est volontairement
    figé : on avance uniquement via les boutons du guide, jamais en cliquant à travers. */
-.tour-overlay{position:fixed;inset:0;z-index:250;pointer-events:auto;cursor:default;touch-action:none;}
+.tour-overlay{position:fixed;inset:0;z-index:2200;pointer-events:auto;cursor:default;touch-action:none;}
 .tour-spotlight{
   position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(10,10,10,0.68);
   transition:left .25s ease,top .25s ease,width .25s ease,height .25s ease;pointer-events:none;
