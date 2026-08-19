@@ -49,6 +49,9 @@
   --urgent:#A93A2E;
   --urgent-tint:#F3E2DE;
   --info:#2D5F7C;
+  --info-tint:#E1EBF0;
+  --good:#2E7D32;
+  --good-tint:#E3F2E4;
   --paper:#F7F7F4;
   --surface:#FFFFFF;
   --border:#E1E1DA;
@@ -70,6 +73,9 @@ html.theme-dark{
   --urgent:#C85C4E;
   --urgent-tint:#3A211D;
   --info:#7FA8C4;
+  --info-tint:#1C2B33;
+  --good:#5FA968;
+  --good-tint:#1E2E1F;
   --paper:#121210;
   --surface:#1C1C19;
   --border:#333330;
@@ -351,6 +357,11 @@ tr.group-row:hover td{background:var(--gray-100);}
 .tag-neutral{background:var(--surface);color:var(--text);border:1px solid var(--gray-300);}
 .tag-subtle{background:var(--gray-100);color:var(--gray-700);}
 .tag-red{background:var(--urgent-tint);color:var(--urgent);}
+/* Pendants positif/informatif de .tag-red — même construction (fond teinté + texte plein),
+   pour que le prochain badge "positif" ou "informatif" ait une classe toute prête plutôt que de
+   réinventer une couleur isolée à chaque fois. */
+.tag-green{background:var(--good-tint);color:var(--good);}
+.tag-info{background:var(--info-tint);color:var(--info);}
 
 .progress{height:6px;border-radius:4px;background:var(--gray-100);border:1px solid var(--border);overflow:hidden;}
 .progress > div{height:100%;border-radius:4px;}
@@ -669,7 +680,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .pricing-compare-table th{background:var(--paper);font-weight:700;font-family:'Fraunces',serif;font-size:14.5px;}
 .pricing-compare-table td:first-child, .pricing-compare-table th:first-child{text-align:left;color:var(--muted);font-weight:500;}
 .pricing-compare-table tr:last-child td{border-bottom:none;}
-.pricing-compare-table td.yes{color:#2E7D32;font-weight:700;}
+.pricing-compare-table td.yes{color:var(--good);font-weight:700;}
 .pricing-compare-table td.no{color:var(--muted-2);}
 .pricing-compare-table th.recommended-col{background:var(--black);color:#fff;}
 
@@ -4259,7 +4270,7 @@ function viewHaccpNettoyage(role){
         </div>
         <div style="margin:12px 0;">
           ${doneEntry ? `
-            <div class="small" style="color:#2E7D32;font-weight:600;margin-bottom:8px;">${iconXs(I.check)} Fait à ${fmtTime(doneEntry.createdAt)} par ${escapeHtml(doneEntry.doneByName||'—')}</div>
+            <div class="small" style="color:var(--good);font-weight:600;margin-bottom:8px;">${iconXs(I.check)} Fait à ${fmtTime(doneEntry.createdAt)} par ${escapeHtml(doneEntry.doneByName||'—')}</div>
             <button class="btn btn-ghost btn-sm" onclick="markHaccpCleaningDone('${t.id}')">Marquer une nouvelle fois</button>
           ` : `
             <button class="btn btn-primary btn-sm" onclick="markHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait</button>
@@ -5624,7 +5635,7 @@ function siretHintText(rawValue){
 function siretHintColor(rawValue){
   const digits = (rawValue||'').replace(/\D/g,'');
   if(!digits || digits.length < 14) return 'var(--muted)';
-  return isValidSiretChecksum(digits) ? '#2E7D32' : 'var(--urgent)';
+  return isValidSiretChecksum(digits) ? 'var(--good)' : 'var(--urgent)';
 }
 function viewParametres(){
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -9903,6 +9914,27 @@ const SITE_SHOWCASE = [
     text: "Recherche, filtres et tri par nom, catégorie ou prix, plus un regroupement par catégorie qui se réduit ou se développe en un clic — comme sur un tableur, mais déjà organisé pour vous.",
     img: 'mkt-produits.jpg',
     alt: 'Page Produits de Mise & Sûre, avec les catégories regroupées et réductibles',
+  },
+  {
+    tag: 'Fiches techniques',
+    title: 'Le vrai coût de chaque plat, sans tableur',
+    text: "Calculé automatiquement à partir de vos produits — marge et food cost inclus. Une préparation maison (sauce, fond de veau…) peut même servir d'ingrédient dans une autre fiche, au grammage voulu.",
+    img: 'mkt-fiches-techniques.jpg',
+    alt: 'Page Fiches techniques de Mise & Sûre, montrant le coût de revient et la marge d’un plat',
+  },
+  {
+    tag: 'Suivi HACCP',
+    title: 'Une obligation légale, sans y penser',
+    text: "Numéro de lot à la réception, relevés de température, suivi du nettoyage — inclus à tous les forfaits, désactivé par défaut si vous n'en avez pas l'usage.",
+    img: 'mkt-haccp.jpg',
+    alt: 'Page Suivi HACCP de Mise & Sûre, avec les relevés de température du jour',
+  },
+  {
+    tag: 'Inventaire',
+    title: 'Un relevé de stock, sans usine à gaz',
+    text: "Quantité, date, qui l'a fait — un simple constat, à faire quand vous avez le temps. Pas de rapprochement théorique compliqué, juste de quoi garder un œil sur ce qu'il reste.",
+    img: 'mkt-inventaire.jpg',
+    alt: 'Page Inventaire de Mise & Sûre, avec le dernier relevé de chaque produit',
   },
 ];
 // ============================================================
