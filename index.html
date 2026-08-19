@@ -630,7 +630,22 @@ tr.group-row:hover td{background:var(--gray-100);}
 .showcase-image{flex:1;min-width:0;}
 .showcase-image img{
   width:100%;display:block;border-radius:12px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.08);
+  /* aspect-ratio + object-fit garantissent une vraie zone visuelle cohérente même si l'image
+     échoue à charger (fichier pas encore ajouté à l'hébergement, connexion coupée...) — sans ça,
+     une image cassée s'effondre à la hauteur de son texte alternatif (une seule ligne), donnant
+     l'impression que toute la section est vide plutôt que juste l'image manquante. Une image qui
+     charge normalement reste inchangée visuellement (object-fit:cover la rogne proprement dans
+     ce même ratio, sans la déformer). */
+  aspect-ratio:16/10;object-fit:cover;background:var(--gray-100);
 }
+/* Repli affiché par le onerror de l'image juste au-dessus, à la place de l'icône "image cassée"
+   du navigateur — un simple appareil photo, cohérent avec le reste du site, plutôt qu'un
+   symbole qui donne l'impression que quelque chose s'est vraiment cassé. */
+.showcase-image-fallback{
+  display:none;align-items:center;justify-content:center;aspect-ratio:16/10;border-radius:12px;
+  border:1px solid var(--border);background:var(--gray-100);color:var(--muted-2);
+}
+.showcase-image-fallback svg{width:44px;height:44px;}
 @media(max-width:860px){
   .showcase-block, .showcase-block.reverse{flex-direction:column;gap:22px;}
   .showcase-text{flex:none;}
@@ -10166,7 +10181,7 @@ function renderMarketingPage(){
               <h3>${escapeHtml(s.title)}</h3>
               <p>${escapeHtml(s.text)}</p>
             </div>
-            <div class="showcase-image"><img src="${s.img}" alt="${escapeHtml(s.alt)}" loading="lazy"></div>
+            <div class="showcase-image"><img src="${s.img}" alt="${escapeHtml(s.alt)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="showcase-image-fallback">${I.camera}</div></div>
           </div>
         `).join('')}
       </section>
