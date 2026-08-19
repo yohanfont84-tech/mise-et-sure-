@@ -416,6 +416,11 @@ tr.group-row:hover td{background:var(--gray-100);}
 .font-style-card{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 20px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
 .font-style-card:hover{border-color:var(--muted);}
 .font-style-card.selected{border-color:var(--accent);border-width:2px;}
+.color-theme-grid{display:flex;gap:10px;flex-wrap:wrap;}
+.color-theme-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
+.color-theme-card:hover{border-color:var(--muted);}
+.color-theme-card.selected{border-color:var(--accent);border-width:2px;}
+.color-theme-swatch{width:28px;height:28px;border-radius:50%;border:1px solid rgba(0,0,0,0.1);}
 .map-search-here-btn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:999;box-shadow:0 3px 14px rgba(0,0,0,0.25);white-space:nowrap;}
 .leaflet-control-layers{border-radius:8px !important;box-shadow:0 2px 10px rgba(0,0,0,0.2) !important;font-family:'Inter',sans-serif;}
 .leaflet-popup-content-wrapper{border-radius:10px !important;}
@@ -5759,8 +5764,21 @@ function viewParametres(){
         <div class="small muted" style="margin-bottom:16px;">Couleur, police, photo et logo propres à ${escapeHtml(resto.name)} — chaque établissement peut avoir les siens, visibles par toute l'équipe. Rien ne s'applique tant que vous n'avez pas cliqué sur « Enregistrer l'apparence ».</div>
 
         <div class="field">
-          <label>Couleur d'accent</label>
-          <div class="small muted" style="margin-bottom:8px;">Utilisée pour les boutons et éléments mis en valeur dans tout le site.</div>
+          <label>Thème de couleurs</label>
+          <div class="small muted" style="margin-bottom:8px;">Change l'ensemble des couleurs du site — fond, cartes, texte, pas seulement les boutons. « Personnalisée » garde les couleurs par défaut et applique uniquement la couleur choisie ci-dessous.</div>
+          <div class="color-theme-grid">
+            ${Object.entries(COLOR_THEMES).map(([key,t])=>`
+              <button type="button" class="color-theme-card ${draft.colorTheme===key?'selected':''}" onclick="selectColorTheme('${key}')" title="${escapeHtml(t.label)}">
+                <span class="color-theme-swatch" style="background:${t.swatch || 'linear-gradient(135deg, #111 50%, #fff 50%)'};"></span>
+                <span class="small">${escapeHtml(t.label)}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Couleur personnalisée (facultatif)</label>
+          <div class="small muted" style="margin-bottom:8px;">Utilisée pour les boutons et éléments mis en valeur — sélectionner une couleur ici bascule automatiquement sur « Personnalisée » ci-dessus.</div>
           <input id="set-accent" type="color" value="${draft.accentColor || (state.theme==='dark' ? '#EDEDE6' : '#111111')}" onchange="updateDraftCustomAccent(this.value)" style="height:42px;padding:4px;cursor:pointer;">
         </div>
 
@@ -5940,6 +5958,15 @@ async function saveAccountInfo(){
   } catch(err){
     toast(err.message, 'alert');
   }
+}
+// Choisir un thème complet impose sa propre couleur d'accent (voir applyAppearance) — mais
+// seulement si aucune couleur personnalisée n'est déjà définie sur l'établissement. On efface
+// donc explicitement accentColor ici, pour que le thème choisi s'applique vraiment plutôt que
+// de rester silencieusement masqué par une ancienne couleur personnalisée.
+function selectColorTheme(key){
+  state.appearanceDraft.colorTheme = key;
+  if(key !== 'custom') state.appearanceDraft.accentColor = null;
+  render();
 }
 function updateDraftCustomAccent(value){
   state.appearanceDraft.accentColor = value;
