@@ -3593,6 +3593,7 @@ function viewInventaire(){
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Inventaire</h2><div class="sub">Un relevé simple de ce qu'il reste — remplissez seulement les produits que vous comptez aujourd'hui, le reste peut attendre la prochaine fois.</div></div>
+      ${sorted.length ? `<button class="btn btn-ghost" onclick="downloadInventoryPdf()">${iconSm(I.download)} Télécharger en PDF</button>` : ''}
     </div>
     ${sorted.length ? `
       <input type="text" id="inv-search" placeholder="🔎 Rechercher un produit…" value="${escapeHtml(state.inventaireSearchQuery||'')}" oninput="filterInventaireRows()" style="margin-bottom:14px;width:100%;max-width:360px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
@@ -9667,6 +9668,74 @@ function downloadOrderPdf(id){
     const doc = buildOrderPdf(o);
     doc.save(`bon-de-commande-${o.id}.pdf`);
     closeModal();
+  });
+}
+/* ============================================================
+   INVENTAIRE — export PDF (jsPDF), même patron que le bon de commande : en-tête établissement,
+   tableau via autoTable, note de bas de page. Regroupé par catégorie comme la page elle-même,
+   tous les produits listés (pas seulement ceux déjà comptés) — pensé pour être imprimé et coché
+   à la main pendant qu'on parcourt la réserve, pas juste pour archiver ce qui est déjà su.
+============================================================ */
+function buildInventoryPdf(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const marginX = 15;
+  let y = 20;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(18);
+  doc.text(resto ? resto.name : 'Restaurant', marginX, y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  y += 7;
+  if(resto && resto.address){ doc.text(resto.address, marginX, y); y += 5; }
+  if(resto && (resto.postalCode || resto.city)){ doc.text(`${resto.postalCode||''} ${resto.city||''}`.trim(), marginX, y); y += 5; }
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(14);
+  doc.text('INVENTAIRE', 195, 20, { align:'right' });
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.text(`Édité le ${fmtDateShort(new Date())}`, 195, 27, { align:'right' });
+
+  y += 10;
+  doc.setDrawColor(220,220,215); doc.line(marginX, y, 195, y);
+  y += 8;
+
+  const sorted = PRODUCTS.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const groups = groupProductsByCategory(sorted);
+  const rows = [];
+  groups.forEach(g=>{
+    g.items.forEach(p=>{
+      const last = lastStockCountForProduct(p.id);
+      let releve = '—', date = '—', par = '—';
+      if(last){
+        releve = `${last.quantity} ${last.unit||p.unit||''}` + (last.source==='commande' ? ' (estimation)' : '');
+        date = fmtDateShort(last.createdAt);
+        par = last.source==='commande' ? 'Via commande' : (last.countedByName || '—');
+      }
+      rows.push([p.name, g.category, releve, date, par]);
+    });
+  });
+
+  doc.autoTable ? doc.autoTable({
+    startY: y, margin:{left:marginX,right:15},
+    head: [['Produit','Catégorie','Dernier relevé','Date','Relevé par']],
+    body: rows,
+    styles:{ font:'helvetica', fontSize:9, textColor:[30,30,30] },
+    headStyles:{ fillColor:[20,20,20], textColor:255 },
+    theme:'grid',
+  }) : null;
+
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,145);
+  doc.text("Relevé simple de stock, sans rapprochement théorique automatique \u2014 une ligne marquée \u00ab estimation \u00bb est calculée à partir de la dernière quantité connue et de ce qui a été reçu depuis, pas un vrai comptage.", marginX, pageHeight-14, { maxWidth:180 });
+
+  return doc;
+}
+function downloadInventoryPdf(){
+  if(!PRODUCTS.length){ toast('Aucun produit au catalogue pour le moment', 'alert'); return; }
+  ensureJsPDF(() => {
+    const doc = buildInventoryPdf();
+    const dateSlug = new Date().toISOString().slice(0,10);
+    doc.save(`inventaire-${dateSlug}.pdf`);
   });
 }
 function downloadAndComposeOrderEmail(id){
