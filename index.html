@@ -3618,14 +3618,14 @@ function viewInventaire(){
               if(!last){
                 lastText = `<span class="small muted">Jamais compté</span>`;
               } else if(last.source === 'commande'){
-                // Une estimation, jamais présentée comme un vrai comptage — le "≈", la mention
-                // explicite ET une couleur dédiée (var(--info)) évitent toute confusion avec un
-                // relevé fait à la main, y compris pour quelqu'un qui ne fait que survoler la liste.
-                lastText = `<span title="Estimation : dernier comptage connu + quantité reçue depuis, pas un vrai comptage"><span style="color:var(--info);font-weight:600;">≈ ${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— estimation, via commande le ${fmtDateShort(last.createdAt)}</span></span>`;
+                // Une estimation, jamais présentée comme un vrai comptage — le "≈", l'italique et
+                // la mention explicite évitent toute confusion avec un relevé fait à la main, sans
+                // recourir à une couleur étrangère à la palette noir/blanc/gris du reste du site.
+                lastText = `<span title="Estimation : dernier comptage connu + quantité reçue depuis, pas un vrai comptage"><span style="font-weight:600;font-style:italic;">≈ ${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— estimation, via commande le ${fmtDateShort(last.createdAt)}</span></span>`;
               } else {
                 // Même logique de couleur pour un vrai comptage manuel — la valeur elle-même se
                 // distingue visuellement du reste de la ligne, pas seulement l'attribution.
-                lastText = `<span style="color:var(--info);font-weight:600;">${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
+                lastText = `<span style="font-weight:600;">${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
               }
               return `<tr class="tr-hover inv-row" data-category="${escapeHtml(g.category)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}">
                 <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}</td>
