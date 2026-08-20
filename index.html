@@ -9502,6 +9502,11 @@ async function confirmDeleteSupplier(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers/${s.remoteId}`, { method:'DELETE' });
     SUPPLIERS.splice(idx,1);
     delete BASKETS[id];
+    // Le serveur détache déjà proprement les produits qui pointaient vers ce fournisseur (ON
+    // DELETE SET NULL) — sans ce nettoyage local, ils garderaient une référence vers un
+    // fournisseur qui n'existe plus jusqu'à la prochaine resynchronisation. supplierName() gère
+    // déjà ce cas sans planter (affiche "—"), mais autant que ce soit vrai tout de suite.
+    PRODUCTS.forEach(p => { if(p.supplier===id) p.supplier = null; });
     closeModal();
     toast('Fournisseur supprimé');
     render();
