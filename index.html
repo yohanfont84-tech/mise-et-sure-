@@ -564,8 +564,15 @@ tr.group-row:hover td{background:var(--gray-100);}
 .browser-frame-bar{display:flex;gap:6px;padding:12px 14px;background:var(--paper);border-bottom:1px solid var(--border);}
 .browser-frame-bar span{width:10px;height:10px;border-radius:50%;background:var(--gray-300);display:block;}
 .browser-frame-body{position:relative;aspect-ratio:16/10;background:var(--paper);}
-.carousel-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:top center;opacity:0;transition:opacity .6s ease;}
+.carousel-slide{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .6s ease;}
 .carousel-slide.active{opacity:1;}
+.carousel-slide img{width:100%;height:100%;object-fit:contain;object-position:top center;}
+/* Repli affiché par le onerror de l'image, si le fichier n'a pas encore été ajouté à
+   l'hébergement — un simple appareil photo, cohérent avec le reste du site et avec le repli
+   déjà utilisé pour l'autre carrousel (.showcase-image-fallback), plutôt que l'icône "image
+   cassée" du navigateur ou le texte alternatif brut affiché sans aucun habillage. */
+.carousel-slide-fallback{display:none;width:100%;height:100%;align-items:center;justify-content:center;background:var(--gray-100);color:var(--muted-2);}
+.carousel-slide-fallback svg{width:44px;height:44px;}
 .carousel-caption{flex:1;min-width:0;}
 .carousel-caption-item{display:none;}
 .carousel-caption-item.active{display:block;animation:fadeInUp .45s ease;}
@@ -10497,7 +10504,7 @@ function renderMarketingPage(){
           <div class="browser-frame">
             <div class="browser-frame-bar"><span></span><span></span><span></span></div>
             <div class="browser-frame-body">
-              ${PRODUCT_CAROUSEL.map((s,i)=>`<img src="${s.img}" alt="${escapeHtml(s.alt)}" class="carousel-slide ${i===0?'active':''}" loading="${i===0?'eager':'lazy'}">`).join('')}
+              ${PRODUCT_CAROUSEL.map((s,i)=>`<div class="carousel-slide ${i===0?'active':''}"><img src="${s.img}" alt="${escapeHtml(s.alt)}" loading="${i===0?'eager':'lazy'}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="carousel-slide-fallback">${I.camera}</div></div>`).join('')}
             </div>
           </div>
           <div class="carousel-caption">
@@ -10557,7 +10564,7 @@ function renderMarketingPage(){
       </section>
       <section class="site-cta">
         <h2>Prêt à essayer ?</h2>
-        <p class="muted small" style="margin-bottom:18px;">Deux forfaits simples, sans engagement, mensuel ou annuel.</p>
+        <p class="muted small" style="margin-bottom:18px;">Trois forfaits simples, sans engagement, mensuel ou annuel.</p>
         <button class="btn btn-primary" onclick="goToSite('pricing')">Choisir un forfait</button>
       </section>
       ${renderSiteFooter()}
