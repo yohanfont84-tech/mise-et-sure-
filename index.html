@@ -564,7 +564,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .browser-frame-bar{display:flex;gap:6px;padding:12px 14px;background:var(--paper);border-bottom:1px solid var(--border);}
 .browser-frame-bar span{width:10px;height:10px;border-radius:50%;background:var(--gray-300);display:block;}
 .browser-frame-body{position:relative;aspect-ratio:16/10;background:var(--paper);}
-.carousel-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top left;opacity:0;transition:opacity .6s ease;}
+.carousel-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:top center;opacity:0;transition:opacity .6s ease;}
 .carousel-slide.active{opacity:1;}
 .carousel-caption{flex:1;min-width:0;}
 .carousel-caption-item{display:none;}
@@ -642,13 +642,15 @@ tr.group-row:hover td{background:var(--gray-100);}
 .showcase-image{flex:1;min-width:0;}
 .showcase-image img{
   width:100%;display:block;border-radius:12px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.08);
-  /* aspect-ratio + object-fit garantissent une vraie zone visuelle cohérente même si l'image
-     échoue à charger (fichier pas encore ajouté à l'hébergement, connexion coupée...) — sans ça,
-     une image cassée s'effondre à la hauteur de son texte alternatif (une seule ligne), donnant
-     l'impression que toute la section est vide plutôt que juste l'image manquante. Une image qui
-     charge normalement reste inchangée visuellement (object-fit:cover la rogne proprement dans
-     ce même ratio, sans la déformer). */
-  aspect-ratio:16/10;object-fit:cover;background:var(--gray-100);
+  /* aspect-ratio garantit une vraie zone visuelle cohérente même si l'image échoue à charger
+     (fichier pas encore ajouté à l'hébergement, connexion coupée...) — sans ça, une image
+     cassée s'effondre à la hauteur de son texte alternatif (une seule ligne), donnant
+     l'impression que toute la section est vide plutôt que juste l'image manquante.
+     object-fit:contain (pas cover) : montre toujours l'image ENTIÈRE, quitte à laisser un peu
+     d'espace vide sur les côtés si son ratio ne correspond pas exactement à 16:10 — un rognage
+     agressif (cover) coupait le bas des captures plus hautes que ce ratio (ex. une capture
+     pleine page), tronquant du texte en plein milieu au lieu de simplement laisser une marge. */
+  aspect-ratio:16/10;object-fit:contain;object-position:top center;background:var(--gray-100);
 }
 /* Repli affiché par le onerror de l'image juste au-dessus, à la place de l'icône "image cassée"
    du navigateur — un simple appareil photo, cohérent avec le reste du site, plutôt qu'un
