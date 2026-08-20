@@ -1163,7 +1163,7 @@ function demoInterceptRequest(path, options){
   // l'interface, on peut la remplir — mais rien n'est réellement conservé. Exactement ce qui a
   // été demandé, ni plus ni moins.
   if(/\/products$/.test(path) && method==='POST'){
-    const err = new Error("C'est une démo publique : le formulaire fonctionne, mais l'ajout n'est pas conservé. Essayez plutôt de passer une commande avec un produit déjà au catalogue !");
+    const err = new Error("Vous ne pouvez pas créer de produit dans cette démo publique — le formulaire fonctionne, mais rien n'est conservé. Essayez plutôt de passer une commande avec un produit déjà au catalogue !");
     err.code = 'DEMO_READONLY';
     return Promise.reject(err);
   }
@@ -1954,7 +1954,12 @@ function toast(msg, type){
   zone.appendChild(el);
   if(type==='alert') playAlertSound();
   else if(type!=='mail') playSuccessSound();
-  const life = type==='mail' ? 4600 : 3200;
+  // La durée de base (3200ms) suffit pour un court message de confirmation ("Produit créé"),
+  // mais pas pour un message plus long expliquant vraiment quelque chose (comme les messages de
+  // la démo publique) — la durée s'allonge donc avec la longueur du texte, à une vitesse de
+  // lecture confortable, plutôt qu'un temps fixe qui coupe la lecture en plein milieu.
+  const base = type==='mail' ? 4600 : 3200;
+  const life = Math.max(base, msg.length * 60);
   setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),300); }, life);
 }
 function maskEmail(email){
@@ -2076,7 +2081,7 @@ function startPublicDemo(){
     {id:'f4', remoteId:4, name:'Boissons Générales', cat:'Boissons', delay:'48h', reliability:98},
   ];
   d.products = [
-    {id:'p1', remoteId:1, name:'Entrecôte de bœuf', unit:'Kg', qtyCommande:10, cat:'Viande', supplier:'f1', price:28, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p1', remoteId:1, name:'Entrecôte de bœuf', unit:'Kg', qtyCommande:10, cat:'Viande', supplier:'f1', price:28, tvaRate:5.5, department:'cuisine', zoneIds:['zone1']},
     {id:'p2', remoteId:2, name:'Filet de poulet', unit:'Kg', qtyCommande:8, cat:'Viande', supplier:'f1', price:9.5, tvaRate:5.5, department:'cuisine', zoneIds:[]},
     {id:'p3', remoteId:3, name:'Filet de saumon', unit:'Kg', qtyCommande:8, cat:'Poisson', supplier:'f2', price:22, tvaRate:5.5, department:'cuisine', zoneIds:[]},
     {id:'p4', remoteId:4, name:'Filet de bar', unit:'Kg', qtyCommande:6, cat:'Poisson', supplier:'f2', price:24, tvaRate:5.5, department:'cuisine', zoneIds:[]},
@@ -2084,8 +2089,8 @@ function startPublicDemo(){
     {id:'p6', remoteId:6, name:'Tomates grappe', unit:'Kg', qtyCommande:15, cat:'Légumes', supplier:'f3', price:2.8, tvaRate:5.5, department:'cuisine', zoneIds:[]},
     {id:'p7', remoteId:7, name:'Salade batavia', unit:'Pièce', qtyCommande:20, cat:'Légumes', supplier:'f3', price:0.9, tvaRate:5.5, department:'cuisine', zoneIds:[]},
     {id:'p8', remoteId:8, name:'Beurre', unit:'Kg', qtyCommande:5, cat:'Épicerie', supplier:'f1', price:6, tvaRate:5.5, department:'cuisine', zoneIds:[]},
-    {id:'p9', remoteId:9, name:'Café en grains', unit:'Kg', qtyCommande:4, cat:'Boissons chaudes', supplier:'f4', price:14, tvaRate:5.5, department:'salle', zoneIds:[]},
-    {id:'p10', remoteId:10, name:'Vin rouge maison', unit:'Bouteille', qtyCommande:12, cat:'Boissons', supplier:'f4', price:5.5, tvaRate:20, department:'salle', zoneIds:[]},
+    {id:'p9', remoteId:9, name:'Café en grains', unit:'Kg', qtyCommande:4, cat:'Boissons chaudes', supplier:'f4', price:14, tvaRate:5.5, department:'salle', zoneIds:['zone3']},
+    {id:'p10', remoteId:10, name:'Vin rouge maison', unit:'Bouteille', qtyCommande:12, cat:'Boissons', supplier:'f4', price:5.5, tvaRate:20, department:'salle', zoneIds:['zone3']},
   ];
   const now = new Date();
   const daysAgo = n => new Date(now.getTime() - n*86400000);
@@ -2135,8 +2140,8 @@ function startPublicDemo(){
     {id:'sc1', remoteId:1, productId:'p1', productNameSnapshot:'Entrecôte de bœuf', quantity:6.5, unit:'Kg', countedByName:'Camille Bernard', createdAt:daysAgo(1), source:'manuel', orderId:null},
     {id:'sc2', remoteId:2, productId:'p5', productNameSnapshot:'Pommes de terre', quantity:14, unit:'Kg', countedByName:'Yohan Fontaine', createdAt:daysAgo(1), source:'manuel', orderId:null},
   ];
-  d.categories = ['Viande','Poisson','Légumes','Épicerie','Boissons','Boissons chaudes'];
-  d.zones = ['Cuisine','Salle','Bar'];
+  d.categories = ['Viande','Poisson','Légumes','Épicerie','Boissons','Boissons chaudes'].map((name,i)=>({id:'cat'+(i+1), remoteId:i+1, name}));
+  d.zones = ['Cuisine','Salle','Bar'].map((name,i)=>({id:'zone'+(i+1), remoteId:i+1, name}));
 
   state.isDemoMode = true;
   state.resto = 'demo1';
