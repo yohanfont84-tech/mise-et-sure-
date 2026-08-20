@@ -23,7 +23,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Mise & Sûre">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
 
 
@@ -93,7 +93,19 @@ body{
   color:var(--text);
   -webkit-font-smoothing:antialiased;
   overflow-x:hidden;
+  position:relative;
 }
+/* Fond d'image de l'établissement — appliqué à faible opacité via un pseudo-élément séparé,
+   plutôt que directement sur le fond de body : ça garde var(--paper) intact (donc toujours
+   cohérent avec n'importe quel thème de couleurs choisi) tout en laissant transparaître la
+   photo derrière. Les cartes ont leur propre fond opaque (var(--surface), voir .card), donc le
+   texte à l'intérieur n'est jamais affecté, seuls les espaces vides entre les cartes le sont. */
+body.has-bg-image::before{
+  content:''; position:fixed; inset:0; z-index:-1;
+  background-image: var(--bg-image-url); background-size:cover; background-position:center; background-attachment:fixed;
+  opacity:0.14; pointer-events:none;
+}
+html.theme-dark body.has-bg-image::before{ opacity:0.10; }
 h1,h2,h3,.display{font-family:var(--heading-font);}
 .mono{font-family:'IBM Plex Mono',monospace;}
 button{font-family:inherit;cursor:pointer;}
@@ -745,6 +757,10 @@ tr.group-row:hover td{background:var(--gray-100);}
 }
 @media(max-width:760px){
   .site-nav{padding:14px 20px;}
+  /* Le bouton démo du hero reste le point d'entrée sur mobile — celui-ci, ajouté à la barre de
+     navigation à côté de "Tarifs" et "Se connecter", ne tenait pas sur un petit écran (mise en
+     page cassée, "Se connecter" poussé hors champ). La barre retrouve sa largeur d'origine. */
+  .site-nav-demo-btn{display:none;}
   .site-hero{padding:50px 20px 40px 20px;}
   .site-hero h1{font-size:30px;}
   .site-feature-grid{grid-template-columns:1fr 1fr;}
@@ -1037,6 +1053,8 @@ const FONT_STYLES = {
   classique: { label: 'Classique', heading: "'Fraunces',serif", preview: 'Aa' },
   moderne: { label: 'Moderne', heading: "'Inter',sans-serif", preview: 'Aa' },
   artisanal: { label: 'Artisanal', heading: "italic 600 1em 'Fraunces',serif", preview: 'Aa' },
+  elegant: { label: 'Élégant', heading: "'Cormorant Garamond',serif", preview: 'Aa' },
+  contemporain: { label: 'Contemporain', heading: "'Space Grotesk',sans-serif", preview: 'Aa' },
 };
 function applyAppearance(resto){
   // Fonction centrale : applique couleur, police et favicon d'un établissement — appelée à
@@ -1074,7 +1092,87 @@ function applyAppearance(resto){
   const fontKey = resto.fontStyle && FONT_STYLES[resto.fontStyle] ? resto.fontStyle : 'classique';
   root.setProperty('--heading-font', FONT_STYLES[fontKey].heading);
 
+  // Même photo que celle utilisée sur l'écran de connexion, réutilisée ici pour le fond de
+  // l'application elle-même — pas besoin d'un deuxième champ ni d'un deuxième téléversement,
+  // et ça résout directement la confusion de n'avoir jamais vu d'effet en dehors de l'écran de
+  // connexion, un endroit qu'on ne revoit plus une fois connecté en permanence.
+  if(resto.coverPhotoDataUrl){
+    document.body.classList.add('has-bg-image');
+    root.setProperty('--bg-image-url', `url('${resto.coverPhotoDataUrl}')`);
+  } else {
+    document.body.classList.remove('has-bg-image');
+    root.removeProperty('--bg-image-url');
+  }
+
   updateFavicon(resto.logoDataUrl);
+}
+// ============================================================
+// MODE DÉMO — une session publique, pré-remplie, sans compte ni serveur réel. Chaque appel
+// passe quand même par apiRequest() comme d'habitude (le code appelant reste identique partout
+// ailleurs sur le site), mais est intercepté ici avant d'atteindre le réseau. Seule une liste
+// explicite d'actions est simulée avec succès — panier, commande, apparence — exactement ce qui
+// a été demandé pour l'expérience démo. Tout le reste, y compris ajouter un vrai produit,
+// renvoie un message clair plutôt qu'un mensonge silencieux ou une action qui semble marcher
+// mais ne mène nulle part.
+// ============================================================
+let __demoIdCounter = 900000;
+function demoNextId(){ return __demoIdCounter++; }
+function demoInterceptRequest(path, options){
+  const method = options.method || 'GET';
+  const body = options.body || {};
+
+  if(method==='GET') return Promise.resolve({});
+
+  if(/\/basket-items$/.test(path) && method==='POST'){
+    return Promise.resolve({ basketItem: { id: demoNextId(), qty: body.qty } });
+  }
+  if(/\/basket-items\/\d+$/.test(path) && method==='PATCH'){
+    return Promise.resolve({ basketItem: { id: demoNextId(), qty: body.qty } });
+  }
+  if(/\/basket-items\/\d+$/.test(path) && method==='DELETE'){
+    return Promise.resolve({});
+  }
+
+  // Passer une commande — validée immédiatement (le patron démo n'a personne à qui demander).
+  if(/\/orders$/.test(path) && method==='POST'){
+    return Promise.resolve({ order: { id: demoNextId(), status: 'validee' } });
+  }
+
+  // Paramètres de l'établissement (apparence, mais aussi tous les autres réglages qui passent
+  // par le même endpoint) — on reproduit le COALESCE du vrai serveur : un champ absent du body
+  // garde sa valeur actuelle plutôt que d'être écrasé par "undefined", exactement comme le
+  // ferait la vraie base de données.
+  if(/\/restaurants\/\d+$/.test(path) && method==='PATCH'){
+    const resto = RESTOS.find(r=>r.id===state.resto) || {};
+    const keep = (bodyVal, currentVal) => bodyVal !== undefined ? bodyVal : currentVal;
+    return Promise.resolve({ restaurant: {
+      name: keep(body.name, resto.name), address: keep(body.address, resto.address),
+      postal_code: keep(body.postalCode, resto.postalCode), city: keep(body.city, resto.city),
+      currency: keep(body.currency, resto.currency), siret: keep(body.siret, resto.siret),
+      accent_color: keep(body.accentColor, resto.accentColor), color_theme: keep(body.colorTheme, resto.colorTheme),
+      font_style: keep(body.fontStyle, resto.fontStyle), tagline: keep(body.tagline, resto.tagline),
+      default_dark_mode: keep(body.defaultDarkMode, resto.defaultDarkMode),
+      logo_url: keep(body.logoUrl, resto.logoDataUrl), cover_photo_data_url: keep(body.coverPhotoDataUrl, resto.coverPhotoDataUrl),
+      hide_financials: keep(body.hideFinancials, resto.hideFinancials), solo_mode: keep(body.soloMode, resto.soloMode),
+      haccp_enabled: keep(body.haccpEnabled, resto.haccpEnabled), recipes_enabled: keep(body.recipesEnabled, resto.recipesEnabled),
+      stock_counts_enabled: keep(body.stockCountsEnabled, resto.stockCountsEnabled),
+    } });
+  }
+
+  // Ajouter un produit : le formulaire reste entièrement utilisable — on voit toute
+  // l'interface, on peut la remplir — mais rien n'est réellement conservé. Exactement ce qui a
+  // été demandé, ni plus ni moins.
+  if(/\/products$/.test(path) && method==='POST'){
+    const err = new Error("C'est une démo publique : le formulaire fonctionne, mais l'ajout n'est pas conservé. Essayez plutôt de passer une commande avec un produit déjà au catalogue !");
+    err.code = 'DEMO_READONLY';
+    return Promise.reject(err);
+  }
+
+  // Tout le reste (équipe, HACCP, fiches techniques, inventaire, facturation...) : bloqué par
+  // défaut, avec un message clair plutôt qu'un mensonge silencieux.
+  const err = new Error("Cette action n'est pas disponible dans la démo publique.");
+  err.code = 'DEMO_READONLY';
+  return Promise.reject(err);
 }
 function updateFavicon(logoDataUrl){
   let link = document.querySelector('link[rel="icon"]');
@@ -1610,6 +1708,7 @@ const AIDE_REFERENCE_IMAGES = {
   '15-regenerer-lien': { desc: "La fenêtre d'identifiants d'un employé, avec le bouton pour régénérer son lien de connexion personnel", data: 'help-15-regenerer-lien.jpg' },
 };
 async function apiRequest(path, options={}){
+  if(state.isDemoMode) return demoInterceptRequest(path, options);
   const headers = { 'Content-Type': 'application/json' };
   if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
   if(TEAM_TOKEN) headers['X-Team-Token'] = TEAM_TOKEN;
@@ -1899,6 +1998,16 @@ document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.
    SITE PUBLIC — vitrine, tarifs, compte (au-dessus de l'espace équipe)
 ============================================================ */
 function goToSite(site){
+  // Filet de sécurité universel : quitter la démo par n'importe quel chemin (bouton dédié,
+  // déconnexion, bouton "précédent" du navigateur...) nettoie toujours l'état complètement.
+  // Sans ça, un vrai compte connecté juste après resterait piégé dans le simulateur
+  // (isDemoMode resterait à true), et aucun de ses enregistrements n'atteindrait le serveur.
+  if(state.isDemoMode){
+    state.isDemoMode = false;
+    RESTOS.length = 0;
+    RESTO_DATA = {};
+    ACCOUNT = null;
+  }
   state.site = site;
   state.accountError = null;
   // Mémorise cette page dans l'historique du navigateur, pour que le bouton "précédent" du
@@ -1949,6 +2058,105 @@ function goToLogin(){
   state.selectedPlan = null;
   state.authMode = 'login';
   goToSite('account-auth');
+}
+// ============================================================
+// DÉMO PUBLIQUE — une session pré-remplie, accessible sans compte, pour montrer le site en
+// situation plutôt que sur un catalogue vide. Toutes les données vivent uniquement en mémoire
+// (voir demoInterceptRequest, qui empêche tout appel réseau réel) — rien de ce qui se passe ici
+// n'est jamais conservé au-delà de l'onglet ouvert, et rafraîchir la page repart de zéro.
+// ============================================================
+function startPublicDemo(){
+  ACCOUNT = { email:'demo@mise-et-sure.fr', plan:'pro', firstName:'Compte', lastName:'Démo' };
+  RESTOS.length = 0;
+  RESTOS.push({
+    id:'demo1', remoteId:1, name:'Mise & Sûre', city:'Paris', currency:'EUR',
+    address:'8 rue de la Paix', postalCode:'75002',
+    haccpEnabled:true, recipesEnabled:true, stockCountsEnabled:true,
+  });
+  const d = ensureRestoData('demo1');
+  d.suppliers = [
+    {id:'f1', remoteId:1, name:'Boucherie Centrale', cat:'Viande', delay:'24h', reliability:96},
+    {id:'f2', remoteId:2, name:'Marée Fraîche', cat:'Poisson', delay:'24h', reliability:94},
+    {id:'f3', remoteId:3, name:'Primeur des Halles', cat:'Légumes', delay:'24h', reliability:92},
+    {id:'f4', remoteId:4, name:'Boissons Générales', cat:'Boissons', delay:'48h', reliability:98},
+  ];
+  d.products = [
+    {id:'p1', remoteId:1, name:'Entrecôte de bœuf', unit:'Kg', qtyCommande:10, cat:'Viande', supplier:'f1', price:28, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p2', remoteId:2, name:'Filet de poulet', unit:'Kg', qtyCommande:8, cat:'Viande', supplier:'f1', price:9.5, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p3', remoteId:3, name:'Filet de saumon', unit:'Kg', qtyCommande:8, cat:'Poisson', supplier:'f2', price:22, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p4', remoteId:4, name:'Filet de bar', unit:'Kg', qtyCommande:6, cat:'Poisson', supplier:'f2', price:24, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p5', remoteId:5, name:'Pommes de terre', unit:'Kg', qtyCommande:20, cat:'Légumes', supplier:'f3', price:1.2, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p6', remoteId:6, name:'Tomates grappe', unit:'Kg', qtyCommande:15, cat:'Légumes', supplier:'f3', price:2.8, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p7', remoteId:7, name:'Salade batavia', unit:'Pièce', qtyCommande:20, cat:'Légumes', supplier:'f3', price:0.9, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p8', remoteId:8, name:'Beurre', unit:'Kg', qtyCommande:5, cat:'Épicerie', supplier:'f1', price:6, tvaRate:5.5, department:'cuisine', zoneIds:[]},
+    {id:'p9', remoteId:9, name:'Café en grains', unit:'Kg', qtyCommande:4, cat:'Boissons chaudes', supplier:'f4', price:14, tvaRate:5.5, department:'salle', zoneIds:[]},
+    {id:'p10', remoteId:10, name:'Vin rouge maison', unit:'Bouteille', qtyCommande:12, cat:'Boissons', supplier:'f4', price:5.5, tvaRate:20, department:'salle', zoneIds:[]},
+  ];
+  const now = new Date();
+  const daysAgo = n => new Date(now.getTime() - n*86400000);
+  d.orders = [
+    {id:'CMD-104', remoteId:104, supplier:'f1', items:'Entrecôte de bœuf × 10 Kg', lineItems:[{productId:'p1',name:'Entrecôte de bœuf',qty:10,price:28,tvaRate:5.5}], amount:280, status:'validee', date:fmtDateShort(daysAgo(1)), createdAt:daysAgo(1), hasDiscrepancy:false},
+    {id:'CMD-103', remoteId:103, supplier:'f3', items:'Tomates grappe × 15 Kg, Pommes de terre × 20 Kg', lineItems:[{productId:'p6',name:'Tomates grappe',qty:15,price:2.8,tvaRate:5.5},{productId:'p5',name:'Pommes de terre',qty:20,price:1.2,tvaRate:5.5}], amount:66, status:'livree', date:fmtDateShort(daysAgo(3)), createdAt:daysAgo(3), hasDiscrepancy:false},
+    {id:'CMD-102', remoteId:102, supplier:'f2', items:'Filet de saumon × 8 Kg', lineItems:[{productId:'p3',name:'Filet de saumon',qty:8,price:22,tvaRate:5.5}], amount:176, status:'livree', date:fmtDateShort(daysAgo(5)), createdAt:daysAgo(5), hasDiscrepancy:true},
+    {id:'CMD-101', remoteId:101, supplier:'f4', items:'Café en grains × 4 Kg, Vin rouge maison × 12 Bouteille', lineItems:[{productId:'p9',name:'Café en grains',qty:4,price:14,tvaRate:5.5},{productId:'p10',name:'Vin rouge maison',qty:12,price:5.5,tvaRate:20}], amount:122, status:'livree', date:fmtDateShort(daysAgo(7)), createdAt:daysAgo(7), hasDiscrepancy:false},
+  ];
+  d.team = [
+    {id:'t1', remoteId:1, name:'Camille Bernard', role:'manager', canOrder:true, orderCap:200, status:'actif'},
+    {id:'t2', remoteId:2, name:'Yohan Fontaine', role:'cuisine', canOrder:true, orderCap:80, status:'actif'},
+    {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', canOrder:false, orderCap:0, status:'actif'},
+  ];
+  d.customRequests = [
+    {id:'req1', remoteId:1, fromRole:'cuisine', fromName:'Yohan Fontaine', text:'Il faudrait plus de beurre, on tourne un peu juste cette semaine', status:'en_attente', createdAt:daysAgo(0)},
+  ];
+  d.recipes = [
+    {id:'rc1', remoteId:1, name:'Entrecôte frites', sellingPriceTtc:24, category:'Plats'},
+    {id:'rc2', remoteId:2, name:'Tartare de saumon', sellingPriceTtc:18, category:'Entrées'},
+    {id:'rc3', remoteId:3, name:'Salade batavia composée', sellingPriceTtc:12, category:'Entrées'},
+  ];
+  d.recipeIngredients = [
+    {id:'ri1', remoteId:1, recipeId:'rc1', productId:'p1', subRecipeId:null, productNameSnapshot:'Entrecôte de bœuf', quantity:250, unit:'g', currentProductPrice:28, currentProductUnit:'Kg'},
+    {id:'ri2', remoteId:2, recipeId:'rc1', productId:'p5', subRecipeId:null, productNameSnapshot:'Pommes de terre', quantity:200, unit:'g', currentProductPrice:1.2, currentProductUnit:'Kg'},
+    {id:'ri3', remoteId:3, recipeId:'rc1', productId:'p8', subRecipeId:null, productNameSnapshot:'Beurre', quantity:20, unit:'g', currentProductPrice:6, currentProductUnit:'Kg'},
+    {id:'ri4', remoteId:4, recipeId:'rc2', productId:'p3', subRecipeId:null, productNameSnapshot:'Filet de saumon', quantity:150, unit:'g', currentProductPrice:22, currentProductUnit:'Kg'},
+    {id:'ri5', remoteId:5, recipeId:'rc3', productId:'p7', subRecipeId:null, productNameSnapshot:'Salade batavia', quantity:1, unit:'Pièce', currentProductPrice:0.9, currentProductUnit:'Pièce'},
+    {id:'ri6', remoteId:6, recipeId:'rc3', productId:'p6', subRecipeId:null, productNameSnapshot:'Tomates grappe', quantity:150, unit:'g', currentProductPrice:2.8, currentProductUnit:'Kg'},
+  ];
+  d.haccpEquipment = [
+    {id:'eq1', remoteId:1, name:'Chambre froide positive', minTemp:0, maxTemp:4},
+    {id:'eq2', remoteId:2, name:'Congélateur', minTemp:-22, maxTemp:-18},
+  ];
+  d.haccpTempLogs = [
+    {id:'tl1', remoteId:1, equipmentId:'eq1', equipmentName:'Chambre froide positive', minTemp:0, maxTemp:4, temperature:3, inRange:true, note:'', loggedByName:'Camille Bernard', createdAt:now},
+    {id:'tl2', remoteId:2, equipmentId:'eq2', equipmentName:'Congélateur', minTemp:-22, maxTemp:-18, temperature:-19, inRange:true, note:'', loggedByName:'Yohan Fontaine', createdAt:now},
+  ];
+  d.haccpCleaningTasks = [
+    {id:'ct1', remoteId:1, name:'Plan de travail cuisine', frequency:'daily'},
+    {id:'ct2', remoteId:2, name:'Réfrigérateurs', frequency:'daily'},
+  ];
+  d.haccpCleaningLogs = [
+    {id:'cl1', remoteId:1, taskId:'ct1', doneByName:'Yohan Fontaine', createdAt:now},
+  ];
+  d.stockCounts = [
+    {id:'sc1', remoteId:1, productId:'p1', productNameSnapshot:'Entrecôte de bœuf', quantity:6.5, unit:'Kg', countedByName:'Camille Bernard', createdAt:daysAgo(1), source:'manuel', orderId:null},
+    {id:'sc2', remoteId:2, productId:'p5', productNameSnapshot:'Pommes de terre', quantity:14, unit:'Kg', countedByName:'Yohan Fontaine', createdAt:daysAgo(1), source:'manuel', orderId:null},
+  ];
+  d.categories = ['Viande','Poisson','Légumes','Épicerie','Boissons','Boissons chaudes'];
+  d.zones = ['Cuisine','Salle','Bar'];
+
+  state.isDemoMode = true;
+  state.resto = 'demo1';
+  loadRestoData('demo1');
+  state.site = 'app';
+  login('patron', null);
+  toast('Démo activée — rien de ce que vous ferez ici ne sera conservé');
+}
+function exitPublicDemo(){
+  state.isDemoMode = false;
+  RESTOS.length = 0;
+  RESTO_DATA = {};
+  ACCOUNT = null; AUTH_TOKEN = null; TEAM_TOKEN = null;
+  state.loggedIn = false; state.identity = null; state.role = null;
+  goToSite('marketing');
 }
 async function attemptAccountLogin(){
   clearFormErrors('account-error-slot', ['acc-email','acc-password']);
@@ -2743,6 +2951,16 @@ function copyInstallLink(){
 }
 function logout(){
   if(AUTO_REFRESH_INTERVAL){ clearInterval(AUTO_REFRESH_INTERVAL); AUTO_REFRESH_INTERVAL = null; }
+  // Si la déconnexion a lieu depuis la démo (par ce bouton-ci, pas forcément "Quitter la démo"
+  // dans le bandeau), on nettoie tout aussi complètement — sans ça, un vrai compte connecté
+  // juste après resterait piégé dans le simulateur (isDemoMode resterait à true), et aucun de
+  // ses vrais enregistrements n'atteindrait jamais le serveur, silencieusement.
+  if(state.isDemoMode){
+    state.isDemoMode = false;
+    RESTOS.length = 0;
+    RESTO_DATA = {};
+    ACCOUNT = null;
+  }
   state.loggedIn = false;
   state.identity = null;
   state.role = null;
@@ -5825,7 +6043,7 @@ function viewParametres(){
           <div class="font-style-grid">
             ${Object.entries(FONT_STYLES).map(([key,f])=>`
               <button type="button" class="font-style-card ${draft.fontStyle===key?'selected':''}" onclick="selectFontStyle('${key}')">
-                <span style="font:${f.heading.includes('italic')?f.heading.replace('1em','26px'):`26px ${f.heading}`};">${f.preview}</span>
+                <span style="font:${f.heading.includes('italic')?f.heading.replace('1em','30px'):`600 30px ${f.heading}`};">${f.preview}</span>
                 <span class="small muted">${f.label}</span>
               </button>
             `).join('')}
@@ -5846,10 +6064,11 @@ function viewParametres(){
         </div>
 
         <div class="field">
-          <label>Photo de couverture (facultatif — affichée en fond sur l'écran de connexion)</label>
+          <label>Photo de fond</label>
+          <div class="small muted" style="margin-bottom:8px;">Affichée en fond sur l'écran de connexion, et discrètement dans l'application elle-même, derrière vos données — jamais derrière un texte, les cartes restent toujours pleinement lisibles par-dessus.</div>
           ${draft.coverPhotoDataUrl ? `
             <div style="margin-bottom:10px;">
-              <img src="${draft.coverPhotoDataUrl}" alt="Photo de couverture" style="width:100%;max-width:320px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);display:block;margin-bottom:8px;">
+              <img src="${draft.coverPhotoDataUrl}" alt="Photo de fond" style="width:100%;max-width:320px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);display:block;margin-bottom:8px;">
               <button class="btn btn-ghost btn-sm" onclick="removeCoverPhoto()">Retirer la photo</button>
             </div>
           ` : ''}
@@ -9900,6 +10119,7 @@ function siteNav(active){
         <span>Mise &amp; Sûre</span>
       </button>
       <nav class="site-nav-links">
+        <button class="btn btn-ghost btn-sm site-nav-demo-btn" onclick="startPublicDemo()">${iconSm(I.eye)} Essayer la démo</button>
         <button class="site-nav-link ${active==='pricing'?'active':''}" onclick="goToSite('pricing')">Tarifs</button>
         ${ACCOUNT
           ? `<span class="tag tag-neutral" style="padding:7px 14px;">${iconXs(I.check)} Connecté</span><button class="btn btn-ghost btn-sm" onclick="signOutAccount()">Se déconnecter</button>`
@@ -10228,7 +10448,8 @@ function renderMarketingPage(){
         <h1>La gestion de votre restaurant,<br>sans friction.</h1>
         <p>Commandes fournisseurs, coût de revient, HACCP, inventaire — un espace pour le patron, un espace pour chacun des vôtres.</p>
         <div class="flex gap8" style="justify-content:center;flex-wrap:wrap;">
-          <button class="btn btn-primary" onclick="goToSite('pricing')">Voir les tarifs</button>
+          <button class="btn btn-primary" onclick="startPublicDemo()">${iconSm(I.eye)} Essayer la démo</button>
+          <button class="btn btn-ghost" onclick="goToSite('pricing')">Voir les tarifs</button>
           ${ACCOUNT ? '' : `<button class="btn btn-ghost" onclick="goToLogin()">J'ai déjà un compte</button>`}
         </div>
       </section>
@@ -10964,6 +11185,15 @@ async function confirmRecoverPatronCredentials(){
 }
 function renderBanner(){
   let html = '';
+  // Démo publique — visible en permanence tant que la session dure, avec un chemin de sortie
+  // toujours à portée. Coexiste volontairement avec le bandeau d'aperçu de rôle plus bas (pas
+  // de retour anticipé ici) : une personne peut très bien être en démo ET prévisualiser
+  // l'interface Cuisine en même temps, les deux informations restent alors utiles ensemble.
+  if(state.isDemoMode){
+    html += `<div class="demo-banner" style="background:var(--accent);color:var(--accent-text);">
+      ${iconXs(I.eye)} <span><b>Vous explorez une démo publique</b> — les données sont fictives et rien de ce que vous faites ici n'est conservé. <a href="#" onclick="exitPublicDemo();return false;" style="color:inherit;text-decoration:underline;font-weight:700;">Quitter la démo</a></span>
+    </div>`;
+  }
   // Imitation d'un compte par l'administrateur — priorité absolue d'affichage (avant même la
   // suppression en attente) : jamais d'ambiguïté possible sur le fait qu'on ne regarde pas son
   // propre compte, avec un chemin de sortie toujours visible.
