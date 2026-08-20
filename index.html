@@ -2002,12 +2002,7 @@ function goToSite(site){
   // déconnexion, bouton "précédent" du navigateur...) nettoie toujours l'état complètement.
   // Sans ça, un vrai compte connecté juste après resterait piégé dans le simulateur
   // (isDemoMode resterait à true), et aucun de ses enregistrements n'atteindrait le serveur.
-  if(state.isDemoMode){
-    state.isDemoMode = false;
-    RESTOS.length = 0;
-    RESTO_DATA = {};
-    ACCOUNT = null;
-  }
+  if(state.isDemoMode) demoCleanup();
   state.site = site;
   state.accountError = null;
   // Mémorise cette page dans l'historique du navigateur, pour que le bouton "précédent" du
@@ -2150,11 +2145,24 @@ function startPublicDemo(){
   login('patron', null);
   toast('Démo activée — rien de ce que vous ferez ici ne sera conservé');
 }
-function exitPublicDemo(){
+// Nettoyage complet de toutes les données de démo, quelle que soit la façon dont on la quitte
+// (bouton dédié, déconnexion standard, navigation ailleurs...) — une seule fonction, pour ne
+// plus jamais oublier une variable si une nouvelle donnée de démo est ajoutée un jour. Vide
+// aussi les variables globales copiées par loadRestoData() (SUPPLIERS, TEAM, etc.) — les vider
+// seulement au niveau de RESTO_DATA ne suffit pas, elles gardent leur ancienne valeur tant
+// qu'aucun autre restaurant n'est chargé pour les écraser.
+function demoCleanup(){
   state.isDemoMode = false;
   RESTOS.length = 0;
   RESTO_DATA = {};
   ACCOUNT = null; AUTH_TOKEN = null; TEAM_TOKEN = null;
+  SUPPLIERS = []; PRODUCTS = []; REQUESTS = []; ORDERS = []; BASKETS = {};
+  CUSTOM_REQUESTS = []; TEAM = []; CATEGORIES = []; ZONES = [];
+  HACCP_EQUIPMENT = []; HACCP_TEMP_LOGS = []; HACCP_CLEANING_TASKS = []; HACCP_CLEANING_LOGS = [];
+  RECIPES = []; RECIPE_INGREDIENTS = []; STOCK_COUNTS = [];
+}
+function exitPublicDemo(){
+  demoCleanup();
   state.loggedIn = false; state.identity = null; state.role = null;
   goToSite('marketing');
 }
@@ -2951,16 +2959,12 @@ function copyInstallLink(){
 }
 function logout(){
   if(AUTO_REFRESH_INTERVAL){ clearInterval(AUTO_REFRESH_INTERVAL); AUTO_REFRESH_INTERVAL = null; }
-  // Si la déconnexion a lieu depuis la démo (par ce bouton-ci, pas forcément "Quitter la démo"
-  // dans le bandeau), on nettoie tout aussi complètement — sans ça, un vrai compte connecté
-  // juste après resterait piégé dans le simulateur (isDemoMode resterait à true), et aucun de
-  // ses vrais enregistrements n'atteindrait jamais le serveur, silencieusement.
-  if(state.isDemoMode){
-    state.isDemoMode = false;
-    RESTOS.length = 0;
-    RESTO_DATA = {};
-    ACCOUNT = null;
-  }
+  // Se déconnecter depuis la démo (par ce bouton-ci, pas forcément "Quitter la démo" dans le
+  // bandeau) doit nettoyer tout aussi complètement ET renvoyer vers la page publique — sans
+  // cette redirection, on reste coincé sur l'écran de connexion de l'application, qui attend de
+  // vrais identifiants qu'on n'a jamais eus en démo, sans aucun moyen d'en sortir.
+  const wasDemo = state.isDemoMode;
+  if(wasDemo) demoCleanup();
   state.loggedIn = false;
   state.identity = null;
   state.role = null;
@@ -2971,6 +2975,7 @@ function logout(){
   state.loginError = null;
   TEAM_TOKEN = null;
   localStorage.removeItem(TEAM_TOKEN_KEY);
+  if(wasDemo){ goToSite('marketing'); return; }
   render();
 }
 function previewRole(r){
