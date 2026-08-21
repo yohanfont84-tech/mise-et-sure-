@@ -2611,7 +2611,7 @@ function renderForcedPasswordChangeScreen(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <h1>Nouveau mot de passe requis</h1>
         <p>Pour la sécurité de votre compte, choisissez un mot de passe personnel avant de continuer${member ? ', '+escapeHtml(member.name) : ''}.</p>
       </div>
@@ -10139,7 +10139,7 @@ function siteNav(active){
   return `
     <header class="site-nav">
       <button class="site-nav-brand" onclick="goToSite('marketing')">
-        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--black);color:#fff;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--black);color:#fff;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <span>Mise &amp; Sûre</span>
       </button>
       <nav class="site-nav-links">
@@ -10487,7 +10487,7 @@ function renderMarketingPage(){
           <div class="journey-line"><div class="journey-line-fill"></div></div>
           ${RESTO_JOURNEY.map(s=>`
             <div class="journey-step">
-              <div class="journey-icon ${s.logo?'journey-icon-logo':''}">${s.logo?`<img src="mark-white-transparent.png" alt="Mise &amp; Sûre">`:I[s.icon]}</div>
+              <div class="journey-icon ${s.logo?'journey-icon-logo':''}">${s.logo?`<img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';">`:I[s.icon]}</div>
               <div class="journey-title">${escapeHtml(s.title)}</div>
               <div class="small muted">${escapeHtml(s.text)}</div>
             </div>
@@ -10627,7 +10627,7 @@ function renderLegalPage(page){
     <div class="site-page">
       <div class="site-nav">
         <div class="site-brand" onclick="goToSite('marketing')" style="cursor:pointer;">
-          <div class="brand-mark" style="width:30px;height:30px;background:var(--black);flex-shrink:0;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+          <div class="brand-mark" style="width:30px;height:30px;background:var(--black);flex-shrink:0;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
           <div class="brand-text">Mise<br>&amp; Sûre</div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="goToSite('marketing')">← Retour à l'accueil</button>
@@ -10748,7 +10748,7 @@ function renderAdminPage(){
     <div class="admin-shell">
       <div class="admin-topbar">
         <div class="brand">
-          <div class="brand-mark" style="width:28px;height:28px;font-size:13px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+          <div class="brand-mark" style="width:28px;height:28px;font-size:13px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
           Mise &amp; Sûre — Panneau administrateur
         </div>
         <button class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,0.3);" onclick="goToSite('team-login')">← Retour au site</button>
@@ -10915,7 +10915,7 @@ function renderAccountAuthPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>${plan ? `Vous vous abonnez au forfait <b>${escapeHtml(plan.name)}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.` : "Connectez-vous pour accéder à votre espace."}</p>
         <div class="login-feature">${I.check} Sans engagement</div>
@@ -10961,7 +10961,7 @@ function renderVerifyEmailPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Vérifiez votre adresse email pour activer votre compte.</p>
         <div class="login-feature">${I.check} Ça ne prend que quelques secondes</div>
@@ -10991,7 +10991,7 @@ function renderResetPasswordPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Réinitialisez votre mot de passe en toute sécurité.</p>
         <div class="login-feature">${I.check} Code à usage unique</div>
@@ -11031,7 +11031,7 @@ function renderSetupRestaurantPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Bienvenue ! Configurons votre premier établissement.</p>
         <div class="login-feature">${I.check} Ça prend moins d'une minute</div>
