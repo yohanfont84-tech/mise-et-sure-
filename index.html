@@ -3924,8 +3924,8 @@ function viewInventaire(){
                 lastText = `<span style="font-weight:600;">${formatInventoryQty(last.quantity, last.unit||p.unit)} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
               }
               const discreteUnit = isDiscreteInventoryUnit(p.unit);
-              return `<tr class="tr-hover inv-row" data-category="${escapeHtml(g.category)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}">
-                <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}</td>
+              return `<tr class="tr-hover inv-row" data-category="${escapeHtml(g.category)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')+' '+(p.packaging||'')).toLowerCase())}">
+                <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}${p.packaging?`<div class="small muted" style="font-weight:400;">${escapeHtml(p.packaging)}</div>`:''}</td>
                 <td data-label="Dernier relevé">${lastText}</td>
                 <td data-label="Nouveau relevé"><input type="number" min="0" step="${discreteUnit?'1':'0.1'}" placeholder="Ex : ${discreteUnit?'10':'2.5'}" data-inv-product-id="${p.id}" data-inv-discrete="${discreteUnit?'1':'0'}" class="inv-count-input" style="width:110px;background:var(--surface);color:var(--text);"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
               </tr>`;
@@ -10019,7 +10019,8 @@ function buildInventoryPdf(){
         date = fmtDateShort(last.createdAt);
         par = last.source==='commande' ? 'Via commande' : (last.countedByName || '—');
       }
-      rows.push([p.name, g.category, releve, date, par]);
+      const productCell = p.packaging ? `${p.name}\n${p.packaging}` : p.name;
+      rows.push([productCell, g.category, releve, date, par]);
     });
   });
 
