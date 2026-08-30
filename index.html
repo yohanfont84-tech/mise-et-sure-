@@ -3816,6 +3816,24 @@ function viewStocks(){
 function lastStockCountForProduct(productId){
   return STOCK_COUNTS.find(c=>c.productId===productId) || null;
 }
+// L'unité d'un produit est un champ libre (pas une liste fermée) — on ne peut donc pas se fier
+// à une liste figée pour savoir si une fraction a du sens. Seules les unités de poids/volume
+// sont "continues" (2,5 Kg a un sens) ; tout le reste — Pièce, Carton, Caisse, Bouteille, ou
+// n'importe quelle unité personnalisée tapée par le restaurateur — est traité comme "discret"
+// (un nombre entier, jamais de virgule), ce qui reste le choix le plus sûr par défaut.
+const INVENTORY_CONTINUOUS_UNITS = ['kg','g','litre','l','ml','cl'];
+function isDiscreteInventoryUnit(unit){
+  return !INVENTORY_CONTINUOUS_UNITS.includes((unit||'').trim().toLowerCase());
+}
+// Un seul format pour tout le module (affichage du dernier relevé, PDF) — jamais les 3 à 4
+// décimales brutes renvoyées par le serveur (NUMERIC(10,3) en base), toujours une virgule
+// française, et le bon nombre de décimales selon que l'unité se compte ou se pèse/mesure.
+function formatInventoryQty(quantity, unit){
+  const n = Number(quantity);
+  if(Number.isNaN(n)) return '—';
+  const discrete = isDiscreteInventoryUnit(unit);
+  return n.toLocaleString('fr-FR', { minimumFractionDigits: discrete?0:1, maximumFractionDigits: discrete?0:1 });
+}
 // Repli/dépli d'une catégorie — volontairement PAS un render() complet, contrairement à la page
 // Produits : ça effacerait les quantités déjà saisies dans les autres lignes encore visibles.
 // L'état replié vit dans state (state.collapsedInventaireCategories), séparé de celui de la page
@@ -3899,16 +3917,17 @@ function viewInventaire(){
                 // Une estimation, jamais présentée comme un vrai comptage — le "≈", l'italique et
                 // la mention explicite évitent toute confusion avec un relevé fait à la main, sans
                 // recourir à une couleur étrangère à la palette noir/blanc/gris du reste du site.
-                lastText = `<span title="Estimation : dernier comptage connu + quantité reçue depuis, pas un vrai comptage"><span style="font-weight:600;font-style:italic;">≈ ${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— estimation, via commande le ${fmtDateShort(last.createdAt)}</span></span>`;
+                lastText = `<span title="Estimation : dernier comptage connu + quantité reçue depuis, pas un vrai comptage"><span style="font-weight:600;font-style:italic;">≈ ${formatInventoryQty(last.quantity, last.unit||p.unit)} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— estimation, via commande le ${fmtDateShort(last.createdAt)}</span></span>`;
               } else {
                 // Même logique de couleur pour un vrai comptage manuel — la valeur elle-même se
                 // distingue visuellement du reste de la ligne, pas seulement l'attribution.
-                lastText = `<span style="font-weight:600;">${last.quantity} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
+                lastText = `<span style="font-weight:600;">${formatInventoryQty(last.quantity, last.unit||p.unit)} ${escapeHtml(last.unit||p.unit||'')}</span> <span class="small muted">— ${escapeHtml(last.countedByName||'')}, ${fmtDateShort(last.createdAt)}</span>`;
               }
+              const discreteUnit = isDiscreteInventoryUnit(p.unit);
               return `<tr class="tr-hover inv-row" data-category="${escapeHtml(g.category)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')).toLowerCase())}">
                 <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}</td>
                 <td data-label="Dernier relevé">${lastText}</td>
-                <td data-label="Nouveau relevé"><input type="number" min="0" step="0.001" placeholder="Ex : ${p.unit==='Kg'||p.unit==='Litre'?'2.5':'10'}" data-inv-product-id="${p.id}" class="inv-count-input" style="width:110px;background:var(--surface);color:var(--text);"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
+                <td data-label="Nouveau relevé"><input type="number" min="0" step="${discreteUnit?'1':'0.1'}" placeholder="Ex : ${discreteUnit?'10':'2.5'}" data-inv-product-id="${p.id}" data-inv-discrete="${discreteUnit?'1':'0'}" class="inv-count-input" style="width:110px;background:var(--surface);color:var(--text);"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
               </tr>`;
             }).join('');
             return groupHeader + itemRows;
@@ -3932,7 +3951,12 @@ async function saveInventoryCounts(){
   const countedByName = currentPersonDisplayName();
   const counts = inputs.map(el=>{
     const p = PRODUCTS.find(x=>x.id===el.dataset.invProductId);
-    return { productId: p?p.remoteId:null, localId: el.dataset.invProductId, quantity: parseFloat(el.value), unit: p?p.unit:'' };
+    const raw = parseFloat(el.value);
+    // Arrondie ici selon le type d'unité, pour que ce qui est enregistré corresponde toujours
+    // à ce qui sera ensuite affiché (voir formatInventoryQty) — jamais une valeur à 3 décimales
+    // conservée en base pour un produit qui se compte à la pièce.
+    const quantity = el.dataset.invDiscrete==='1' ? Math.round(raw) : Math.round(raw*10)/10;
+    return { productId: p?p.remoteId:null, localId: el.dataset.invProductId, quantity, unit: p?p.unit:'' };
   }).filter(c=>c.productId!=null && !isNaN(c.quantity));
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/stock-counts/bulk`, {
@@ -9991,7 +10015,7 @@ function buildInventoryPdf(){
       const last = lastStockCountForProduct(p.id);
       let releve = '—', date = '—', par = '—';
       if(last){
-        releve = `${last.quantity} ${last.unit||p.unit||''}` + (last.source==='commande' ? ' (estimation)' : '');
+        releve = `${formatInventoryQty(last.quantity, last.unit||p.unit)} ${last.unit||p.unit||''}` + (last.source==='commande' ? ' (estimation)' : '');
         date = fmtDateShort(last.createdAt);
         par = last.source==='commande' ? 'Via commande' : (last.countedByName || '—');
       }
