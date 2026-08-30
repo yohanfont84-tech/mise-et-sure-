@@ -2503,6 +2503,45 @@ async function confirmAdminDeleteUser(userId){
     toast(err.message, 'alert');
   }
 }
+// Élever un compte au rang d'administrateur lui donne accès à TOUS les comptes de la
+// plateforme — au moins aussi sensible qu'une suppression, donc la même confirmation explicite
+// plutôt qu'un simple bouton direct comme pour changer un forfait.
+function openPromoteAdminModal(userId, email){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Promouvoir en administrateur ?</h3>
+    <p class="small muted" style="margin-bottom:16px;">Donne à <b>${escapeHtml(email)}</b> un accès complet au panneau administrateur — tous les comptes de la plateforme, tous les forfaits, toutes les données. À réserver aux personnes de confiance.</p>
+    <button class="btn btn-primary btn-block" onclick="confirmPromoteAdmin('${escapeHtml(email).replace(/'/g,"\\'")}')">Je confirme, promouvoir</button>
+  `);
+}
+async function confirmPromoteAdmin(email){
+  try{
+    await apiRequest(`/api/admin/users/promote-by-email`, { method:'POST', body:{ email } });
+    closeModal();
+    toast('Compte promu administrateur');
+    await adminFilterUsers(true);
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+function openDemoteAdminModal(userId, email){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Retirer le statut administrateur ?</h3>
+    <p class="small muted" style="margin-bottom:16px;">Retire à <b>${escapeHtml(email)}</b> l'accès au panneau administrateur — le reste de son compte (forfait, établissements, données) n'est pas affecté.</p>
+    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmDemoteAdmin(${userId})">Je confirme, retirer le statut</button>
+  `);
+}
+async function confirmDemoteAdmin(userId){
+  try{
+    await apiRequest(`/api/admin/users/${userId}/demote`, { method:'PATCH' });
+    closeModal();
+    toast('Statut administrateur retiré');
+    await adminFilterUsers(true);
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
 // Génère une session valide pour le compte ciblé et bascule dessus, pour voir le site
 // exactement comme cette personne — utile en support ou pour déboguer un problème signalé.
 // Le jeton administrateur d'origine est conservé de côté pour permettre de revenir ensuite.
@@ -10836,7 +10875,7 @@ function renderAdminAccountRow(u){
           <span class="small muted mono">${escapeHtml(u.plan||'—')}</span>
         </div>
       </div>
-      ${expanded && !u.is_admin ? `
+      ${expanded ? `
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:14px;">
             <select id="plan-select-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
@@ -10845,10 +10884,16 @@ function renderAdminAccountRow(u){
               <option value="pro" ${u.plan==='pro'?'selected':''}>Pro</option>
             </select>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();changeUserPlan(${u.id}, document.getElementById('plan-select-${u.id}').value)">Changer le forfait</button>
+            ${!u.is_admin ? `
             <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="event.stopPropagation();toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l\u2019accès gratuit' : 'Accorder un accès gratuit'}</button>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();adminImpersonateUser(${u.id}, '${escapeHtml((u.first_name||'')+' '+(u.last_name||''))}')">${iconXs(I.mobile)} Voir en tant que</button>
             <button class="btn ${u.suspended?'btn-primary':'btn-ghost'} btn-sm" onclick="event.stopPropagation();toggleUserSuspension(${u.id}, ${u.suspended})">${u.suspended ? 'Réactiver' : 'Suspendre'}</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPromoteAdminModal(${u.id}, '${escapeHtml(u.email)}')">${iconXs(I.lock)} Promouvoir administrateur</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openAdminDeleteUserModal(${u.id}, '${escapeHtml(u.email)}')">${iconXs(I.trash)} Supprimer</button>
+            ` : `
+            <span class="small muted" style="align-self:center;">Compte administrateur — suspension, suppression et impersonation volontairement indisponibles ici, pour ne jamais les déclencher par erreur sur ce type de compte.</span>
+            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openDemoteAdminModal(${u.id}, '${escapeHtml(u.email)}')">Retirer le statut administrateur</button>
+            `}
           </div>
           ${!detail ? `<div class="small muted">Chargement du détail…</div>` : !detail.restaurants || detail.restaurants.length===0 ? `<div class="small muted">Aucun établissement créé pour l'instant.</div>` : `
             <table class="stack-mobile">
