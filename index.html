@@ -2111,11 +2111,18 @@ function startPublicDemo(){
     {id:'p10', remoteId:10, name:'Vin rouge maison', unit:'Bouteille', qtyCommande:12, cat:'Boissons', supplier:'f4', price:5.5, tvaRate:20, department:'salle', zoneIds:['zone3']},
   ];
   const now = new Date();
-  const daysAgo = n => new Date(now.getTime() - n*86400000);
+  // Les commandes de démo doivent TOUJOURS tomber dans le mois en cours, sinon la carte
+  // "Dépenses ce mois-ci" du tableau de bord et des statistiques affiche un total qui ne
+  // correspond pas à l'historique juste en dessous — incohérence visible pour un restaurateur
+  // qui découvre la démo un 2 du mois. On recule donc depuis aujourd'hui, mais jamais avant le
+  // 1er : si on est en début de mois, les commandes se resserrent simplement sur les jours
+  // écoulés au lieu de déborder sur le mois précédent.
+  const maxBack = now.getDate() - 1;
+  const daysAgo = n => new Date(now.getTime() - Math.min(n, maxBack)*86400000);
   d.orders = [
     {id:'CMD-104', remoteId:104, supplier:'f1', items:'Entrecôte de bœuf × 10 Kg', lineItems:[{productId:'p1',name:'Entrecôte de bœuf',qty:10,price:28,tvaRate:5.5}], amount:280, status:'validee', date:fmtDateShort(daysAgo(1)), createdAt:daysAgo(1), hasDiscrepancy:false},
     {id:'CMD-103', remoteId:103, supplier:'f3', items:'Tomates grappe × 15 Kg, Pommes de terre × 20 Kg', lineItems:[{productId:'p6',name:'Tomates grappe',qty:15,price:2.8,tvaRate:5.5},{productId:'p5',name:'Pommes de terre',qty:20,price:1.2,tvaRate:5.5}], amount:66, status:'livree', date:fmtDateShort(daysAgo(3)), createdAt:daysAgo(3), hasDiscrepancy:false},
-    {id:'CMD-102', remoteId:102, supplier:'f2', items:'Filet de saumon × 8 Kg', lineItems:[{productId:'p3',name:'Filet de saumon',qty:8,price:22,tvaRate:5.5}], amount:176, status:'livree', date:fmtDateShort(daysAgo(5)), createdAt:daysAgo(5), hasDiscrepancy:true},
+    {id:'CMD-102', remoteId:102, supplier:'f2', items:'Filet de saumon × 8 Kg', lineItems:[{productId:'p3',name:'Filet de saumon',qty:8,qtyReceived:6.5,price:22,priceReceived:24.5,received:true,discrepancy:true,tvaRate:5.5}], amount:176, status:'livree', date:fmtDateShort(daysAgo(5)), createdAt:daysAgo(5), hasDiscrepancy:true},
     {id:'CMD-101', remoteId:101, supplier:'f4', items:'Café en grains × 4 Kg, Vin rouge maison × 12 Bouteille', lineItems:[{productId:'p9',name:'Café en grains',qty:4,price:14,tvaRate:5.5},{productId:'p10',name:'Vin rouge maison',qty:12,price:5.5,tvaRate:20}], amount:122, status:'livree', date:fmtDateShort(daysAgo(7)), createdAt:daysAgo(7), hasDiscrepancy:false},
   ];
   d.team = [
@@ -3372,8 +3379,8 @@ function viewStats(){
       </div>
       ${forecast.deltaPct!=null ? `<div class="small ${forecast.deltaPct>15?'':'muted'}" style="margin-top:10px;${forecast.deltaPct>15?'color:var(--urgent);':''}">
         ${forecast.deltaPct>0
-          ? `Au rythme actuel, vous dépenserez <b>${forecast.deltaPct}% de plus</b> que d'habitude ce mois-ci.`
-          : `Au rythme actuel, vous dépenserez <b>${Math.abs(forecast.deltaPct)}% de moins</b> que d'habitude ce mois-ci.`}
+          ? `Au rythme actuel, vous dépenserez <b>${forecast.deltaPct}&nbsp;% de plus</b> que d'habitude ce mois-ci.`
+          : `Au rythme actuel, vous dépenserez <b>${Math.abs(forecast.deltaPct)}&nbsp;% de moins</b> que d'habitude ce mois-ci.`}
       </div>` : ''}
       <div class="small muted" style="margin-top:8px;">Estimation simple à partir du rythme observé depuis le début du mois — à prendre comme un repère, pas une prévision exacte.</div>
     </div>` : ''}
@@ -3803,7 +3810,7 @@ function viewStocks(){
             <td data-label="Fournisseur" class="muted">${supplierName(p.supplier)}</td>
             <td data-label="Conditionnement" class="muted small">${escapeHtml(p.packaging||'—')}</td>
             <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${p.unit}</td>
-            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${(p.price||0).toFixed(2)} € HT / ${p.unit}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
+            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${fmtEUR(p.price||0)} HT / ${p.unit}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
               <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
@@ -4004,7 +4011,9 @@ function ensureEcartsFilters(){
 function foodCostTag(pct){
   if(pct==null) return '';
   const cls = pct<=30 ? 'tag-subtle' : pct<=38 ? 'tag-neutral' : 'tag-red';
-  return `<span class="tag ${cls}">${pct}% food cost</span>`;
+  // Virgule décimale française, comme partout ailleurs sur le site (fmtEUR, quantités…) — un
+  // "30.7%" au format anglo-saxon détonnait au milieu de montants affichés "7,36 €".
+  return `<span class="tag ${cls}">${pct.toLocaleString('fr-FR', {maximumFractionDigits:1})}&nbsp;% food cost</span>`;
 }
 function viewRecipes(){
   return `
@@ -4419,11 +4428,11 @@ function viewEcarts(){
             ${(o.lineItems||[]).filter(li=>li.discrepancy).map(li=>`
               <tr>
                 <td>${escapeHtml(li.name || (PRODUCTS.find(p=>p.id===li.productId)||{}).name || '—')}</td>
-                <td class="mono">${li.qty}</td>
-                <td class="mono ${Number(li.qtyReceived)!==Number(li.qty)?'text-alert':''}">${li.qtyReceived}</td>
+                <td class="mono">${Number(li.qty).toLocaleString('fr-FR')}</td>
+                <td class="mono ${Number(li.qtyReceived)!==Number(li.qty)?'text-alert':''}">${li.qtyReceived!=null?Number(li.qtyReceived).toLocaleString('fr-FR'):'—'}</td>
                 ${hideFin ? '' : `
-                <td class="mono">${li.price!=null?Number(li.price).toFixed(2)+' €':'—'}</td>
-                <td class="mono ${Number(li.priceReceived)!==Number(li.price)?'text-alert':''}">${li.priceReceived!=null?Number(li.priceReceived).toFixed(2)+' €':'—'}</td>`}
+                <td class="mono">${li.price!=null?fmtEUR(li.price):'—'}</td>
+                <td class="mono ${Number(li.priceReceived)!==Number(li.price)?'text-alert':''}">${li.priceReceived!=null?fmtEUR(li.priceReceived):'—'}</td>`}
               </tr>
             `).join('')}
           </table>
@@ -6701,7 +6710,7 @@ function buildDataExportDocumentHTML(){
         <thead><tr><th>Nom</th><th>Catégorie</th><th>Fournisseur</th>${financialsHidden()?'':'<th>Prix HT</th>'}<th>Unité</th></tr></thead>
         <tbody>${data.produits.map(p=>`<tr>
           <td>${escapeHtml(p.nom)}</td><td>${escapeHtml(p.categorie||'—')}</td><td>${escapeHtml(p.fournisseur||'—')}</td>
-          ${financialsHidden()?'':`<td>${p.prix_achat!=null ? Number(p.prix_achat).toFixed(2)+' €' : '—'}</td>`}<td>${escapeHtml(p.unite||'—')}</td>
+          ${financialsHidden()?'':`<td>${p.prix_achat!=null ? fmtEUR(p.prix_achat) : '—'}</td>`}<td>${escapeHtml(p.unite||'—')}</td>
         </tr>`).join('')}</tbody>
       </table>` : `<div class="small muted">Aucun produit enregistré.</div>`)}
 
@@ -6731,7 +6740,7 @@ function buildDataExportDocumentHTML(){
         <tbody>${data.historique_commandes.map(o=>`<tr>
           <td>${escapeHtml(o.reference)}</td><td>${escapeHtml(o.fournisseur||'—')}</td><td>${escapeHtml(o.contenu||'—')}</td>
           <td>${escapeHtml(orderStatusLabel(o.statut))}</td><td>${escapeHtml(o.date||'—')}</td>
-          ${financialsHidden()?'':`<td>${Number(o.montant||0).toFixed(2)} €</td>`}
+          ${financialsHidden()?'':`<td>${fmtEUR(o.montant||0)}</td>`}
         </tr>`).join('')}</tbody>
       </table>` : `<div class="small muted">Aucune commande enregistrée.</div>`)}
 
@@ -7656,7 +7665,7 @@ function openReceiveOrderModal(id){
       return `
         <div class="receive-line" style="padding:10px 0;border-bottom:1px solid var(--border);opacity:0.6;">
           <div style="font-weight:600;font-size:13.5px;margin-bottom:4px;">${escapeHtml(name)} <span class="tag tag-strong" style="margin-left:6px;">Déjà reçu</span></div>
-          <div class="small muted">${li.qtyReceived} ${p?escapeHtml(p.unit):''}${hideFin?'':` — ${Number(li.priceReceived).toFixed(2)} €`}</div>
+          <div class="small muted">${li.qtyReceived} ${p?escapeHtml(p.unit):''}${hideFin?'':` — ${fmtEUR(li.priceReceived)}`}</div>
         </div>
       `;
     }
@@ -8026,7 +8035,7 @@ function quickOrder(productId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Commander « ${escapeHtml(p.name)} »</h3>
-    <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${(p.price||0).toFixed(2)} € / ${p.unit}`}</div>
+    <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${fmtEUR(p.price||0)} / ${p.unit}`}</div>
     <div class="field"><label>Quantité (${p.unit})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
   `);
@@ -8752,7 +8761,7 @@ async function loadPriceHistoryForProduct(id){
             else trend = `<span class="small muted">stable</span>`;
           }
           const date = new Date(h.recorded_at).toLocaleDateString('fr-FR', { day:'numeric', month:'short', year:'numeric' });
-          return `<div class="price-history-row"><span class="small muted">${date}</span><span class="mono">${price.toFixed(2)} €</span>${trend}</div>`;
+          return `<div class="price-history-row"><span class="small muted">${date}</span><span class="mono">${fmtEUR(price)}</span>${trend}</div>`;
         }).join('')}
       </div>
     `;
@@ -8856,7 +8865,7 @@ function orderProductRows(supplierId){
       <input type="checkbox" id="ord-chk-${p.id}" style="flex-shrink:0;">
       <div style="flex:1;min-width:0;overflow-wrap:break-word;">
         <div style="font-weight:600;font-size:13.5px;">${escapeHtml(p.name)}</div>
-        <div class="small muted">${p.cat?escapeHtml(p.cat)+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${(p.price||0).toFixed(2)} € / ${p.unit}`}</div>
+        <div class="small muted">${p.cat?escapeHtml(p.cat)+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${fmtEUR(p.price||0)} / ${p.unit}`}</div>
       </div>
       <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:60px;flex-shrink:0;padding:6px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
     </div>
@@ -9001,7 +9010,7 @@ function buildOrderDocumentHTML(o){
       <table class="invoice-table">
         <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit. HT</th><th>TVA</th><th>Total HT</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${(l.price||0).toFixed(2)} €</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${(l.total||0).toFixed(2)} €</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${(l.total||0).toFixed(2)} €</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
