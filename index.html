@@ -277,6 +277,16 @@ a{text-decoration:none;color:inherit;}
 /* L'icône du coin est positionnée en absolu par-dessus la carte : sans cette réserve d'espace,
    un titre long ("Achats fournisseurs (historique)") passait dessous et semblait tronqué. */
 .kpi .card-title{padding-right:46px;}
+/* Une carte du tableau de bord ne se met en avant que lorsqu'elle appelle vraiment une action
+   (au moins une demande ou une commande en attente). Les quatre cartes avaient jusqu'ici
+   exactement le même poids visuel : l'œil ne savait pas où se poser, et la seule carte qui
+   demandait une décision se noyait au milieu des chiffres purement informatifs. Le liseré
+   reprend la couleur d'accent de l'établissement, donc il suit le thème choisi. */
+.kpi.kpi-action{
+  border-color:var(--accent);
+  box-shadow:inset 3px 0 0 var(--accent), var(--shadow);
+}
+.kpi.kpi-action .val{ color:var(--accent); }
 .kpi .val{font-family:var(--heading-font);font-size:30px;font-weight:600;margin:6px 0 4px 0;}
 .kpi .delta{font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px;}
 .delta.good{color:var(--text);}
@@ -3639,17 +3649,19 @@ function viewPatronDashboard(){
            informatives) : sur téléphone, la file de validation se trouve très bas dans la page,
            après les graphiques — voir "1 urgente" sans pouvoir y aller directement obligeait à
            faire défiler à l'aveugle. Un clic amène maintenant droit à la section concernée. -->
-      <div class="card kpi" role="button" tabindex="0" style="cursor:pointer;" onclick="scrollToValidationQueue()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();scrollToValidationQueue();}" title="Voir les demandes à traiter" aria-label="Demandes de la cuisine : ${cuisineAttente.length}. Voir les demandes à traiter">
+      <div class="card kpi ${cuisineAttente.length>0?'kpi-action':''}" role="button" tabindex="0" style="cursor:pointer;" onclick="scrollToValidationQueue()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();scrollToValidationQueue();}" title="Voir les demandes à traiter" aria-label="Demandes de la cuisine : ${cuisineAttente.length}. Voir les demandes à traiter">
         <div class="kpi-icon strong">${I.chef}</div>
         <div class="card-title">Demandes de la cuisine</div>
         <div class="val">${cuisineAttente.length}</div>
-        <div class="delta ${urgentCuisine>0?'bad':'good'}">${urgentCuisine>0?urgentCuisine+' urgente'+(urgentCuisine>1?'s':''):'à traiter vous-même'}</div>
+        <div class="delta ${urgentCuisine>0?'bad':cuisineAttente.length>0?'':'good'}">${urgentCuisine>0?urgentCuisine+' urgente'+(urgentCuisine>1?'s':''):cuisineAttente.length>0?'à traiter vous-même':'rien en attente'}</div>
       </div>
-      <div class="card kpi" role="button" tabindex="0" style="cursor:pointer;" onclick="scrollToValidationQueue()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();scrollToValidationQueue();}" title="Voir les commandes à valider" aria-label="Commandes en attente : ${pendingOrders}. Voir les commandes à valider">
+      <div class="card kpi ${pendingOrders>0?'kpi-action':''}" role="button" tabindex="0" style="cursor:pointer;" onclick="scrollToValidationQueue()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();scrollToValidationQueue();}" title="Voir les commandes à valider" aria-label="Commandes en attente : ${pendingOrders}. Voir les commandes à valider">
         <div class="kpi-icon strong">${I.cart}</div>
         <div class="card-title">Commandes en attente</div>
         <div class="val">${pendingOrders}</div>
-        <div class="delta bad">à valider</div>
+        <!-- "à valider" en rouge s'affichait même quand le compteur était à zéro : une alerte
+             permanente qui ne veut rien dire finit par ne plus être lue du tout. -->
+        <div class="delta ${pendingOrders>0?'bad':'good'}">${pendingOrders>0?'à valider':'rien à valider'}</div>
       </div>
       <div class="card kpi">
         <div class="kpi-icon">${I.doc}</div>
@@ -10326,12 +10338,33 @@ function drawCharts(){
   if(!hasAnyChartCanvas) return;
   ensureChartJS(() => drawChartsNow());
 }
+// Convertit une couleur hexadécimale (#RGB ou #RRGGBB) en rgba() avec l'opacité voulue —
+// utilisé pour dériver les teintes de remplissage des graphiques depuis la couleur d'accent.
+// Renvoie null si le format n'est pas reconnu, pour que l'appelant garde sa valeur de repli.
+function hexToRgba(hex, alpha){
+  if(typeof hex !== 'string') return null;
+  let h = hex.trim();
+  if(h[0] !== '#') return null;
+  h = h.slice(1);
+  if(h.length === 3) h = h.split('').map(c=>c+c).join('');
+  if(h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
+  const n = parseInt(h, 16);
+  return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${alpha})`;
+}
 function drawChartsNow(){
   const isDark = document.documentElement.classList.contains('theme-dark');
-  const ink = isDark ? '#EDEDE6' : '#141414';
+  // Les graphiques lisent la couleur d'accent réellement appliquée (thème de couleurs ou
+  // couleur personnalisée de l'établissement) plutôt qu'un noir figé : sans ça, un restaurant
+  // qui choisissait "Chaleureux" ou "Frais" voyait toute son interface se teinter... sauf ses
+  // graphiques, qui restaient noirs et juraient avec le reste.
+  const cssAccent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  const fallbackInk = isDark ? '#EDEDE6' : '#141414';
+  const ink = cssAccent || fallbackInk;
   const mutedText = isDark ? '#A3A399' : '#6B6B65';
   const gridColor = isDark ? '#333330' : '#EEEEE7';
-  const fillTint = isDark ? 'rgba(237,237,230,0.08)' : 'rgba(20,20,20,0.06)';
+  // Teinte de remplissage dérivée de la même couleur d'accent, pour rester cohérente avec les
+  // barres et les courbes plutôt que de garder un gris neutre par-dessus une couleur vive.
+  const fillTint = hexToRgba(ink, isDark ? 0.18 : 0.10) || (isDark ? 'rgba(237,237,230,0.08)' : 'rgba(20,20,20,0.06)');
   Chart.defaults.font.family = "'Inter',sans-serif";
   Chart.defaults.color = mutedText;
 
