@@ -107,7 +107,11 @@ body.has-bg-image::before{
 }
 html.theme-dark body.has-bg-image::before{ opacity:0.10; }
 h1,h2,h3,.display{font-family:var(--heading-font);}
-.mono{font-family:'IBM Plex Mono',monospace;}
+/* white-space:nowrap — un montant comme "280,00 €" ou une référence "CMD-104" ne doit jamais
+   être coupé en deux lignes par une colonne trop étroite : c'est une seule valeur, illisible
+   une fois scindée. L'espace insécable dans fmtEUR ne suffit pas seule quand le navigateur
+   comprime agressivement la colonne pour faire tenir le tableau. */
+.mono{font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
 button{font-family:inherit;cursor:pointer;}
 a{text-decoration:none;color:inherit;}
 
@@ -1395,7 +1399,7 @@ function staleSuppliersReminderHTML(){
     </div>
   `;
 }
-function fmtEUR(n){ if(financialsHidden()) return ''; const v = Number(n); return (Number.isFinite(v) ? v : 0).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + ' €'; }
+function fmtEUR(n){ if(financialsHidden()) return ''; const v = Number(n); return (Number.isFinite(v) ? v : 0).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + '\u00A0€'; }
 // ============================================================
 // FICHES TECHNIQUES — conversion d'unités et calcul de coût. Un produit est acheté dans une
 // unité, mais utilisé en cuisine dans une autre — deux façons de relier les deux :
@@ -3182,17 +3186,17 @@ function renderShell(){
         <div class="role-switcher">
           ${Object.keys(ROLE_META).map(r=>`<button class="role-btn ${state.role===r?'active':''}" onclick="previewRole('${r}')">${ROLE_META[r].label}</button>`).join('')}
         </div>` : `<span class="tag tag-neutral" style="padding:7px 14px;font-size:12.5px;">${meta.label}</span>`}
-        <button class="btn btn-ghost btn-sm" onclick="manualRefresh()" title="Actualiser les données">${iconSm(I.refresh)}</button>
+        <button class="btn btn-ghost btn-sm" onclick="manualRefresh()" title="Actualiser les données" aria-label="Actualiser les données">${iconSm(I.refresh)}</button>
         <div class="notif-wrap">
-          <button class="btn btn-ghost btn-sm" style="position:relative" onclick="toggleNotifPanel()">
+          <button class="btn btn-ghost btn-sm" style="position:relative" onclick="toggleNotifPanel()" title="Notifications" aria-label="Notifications">
             ${I.bell}
             ${getNotificationsForRole(state.role).length>0?`<span style="position:absolute;top:-4px;right:-4px;background:var(--black);color:#fff;width:16px;height:16px;border-radius:50%;font-size:9.5px;display:flex;align-items:center;justify-content:center;">${getNotificationsForRole(state.role).length}</span>`:''}
           </button>
           ${state.notifOpen ? renderNotifPanel() : ''}
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="${state.theme==='dark'?'Passer en mode clair':'Passer en mode sombre'}">${state.theme==='dark'?iconSm(I.sun):iconSm(I.moon)}</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="${state.theme==='dark'?'Passer en mode clair':'Passer en mode sombre'}" aria-label="${state.theme==='dark'?'Passer en mode clair':'Passer en mode sombre'}">${state.theme==='dark'?iconSm(I.sun):iconSm(I.moon)}</button>
         <button class="avatar avatar-btn" title="${escapeHtml(meta.name)} — modifier ma photo" onclick="openMyProfileModal()">${photoFor(state.identity, state.loggedInEmployeeId) ? `<img src="${photoFor(state.identity, state.loggedInEmployeeId)}" alt="${escapeHtml(meta.name)}">` : meta.initials}</button>
-        <button class="btn btn-ghost btn-sm" onclick="logout()" title="Se déconnecter">${iconSm(I.logout)}</button>
+        <button class="btn btn-ghost btn-sm" onclick="logout()" title="Se déconnecter" aria-label="Se déconnecter">${iconSm(I.logout)}</button>
       </div>
     </div>
   `;
@@ -3813,9 +3817,9 @@ function viewStocks(){
             ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${fmtEUR(p.price||0)} HT / ${p.unit}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
-              <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
+              <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire" aria-label="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
               <button class="btn btn-primary btn-sm" onclick="quickOrder('${p.id}')">Commander</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer">${iconXs(I.trash)}</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.trash)}</button>
             </div></td>
           </tr>`).join('');
           return groupHeader + itemRows;
@@ -4117,7 +4121,7 @@ function renderRecipeCard(recipe){
                 <td data-label="Ingrédient">${isSubRecipe ? iconXs(I.chef)+' ' : ''}${escapeHtml(ing.productNameSnapshot)}${isSubRecipe && subRecipeStillExists ? ' <span class="small muted">(fiche technique)</span>' : ''}${wasRemoved ? ' <span class="small muted">(retiré du catalogue)</span>' : ''}</td>
                 <td data-label="Quantité"><button class="btn-link-quiet mono" onclick="event.stopPropagation();openEditIngredientModal('${recipe.id}','${ing.id}')" title="Modifier la quantité">${ing.quantity} ${escapeHtml(ing.unit)}</button></td>
                 ${!financialsHidden()?`<td data-label="Coût" class="mono">${cost!=null?fmtEUR(cost):'—'}</td>`:''}
-                <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteRecipeIngredient('${recipe.id}','${ing.id}')" title="Retirer">${iconXs(I.trash)}</button></td>
+                <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteRecipeIngredient('${recipe.id}','${ing.id}')" title="Retirer" aria-label="Retirer">${iconXs(I.trash)}</button></td>
               </tr>`;
             }).join('')}
           </table>` : `<div class="small muted" style="margin-bottom:14px;">Aucun ingrédient pour le moment.</div>`}
@@ -4585,7 +4589,7 @@ function viewHaccpTemperatures(role){
             <div class="small muted">Seuils ${e.minTemp}° à ${e.maxTemp}° · ${logs.length} relevé${logs.length>1?'s':''}${anomalyCount ? ` · ${anomalyCount} hors seuils` : ''}</div>
             <div class="small muted" title="Nombre de jours avec au moins un relevé, sur les 30 derniers jours — un repère honnête, pas un objectif à atteindre à tout prix.">${completion.daysCovered}/${completion.days} jours avec un relevé sur le dernier mois (${completion.pct} %)</div>
           </div>
-          ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpEquipment('${e.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+          ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpEquipment('${e.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.trash)}</button>` : ''}
         </div>
         ${logs.length ? `<table class="stack-mobile">
           <tr><th>Température</th><th>Statut</th><th>Relevé par</th><th>Quand</th></tr>
@@ -4682,7 +4686,7 @@ function viewHaccpNettoyage(role){
             <div style="font-weight:600;">${escapeHtml(t.name)}</div>
             <div class="small muted">${freqLabel(t.frequency)}${momentLabel ? ` · ${momentLabel}` : ''} · ${logs.length} enregistrement${logs.length>1?'s':''}</div>
           </div>
-          ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpCleaningTask('${t.id}')" title="Supprimer">${iconXs(I.trash)}</button>` : ''}
+          ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpCleaningTask('${t.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.trash)}</button>` : ''}
         </div>
         <div style="margin:12px 0;">
           ${doneEntry ? `
@@ -4934,7 +4938,7 @@ function viewCommandes(role){
           ${financialsHidden()?'':`<td data-label="Montant" class="mono">${fmtEUR(o.amount)}</td>`}
           <td data-label="Statut">${orderStatusTag(o)}</td>
           <td data-label="Date" class="muted small">${o.date}</td>
-          <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document">${iconXs(I.doc)}</button><button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer">${iconXs(I.trash)}</button></div></td>
+          <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document" aria-label="Voir le document">${iconXs(I.doc)}</button><button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.trash)}</button></div></td>
         </tr>`).join('')}
       </table>` : emptyState(ORDERS.length ? 'Aucune commande ne correspond à ces filtres' : 'Aucune commande pour le moment — créez votre première commande fournisseur')}
     </div>
@@ -4957,7 +4961,7 @@ function renderBasketCard(supplierId, role){
           return `<tr class="tr-hover">
             <td>${escapeHtml(p?p.name:'—')}</td>
             <td><div class="flex center gap8"><input type="number" min="1" step="1" value="${Math.round(li.qty)}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;" onchange="updateBasketLineQty('${supplierId}','${li.productId}', this.value)"><span class="small muted">${p?p.unit:''}</span></div></td>
-            <td><button class="btn btn-ghost btn-sm" onclick="removeBasketLine('${supplierId}','${li.productId}')" title="Retirer">${iconXs(I.x)}</button></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="removeBasketLine('${supplierId}','${li.productId}')" title="Retirer" aria-label="Retirer">${iconXs(I.x)}</button></td>
           </tr>`;
         }).join('')}
       </table>
@@ -6163,7 +6167,7 @@ function viewParametres(){
           <label>Catégories de produits</label>
           <div class="small muted" style="margin:-2px 0 8px 0;">Cliquez sur le nom pour le renommer.</div>
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
-            ${CATEGORIES.map(c=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameCategory('${c.id}')" title="Renommer">${escapeHtml(c.name)}</button><button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
+            ${CATEGORIES.map(c=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameCategory('${c.id}')" title="Renommer">${escapeHtml(c.name)}</button><button class="tag-remove" onclick="deleteCategory('${c.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucune catégorie pour l\u2019instant</span>'}
           </div>
           <div class="flex gap8"><input id="new-category-name" placeholder="Ex : Fromages, Légumes, Épicerie" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addCategoryFromSettings()">Ajouter</button></div>
         </div>
@@ -6171,7 +6175,7 @@ function viewParametres(){
           <label>Lieux / zones</label>
           <div class="small muted" style="margin:-2px 0 8px 0;">Cliquez sur le nom pour le renommer.</div>
           <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:10px;">
-            ${ZONES.map(z=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameZone('${z.id}')" title="Renommer">${escapeHtml(z.name)}</button><button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
+            ${ZONES.map(z=>`<span class="tag tag-neutral"><button class="tag-name-btn" onclick="renameZone('${z.id}')" title="Renommer">${escapeHtml(z.name)}</button><button class="tag-remove" onclick="deleteZone('${z.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.x)}</button></span>`).join('') || '<span class="small muted">Aucun lieu pour l\u2019instant</span>'}
           </div>
           <div class="flex gap8"><input id="new-zone-name" placeholder="Ex : Terrasse, Bar, Cave" style="flex:1;"><button class="btn btn-ghost btn-sm" onclick="addZoneFromSettings()">Ajouter</button></div>
         </div>
@@ -7911,7 +7915,7 @@ function openEditOrderModal(orderId){
         return `<tr>
           <td>${name}</td>
           <td><input type="number" min="1" step="1" value="${Math.round(li.qty)}" id="eo-qty-${idx}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;"> <span class="small muted">${unit}</span></td>
-          <td><button class="btn btn-ghost btn-sm" onclick="removeOrderLine('${o.id}', ${idx})" title="Retirer">${iconXs(I.x)}</button></td>
+          <td><button class="btn btn-ghost btn-sm" onclick="removeOrderLine('${o.id}', ${idx})" title="Retirer" aria-label="Retirer">${iconXs(I.x)}</button></td>
         </tr>`;
       }).join('')}
     </table>
