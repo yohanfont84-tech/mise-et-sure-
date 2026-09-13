@@ -785,6 +785,11 @@ tr.group-row:hover td{background:var(--gray-100);}
 }
 
 #toast-zone{position:fixed;bottom:22px;right:22px;z-index:3000;display:flex;flex-direction:column;gap:9px;}
+/* Quand la barre d'enregistrement de l'inventaire est affichée (position fixe en bas de
+   l'écran), les messages de confirmation se superposaient exactement dessus — donc au moment
+   précis où on enregistre un relevé et où la confirmation compte le plus. On les remonte
+   au-dessus de la barre uniquement sur cette page. */
+body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
 .toast{
   background:var(--black);color:#fff;padding:12px 18px;border-radius:9px;font-size:13.5px;font-weight:500;
   box-shadow:0 8px 24px rgba(0,0,0,0.25);display:flex;align-items:center;gap:9px;min-width:220px;
@@ -813,6 +818,26 @@ tr.group-row:hover td{background:var(--gray-100);}
 @keyframes slidein{from{transform:translateY(10px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 
 .empty{text-align:center;padding:40px 20px;color:var(--muted);}
+/* Barre d'enregistrement de l'inventaire — en position FIXE et non "sticky" : avec un vrai
+   catalogue (80 produits et plus), la page mesure plusieurs milliers de pixels et un élément
+   sticky placé en fin de conteneur ne colle jamais, il restait donc hors écran exactement
+   quand on en avait besoin. En fixe, elle reste visible pendant tout le comptage, quel que
+   soit l'endroit où on se trouve dans la liste. */
+#inv-save-bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:60;
+  padding:12px 16px; background:var(--surface); border-top:1px solid var(--border);
+  box-shadow:0 -4px 16px rgba(0,0,0,0.10);
+  display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+}
+/* La barre étant fixe, elle recouvrirait le dernier produit de la liste : cette réserve en bas
+   de la page d'inventaire garantit qu'on peut toujours atteindre et saisir la dernière ligne. */
+#inv-table{ margin-bottom:8px; }
+.inventaire-bottom-space{ height:84px; }
+@media(min-width:761px){
+  /* Sur ordinateur, la barre s'aligne sur la zone de contenu plutôt que sur toute la largeur,
+     pour ne pas passer sous le menu latéral. */
+  #inv-save-bar{ left:250px; }
+}
 /* Sur téléphone, un message "Aucune commande en attente" n'a pas besoin de 40px de marge haut
    et bas : cet espace repoussait le contenu réel (les demandes à traiter) très bas dans la
    page. Règle placée APRÈS la définition ci-dessus, sinon elle serait surchargée par elle.
@@ -4022,10 +4047,11 @@ function viewInventaire(){
            tout en bas du tableau obligeait à refaire défiler toute la page après chaque saisie.
            Ici elle reste visible en permanence, et indique combien de quantités sont en attente
            d'enregistrement — un rappel utile avant de quitter la page. -->
-      <div id="inv-save-bar" style="position:sticky;bottom:0;z-index:50;margin-top:16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 -4px 16px rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div id="inv-save-bar">
         <span class="small muted" id="inv-pending-label">Aucune quantité saisie pour l'instant</span>
         <button class="btn btn-primary" onclick="saveInventoryCounts()">Enregistrer tout l'inventaire</button>
       </div>
+      <div class="inventaire-bottom-space" aria-hidden="true"></div>
     ` : emptyState("Aucun produit au catalogue pour l'instant — ajoutez vos produits avant de pouvoir faire un inventaire.")}
   `;
 }
