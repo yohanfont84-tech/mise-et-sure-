@@ -2134,6 +2134,17 @@ function startPublicDemo(){
     {id:'t2', remoteId:2, name:'Yohan Fontaine', role:'cuisine', shift:'8h – 16h', canOrderDirectly:true, orderSpendingLimit:80, status:'actif'},
     {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', shift:'17h – 23h', canOrderDirectly:false, orderSpendingLimit:null, status:'actif'},
   ];
+  // Signalements de manque (REQUESTS) : la fonctionnalité la plus utilisée au quotidien par la
+  // cuisine et la salle. Sans ces données, l'accueil Cuisine et la file de validation du patron
+  // s'affichent vides, alors que c'est précisément le cœur du produit à montrer. États variés
+  // (en attente, approuvée, refusée) pour donner à voir tout le cycle en un coup d'œil.
+  d.requests = [
+    {id:'DEM-014', from:'Cuisine', item:'Beurre', qty:null, unit:null, urgent:true, status:'attente', time:'il y a 20 min', createdByMemberId:2, createdAt:daysAgo(0)},
+    {id:'DEM-013', from:'Salle', item:'Vin rouge maison', qty:null, unit:null, urgent:false, status:'attente', time:'il y a 2 h', createdByMemberId:3, createdAt:daysAgo(0)},
+    {id:'DEM-012', from:'Cuisine', item:'Filet de poulet', qty:8, unit:'Kg', urgent:false, status:'approuvee', time:'hier', createdByMemberId:2, createdAt:daysAgo(1)},
+    {id:'DEM-011', from:'Salle', item:'Café en grains', qty:4, unit:'Kg', urgent:false, status:'approuvee', time:'il y a 3 jours', createdByMemberId:3, createdAt:daysAgo(3)},
+    {id:'DEM-010', from:'Cuisine', item:'Truffe fraîche', qty:null, unit:null, urgent:false, status:'refusee', time:'il y a 5 jours', createdByMemberId:2, createdAt:daysAgo(5)},
+  ];
   d.customRequests = [
     {id:'req1', remoteId:1, fromRole:'cuisine', fromName:'Yohan Fontaine', text:'Il faudrait plus de beurre, on tourne un peu juste cette semaine', status:'en_attente', createdAt:daysAgo(0)},
   ];
