@@ -369,6 +369,18 @@ tr.group-row:hover td{background:var(--gray-100);}
      de la fiche sur un écran étroit ("Valider" et "Refuser" devenaient invisibles). On les
      laisse maintenant passer à la ligne, comme pour tous les autres groupes de boutons. */
   table.stack-mobile td .flex.gap8{flex-wrap:wrap;}
+  /* Avec un vrai catalogue (90 produits), chaque fiche empilée mesurait plus de 400px de haut
+     — soit 46 écrans de défilement pour parcourir la liste, inutilisable en pratique. Les
+     champs courts (Catégorie, Département, Lieux, Conditionnement, Qté, Prix...) passent donc
+     sur deux colonnes au lieu d'occuper chacun une ligne entière, et l'interligne se resserre.
+     Aucune information n'est masquée : tout reste lisible, simplement mieux agencé. */
+  table.stack-mobile.compact-rows tr{ display:flex; flex-wrap:wrap; gap:0 12px; padding:10px 12px; }
+  table.stack-mobile.compact-rows td{ flex:1 1 calc(50% - 6px); min-width:0; padding:5px 0!important; }
+  /* Le nom du produit et la rangée de boutons gardent toute la largeur : ce sont les deux
+     éléments qu'on cherche des yeux en premier, et qu'on ne veut pas voir comprimés. */
+  table.stack-mobile.compact-rows td[data-label="Produit"]{ flex:1 1 100%; }
+  table.stack-mobile.compact-rows td:not([data-label]){ flex:1 1 100%; }
+  table.stack-mobile.compact-rows tr.group-row{ display:block; }
 }
 
 .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;}
@@ -445,7 +457,13 @@ tr.group-row:hover td{background:var(--gray-100);}
 .leaflet-popup-content-wrapper{border-radius:10px !important;}
 .product-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center;}
 .product-filter-bar input[type="text"]{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
-.product-filter-bar select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
+/* Règle générale de sécurité : un menu déroulant s'élargit par défaut à la taille de sa plus
+   longue option. Avec un vrai nom de fournisseur ou de catégorie un peu long, certains menus
+   atteignaient 500px et faisaient déborder toute la page horizontalement sur téléphone. Cette
+   règle couvre tous les menus du site, y compris ceux qui seraient ajoutés plus tard. Le nom
+   complet reste évidemment lisible une fois le menu ouvert. */
+select{ max-width:100%; text-overflow:ellipsis; }
+.product-filter-bar select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;max-width:100%;text-overflow:ellipsis;}
 .product-picker-row{padding:8px 6px;border-radius:6px;cursor:pointer;font-size:13.5px;overflow-wrap:break-word;max-width:100%;}
 .product-picker-row:hover{background:var(--surface-hover, rgba(0,0,0,0.04));}
 .product-picker-row.selected{background:var(--accent, #111);color:#fff;}
@@ -3874,7 +3892,7 @@ function viewStocks(){
       <button class="btn btn-ghost btn-sm" onclick="setAllCategoryGroups(false)">${iconXs(I.chevronDown)} Tout développer</button>
     </div>` : ''}
     <div class="card">
-      ${filtered.length ? `<table class="stack-mobile">
+      ${filtered.length ? `<table class="stack-mobile compact-rows">
         <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th>${financialsHidden()?'':`<th>Prix d'achat</th>`}<th></th></tr>
         ${groups.map(g=>{
           const isCollapsed = groups.length>1 && !!collapsed[g.category];
