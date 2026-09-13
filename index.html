@@ -2130,9 +2130,9 @@ function startPublicDemo(){
     {id:'CMD-101', remoteId:101, supplier:'f4', items:'Café en grains × 4 Kg, Vin rouge maison × 12 Bouteille', lineItems:[{productId:'p9',name:'Café en grains',qty:4,price:14,tvaRate:5.5},{productId:'p10',name:'Vin rouge maison',qty:12,price:5.5,tvaRate:20}], amount:122, status:'livree', date:fmtDateShort(daysAgo(7)), createdAt:daysAgo(7), hasDiscrepancy:false},
   ];
   d.team = [
-    {id:'t1', remoteId:1, name:'Camille Bernard', role:'manager', canOrder:true, orderCap:200, status:'actif'},
-    {id:'t2', remoteId:2, name:'Yohan Fontaine', role:'cuisine', canOrder:true, orderCap:80, status:'actif'},
-    {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', canOrder:false, orderCap:0, status:'actif'},
+    {id:'t1', remoteId:1, name:'Camille Bernard', role:'manager', shift:'10h – 18h', canOrderDirectly:true, orderSpendingLimit:200, status:'actif'},
+    {id:'t2', remoteId:2, name:'Yohan Fontaine', role:'cuisine', shift:'8h – 16h', canOrderDirectly:true, orderSpendingLimit:80, status:'actif'},
+    {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', shift:'17h – 23h', canOrderDirectly:false, orderSpendingLimit:null, status:'actif'},
   ];
   d.customRequests = [
     {id:'req1', remoteId:1, fromRole:'cuisine', fromName:'Yohan Fontaine', text:'Il faudrait plus de beurre, on tourne un peu juste cette semaine', status:'en_attente', createdAt:daysAgo(0)},
@@ -2154,17 +2154,45 @@ function startPublicDemo(){
     {id:'eq1', remoteId:1, name:'Chambre froide positive', minTemp:0, maxTemp:4},
     {id:'eq2', remoteId:2, name:'Congélateur', minTemp:-22, maxTemp:-18},
   ];
-  d.haccpTempLogs = [
-    {id:'tl1', remoteId:1, equipmentId:'eq1', equipmentName:'Chambre froide positive', minTemp:0, maxTemp:4, temperature:3, inRange:true, note:'', loggedByName:'Camille Bernard', createdAt:now},
-    {id:'tl2', remoteId:2, equipmentId:'eq2', equipmentName:'Congélateur', minTemp:-22, maxTemp:-18, temperature:-19, inRange:true, note:'', loggedByName:'Yohan Fontaine', createdAt:now},
-  ];
+  // Historique HACCP généré sur les 10 derniers jours plutôt que deux relevés isolés : un
+  // restaurant qui tient vraiment son HACCP relève ses températures tous les jours, et c'est
+  // précisément ce sérieux que la démo doit montrer. Les heures sont fixées à des moments
+  // crédibles de service (9h et 18h) au lieu de l'heure exacte où la démo est lancée — un
+  // relevé daté de 3h du matin donnerait une impression d'incohérence.
+  const haccpAt = (daysBack, hour) => {
+    const d2 = new Date(now.getTime() - Math.min(daysBack, maxBack)*86400000);
+    d2.setHours(hour, 0, 0, 0);
+    return d2;
+  };
+  d.haccpTempLogs = [];
+  let tlId = 1;
+  for(let day = 0; day <= 9; day++){
+    // Une anomalie volontaire il y a 4 jours sur la chambre froide, avec sa note d'explication :
+    // montre que le module détecte et conserve la trace d'un écart, pas seulement du conforme.
+    const isAnomaly = day === 4;
+    const fridgeTemp = isAnomaly ? 7.5 : [3, 3.5, 2.5, 4, 3][day % 5];
+    d.haccpTempLogs.push({
+      id:'tl'+(tlId++), remoteId:tlId, equipmentId:'eq1', equipmentName:'Chambre froide positive',
+      minTemp:0, maxTemp:4, temperature:fridgeTemp, inRange:!isAnomaly,
+      note: isAnomaly ? 'Porte restée ouverte pendant la livraison — température revenue à 3°C après 40 min' : '',
+      loggedByName: day % 2 === 0 ? 'Camille Bernard' : 'Yohan Fontaine', createdAt: haccpAt(day, 9),
+    });
+    d.haccpTempLogs.push({
+      id:'tl'+(tlId++), remoteId:tlId, equipmentId:'eq2', equipmentName:'Congélateur',
+      minTemp:-22, maxTemp:-18, temperature:[-19, -20, -19.5, -21, -18.5][day % 5], inRange:true,
+      note:'', loggedByName: day % 2 === 0 ? 'Yohan Fontaine' : 'Camille Bernard', createdAt: haccpAt(day, 18),
+    });
+  }
   d.haccpCleaningTasks = [
     {id:'ct1', remoteId:1, name:'Plan de travail cuisine', frequency:'daily'},
     {id:'ct2', remoteId:2, name:'Réfrigérateurs', frequency:'daily'},
   ];
-  d.haccpCleaningLogs = [
-    {id:'cl1', remoteId:1, taskId:'ct1', doneByName:'Yohan Fontaine', createdAt:now},
-  ];
+  d.haccpCleaningLogs = [];
+  let clId = 1;
+  for(let day = 0; day <= 9; day++){
+    d.haccpCleaningLogs.push({id:'cl'+(clId++), remoteId:clId, taskId:'ct1', doneByName: day % 2 === 0 ? 'Yohan Fontaine' : 'Léa Petit', createdAt: haccpAt(day, 22)});
+    if(day % 2 === 0) d.haccpCleaningLogs.push({id:'cl'+(clId++), remoteId:clId, taskId:'ct2', doneByName:'Camille Bernard', createdAt: haccpAt(day, 22)});
+  }
   d.stockCounts = [
     {id:'sc1', remoteId:1, productId:'p1', productNameSnapshot:'Entrecôte de bœuf', quantity:6.5, unit:'Kg', countedByName:'Camille Bernard', createdAt:daysAgo(1), source:'manuel', orderId:null},
     {id:'sc2', remoteId:2, productId:'p5', productNameSnapshot:'Pommes de terre', quantity:14, unit:'Kg', countedByName:'Yohan Fontaine', createdAt:daysAgo(1), source:'manuel', orderId:null},
@@ -5465,7 +5493,7 @@ function viewEquipe(){
         ${TEAM.map(t=>`<tr class="tr-hover">
           <td data-label="Nom" style="font-weight:600;"><div class="flex center gap8"><div class="avatar" style="width:28px;height:28px;font-size:11px;">${avatarInner(t.photoDataUrl, t.name)}</div>${escapeHtml(t.name)}</div></td>
           <td data-label="Rôle" class="muted">${escapeHtml(t.role)}</td>
-          <td data-label="Horaires" class="muted small">${t.shift}</td>
+          <td data-label="Horaires" class="muted small">${t.shift ? escapeHtml(t.shift) : '—'}</td>
           <td data-label="Statut"><span class="tag ${t.status==='actif'?'tag-subtle':'tag-neutral'}">${t.status==='actif'?'En service':'Repos'}</span></td>
           <td data-label="Permissions" class="muted small">${permsForRole(t.role)}</td>
           <td><div class="flex gap8"><button class="btn btn-ghost btn-sm" onclick="editEmployee('${t.id}')">Modifier</button>${t.inviteToken?`<button class="btn btn-ghost btn-sm" onclick="showEmployeeCredentialsModal('${escapeHtml(t.name)}','${escapeHtml(t.username||'')}','—',  '${t.inviteToken}','${t.id}')" title="Retrouver le lien de connexion">${iconSm(I.mail)}</button>`:''}<button class="btn btn-danger btn-sm" onclick="deleteEmployee('${t.id}')">Retirer</button></div></td>
