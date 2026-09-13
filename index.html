@@ -3917,11 +3917,17 @@ function viewInventaire(){
         <table class="stack-mobile" id="inv-table">
           <tr><th>Produit</th><th>Dernier relevé</th><th>Nouveau relevé</th></tr>
           ${groups.map(g=>{
+            const catEscaped = escapeHtml(g.category).replace(/'/g,"\\'");
             const groupHeader = groups.length>1 ? `
-              <tr class="group-row" data-category-group="${escapeHtml(g.category)}" onclick="toggleInventaireCategory('${escapeHtml(g.category).replace(/'/g,"\\'")}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleInventaireCategory('${escapeHtml(g.category).replace(/'/g,"\\'")}');}" role="button" tabindex="0" aria-expanded="true" style="cursor:pointer;background:var(--paper);">
+              <tr class="group-row" data-category-group="${escapeHtml(g.category)}" onclick="toggleInventaireCategory('${catEscaped}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleInventaireCategory('${catEscaped}');}" role="button" tabindex="0" aria-expanded="true" style="cursor:pointer;background:var(--paper);">
                 <td colspan="3" style="font-weight:600;padding:9px 8px;">
-                  <span class="group-chevron open" style="display:inline-flex;margin-right:8px;vertical-align:middle;">${iconXs(I.chevronDown)}</span>
-                  ${escapeHtml(g.category)} <span class="muted small" style="font-weight:400;">(${g.items.length} produit${g.items.length>1?'s':''})</span>
+                  <div class="flex between center" style="gap:10px;">
+                    <span>
+                      <span class="group-chevron open" style="display:inline-flex;margin-right:8px;vertical-align:middle;">${iconXs(I.chevronDown)}</span>
+                      ${escapeHtml(g.category)} <span class="muted small" style="font-weight:400;">(${g.items.length} produit${g.items.length>1?'s':''})</span>
+                    </span>
+                    <button class="btn btn-ghost btn-sm" style="font-weight:600;" onclick="event.stopPropagation();saveInventoryCounts('${catEscaped}')" title="Enregistrer uniquement les quantités saisies dans cette catégorie">${iconXs(I.check)} Enregistrer</button>
+                  </div>
                 </td>
               </tr>` : '';
             const itemRows = g.items.map(p=>{
@@ -3943,7 +3949,7 @@ function viewInventaire(){
               return `<tr class="tr-hover inv-row" data-category="${escapeHtml(g.category)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')+' '+(p.packaging||'')).toLowerCase())}">
                 <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}${p.packaging?`<div class="small muted" style="font-weight:400;">${escapeHtml(p.packaging)}</div>`:''}</td>
                 <td data-label="Dernier relevé">${lastText}</td>
-                <td data-label="Nouveau relevé"><input type="number" min="0" step="${discreteUnit?'1':'0.1'}" placeholder="Ex : ${discreteUnit?'10':'2.5'}" data-inv-product-id="${p.id}" data-inv-discrete="${discreteUnit?'1':'0'}" class="inv-count-input" style="width:110px;background:var(--surface);color:var(--text);"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
+                <td data-label="Nouveau relevé"><input type="number" min="0" step="${discreteUnit?'1':'0.1'}" placeholder="Ex : ${discreteUnit?'10':'2.5'}" data-inv-product-id="${p.id}" data-inv-discrete="${discreteUnit?'1':'0'}" class="inv-count-input" oninput="updateInventoryPendingLabel()" style="width:110px;background:var(--surface);color:var(--text);"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
               </tr>`;
             }).join('');
             return groupHeader + itemRows;
@@ -3951,13 +3957,29 @@ function viewInventaire(){
         </table>
         <div id="inv-no-match" class="small muted" style="display:none;padding:14px 4px 4px 4px;">Aucun produit ne correspond à cette recherche.</div>
       </div>
-      <button class="btn btn-primary" style="margin-top:16px;" onclick="saveInventoryCounts()">Enregistrer l'inventaire</button>
+      <!-- Barre d'enregistrement flottante : avec un catalogue de 100 produits, un bouton placé
+           tout en bas du tableau obligeait à refaire défiler toute la page après chaque saisie.
+           Ici elle reste visible en permanence, et indique combien de quantités sont en attente
+           d'enregistrement — un rappel utile avant de quitter la page. -->
+      <div id="inv-save-bar" style="position:sticky;bottom:0;z-index:50;margin-top:16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 -4px 16px rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <span class="small muted" id="inv-pending-label">Aucune quantité saisie pour l'instant</span>
+        <button class="btn btn-primary" onclick="saveInventoryCounts()">Enregistrer tout l'inventaire</button>
+      </div>
     ` : emptyState("Aucun produit au catalogue pour l'instant — ajoutez vos produits avant de pouvoir faire un inventaire.")}
   `;
 }
-async function saveInventoryCounts(){
-  const inputs = Array.from(document.querySelectorAll('.inv-count-input')).filter(el=>el.value !== '');
-  if(!inputs.length){ toast("Renseignez au moins une quantité avant d'enregistrer", 'alert'); return; }
+async function saveInventoryCounts(category){
+  // category (optionnel) : n'enregistre que les produits de cette catégorie. Sans argument,
+  // enregistre tout ce qui a été rempli sur la page.
+  const all = Array.from(document.querySelectorAll('.inv-count-input'));
+  const scoped = category
+    ? all.filter(el => el.closest('tr') && el.closest('tr').dataset.category === category)
+    : all;
+  const inputs = scoped.filter(el=>el.value !== '');
+  if(!inputs.length){
+    toast(category ? `Renseignez au moins une quantité dans « ${category} » avant d'enregistrer` : "Renseignez au moins une quantité avant d'enregistrer", 'alert');
+    return;
+  }
   // L'attribut HTML min="0" sur le champ n'empêche pas vraiment de saisir un nombre négatif
   // (contournable) — la vraie vérification doit se faire ici, avec un message clair plutôt
   // qu'un rejet silencieux côté serveur.
@@ -3992,12 +4014,45 @@ async function saveInventoryCounts(){
     STOCK_COUNTS = [...newEntries, ...STOCK_COUNTS];
     ensureRestoData(state.resto).stockCounts = STOCK_COUNTS;
     toast(`${newEntries.length} relevé${newEntries.length>1?'s':''} enregistré${newEntries.length>1?'s':''}`);
-    render();
+    // Mise à jour ciblée du DOM plutôt qu'un render() complet : un rendu entier effacerait les
+    // quantités déjà tapées dans les AUTRES catégories, que la personne n'a pas encore
+    // enregistrées — exactement le problème qu'on cherche à éviter en scindant par catégorie.
+    updateInventoryRowsAfterSave(inputs, newEntries);
   } catch(err){
     toast(err.message, 'alert');
   }
 }
+// Met à jour uniquement les lignes qui viennent d'être enregistrées : vide leur champ de
+// saisie et rafraîchit leur colonne "Dernier relevé" avec la nouvelle valeur. Les autres
+// lignes, y compris celles où une quantité est déjà tapée mais pas encore enregistrée, ne sont
+// pas touchées — c'est tout l'intérêt de pouvoir enregistrer catégorie par catégorie.
+function updateInventoryRowsAfterSave(inputs, newEntries){
+  inputs.forEach(el => {
+    const productId = el.dataset.invProductId;
+    const entry = newEntries.find(e => e.productId === productId);
+    const row = el.closest('tr');
+    el.value = '';
+    if(entry && row){
+      const cell = row.querySelector('[data-label="Dernier relevé"]');
+      if(cell){
+        const p = PRODUCTS.find(x=>x.id===productId) || {};
+        cell.innerHTML = `<span style="font-weight:600;">${formatInventoryQty(entry.quantity, entry.unit||p.unit)} ${escapeHtml(entry.unit||p.unit||'')}</span> <span class="small muted">— ${escapeHtml(entry.countedByName||'')}, ${fmtDateShort(entry.createdAt)}</span>`;
+      }
+    }
+  });
+  updateInventoryPendingLabel();
+}
 
+function updateInventoryPendingLabel(){
+  const label = document.getElementById('inv-pending-label');
+  if(!label) return;
+  const n = Array.from(document.querySelectorAll('.inv-count-input')).filter(el=>el.value.trim() !== '').length;
+  label.textContent = n === 0
+    ? "Aucune quantité saisie pour l'instant"
+    : `${n} quantité${n>1?'s':''} saisie${n>1?'s':''}, pas encore enregistrée${n>1?'s':''}`;
+  label.style.color = n > 0 ? 'var(--text)' : '';
+  label.style.fontWeight = n > 0 ? '600' : '';
+}
 function ensureEcartsFilters(){
   if(!state.ecartsFilters) state.ecartsFilters = { supplier:'tous', period:'tous' };
   return state.ecartsFilters;
@@ -5911,7 +5966,18 @@ async function syncRestoOperationalData(localId){
   // clignoter/disparaître brièvement les marqueurs pendant que la personne regardait la carte,
   // pour un gain nul puisque les données de ces 11 étapes arrivent de toute façon quasi en même
   // temps. Un seul rendu final donne le même résultat visuel, sans le clignotement.
+  // Ne jamais redessiner par-dessus un inventaire en cours de saisie : le rafraîchissement
+  // automatique (toutes les 30 secondes) reconstruisait tout le tableau, effaçant sans
+  // prévenir les quantités déjà tapées par quelqu'un en train de compter sa réserve. Les
+  // données fraîches sont quand même chargées en mémoire — elles s'afficheront au prochain
+  // rendu naturel, une fois la saisie terminée et enregistrée.
+  if(hasPendingInventoryInput()) return;
   render();
+}
+// Vrai si au moins un champ de l'inventaire contient une valeur pas encore enregistrée.
+function hasPendingInventoryInput(){
+  if(state.view !== 'inventaire') return false;
+  return Array.from(document.querySelectorAll('.inv-count-input')).some(el => el.value.trim() !== '');
 }
 function switchResto(id){
   state.resto = id;
