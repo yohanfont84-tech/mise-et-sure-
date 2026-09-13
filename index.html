@@ -274,6 +274,9 @@ a{text-decoration:none;color:inherit;}
 .section-head .sub{font-size:13px;color:var(--muted);margin-top:2px;}
 
 .kpi{position:relative;overflow:hidden;}
+/* L'icône du coin est positionnée en absolu par-dessus la carte : sans cette réserve d'espace,
+   un titre long ("Achats fournisseurs (historique)") passait dessous et semblait tronqué. */
+.kpi .card-title{padding-right:46px;}
 .kpi .val{font-family:var(--heading-font);font-size:30px;font-weight:600;margin:6px 0 4px 0;}
 .kpi .delta{font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px;}
 .delta.good{color:var(--text);}
@@ -810,6 +813,11 @@ tr.group-row:hover td{background:var(--gray-100);}
 @keyframes slidein{from{transform:translateY(10px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 
 .empty{text-align:center;padding:40px 20px;color:var(--muted);}
+/* Sur téléphone, un message "Aucune commande en attente" n'a pas besoin de 40px de marge haut
+   et bas : cet espace repoussait le contenu réel (les demandes à traiter) très bas dans la
+   page. Règle placée APRÈS la définition ci-dessus, sinon elle serait surchargée par elle.
+   Sur ordinateur, l'aération d'origine reste appréciable et n'est pas touchée. */
+@media(max-width:760px){ .empty{padding:20px 16px;} .empty svg{width:30px;height:30px;margin-bottom:6px;} }
 .empty svg{width:38px;height:38px;color:var(--muted-2);margin-bottom:10px;}
 
 /* Hiérarchie des superpositions du site — Leaflet (la carte des fournisseurs) fixe ses propres
@@ -3552,6 +3560,12 @@ function onboardingChecklist(){
     </div>
   `;
 }
+// Amène directement à la file de validation depuis les cartes de résumé du tableau de bord.
+// Défilement doux plutôt qu'un saut brutal, pour que la personne garde le fil de la page.
+function scrollToValidationQueue(){
+  const el = document.getElementById('file-validation');
+  if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+}
 function viewPatronDashboard(){
   const achatsTotal = ORDERS.reduce((a,o)=>a+o.amount,0);
   const pendingOrders = ORDERS.filter(o=>o.status==='en_attente_validation').length;
@@ -3570,13 +3584,17 @@ function viewPatronDashboard(){
           ? `<div class="val">${ORDERS.length}</div><div class="delta good">commande${ORDERS.length>1?'s':''} au total</div>`
           : `<div class="val">${achatsTotal.toLocaleString('fr-FR',{maximumFractionDigits:0})} €</div><div class="delta good">${ORDERS.length} commande${ORDERS.length>1?'s':''} au total</div>`}
       </div>
-      <div class="card kpi">
+      <!-- Ces deux cartes-ci appellent à agir (contrairement aux deux autres, purement
+           informatives) : sur téléphone, la file de validation se trouve très bas dans la page,
+           après les graphiques — voir "1 urgente" sans pouvoir y aller directement obligeait à
+           faire défiler à l'aveugle. Un clic amène maintenant droit à la section concernée. -->
+      <div class="card kpi" role="button" tabindex="0" style="cursor:pointer;" onclick="scrollToValidationQueue()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();scrollToValidationQueue();}" title="Voir les demandes à traiter" aria-label="Demandes de la cuisine : ${cuisineAttente.length}. Voir les demandes à traiter">
         <div class="kpi-icon strong">${I.chef}</div>
         <div class="card-title">Demandes de la cuisine</div>
         <div class="val">${cuisineAttente.length}</div>
         <div class="delta ${urgentCuisine>0?'bad':'good'}">${urgentCuisine>0?urgentCuisine+' urgente'+(urgentCuisine>1?'s':''):'à traiter vous-même'}</div>
       </div>
-      <div class="card kpi">
+      <div class="card kpi" role="button" tabindex="0" style="cursor:pointer;" onclick="scrollToValidationQueue()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();scrollToValidationQueue();}" title="Voir les commandes à valider" aria-label="Commandes en attente : ${pendingOrders}. Voir les commandes à valider">
         <div class="kpi-icon strong">${I.cart}</div>
         <div class="card-title">Commandes en attente</div>
         <div class="val">${pendingOrders}</div>
@@ -3601,7 +3619,7 @@ function viewPatronDashboard(){
       </div>
     </div>
 
-    <div class="section-head">
+    <div class="section-head" id="file-validation" style="scroll-margin-top:80px;">
       <div><h2>File de validation</h2><div class="sub">Commandes fournisseurs et demandes de la cuisine — c'est vous qui décidez</div></div>
       <button class="btn btn-ghost btn-sm" onclick="setView('commandes')">Voir tout</button>
     </div>
