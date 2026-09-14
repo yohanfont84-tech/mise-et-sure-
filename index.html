@@ -52,6 +52,11 @@
   --info-tint:#E1EBF0;
   --good:#2E7D32;
   --good-tint:#E3F2E4;
+  /* Avertissement (ex : commande partiellement reçue) — seule teinte de statut sans paire de
+     variables : elle était écrite en dur et restait jaune clair en mode sombre, seule étiquette
+     à ne pas suivre le thème. */
+  --warn:#8A6100;
+  --warn-tint:#FFF3CD;
   --paper:#F7F7F4;
   --surface:#FFFFFF;
   --border:#E1E1DA;
@@ -76,6 +81,8 @@ html.theme-dark{
   --info-tint:#1C2B33;
   --good:#5FA968;
   --good-tint:#1E2E1F;
+  --warn:#E0B44A;
+  --warn-tint:#3A2E14;
   --paper:#121210;
   --surface:#1C1C19;
   --border:#333330;
@@ -403,6 +410,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .tag-zone{background:transparent;color:var(--muted);border:1px dashed var(--gray-300);}
 .tag-zone svg{width:11px;height:11px;opacity:.75;}
 .tag-red{background:var(--urgent-tint);color:var(--urgent);}
+.tag-warn{background:var(--warn-tint);color:var(--warn);}
 /* Pendants positif/informatif de .tag-red — même construction (fond teinté + texte plein),
    pour que le prochain badge "positif" ou "informatif" ait une classe toute prête plutôt que de
    réinventer une couleur isolée à chaque fois. */
@@ -414,13 +422,14 @@ tr.group-row:hover td{background:var(--gray-100);}
 
 .rail{display:flex;flex-direction:column;gap:12px;}
 .ticket{
-  position:relative;background:#FFFFFE;border:1px solid var(--border);border-radius:4px;
+  /* var(--surface) et non un blanc codé en dur : le ticket restait blanc éclatant en mode
+     sombre, seul élément lumineux au milieu d'une interface foncée. */
+  position:relative;background:var(--surface);border:1px solid var(--border);border-radius:4px;
   padding:13px 16px 13px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.06);
 }
-.ticket::before{
-  content:'';position:absolute;left:-1px;top:14px;width:10px;height:10px;border-radius:50%;
-  background:var(--paper);border:1px solid var(--border);
-}
+/* La pastille décorative qui simulait une perforation de ticket a été retirée : positionnée à
+   left:-1px, elle se retrouvait chevauchée par le liseré coloré de 3px des alertes urgentes,
+   donnant l'impression d'un élément mal aligné plutôt que d'un détail voulu. */
 .ticket.urgent{border-left:3px solid var(--urgent);}
 .ticket.normal{border-left:3px solid var(--gray-300);}
 .ticket.done{border-left:3px solid var(--gray-300); opacity:.7;}
@@ -1000,6 +1009,57 @@ body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
 .gap12{gap:12px;}
 .muted{color:var(--muted);}
 .small{font-size:12.5px;}
+
+/* ============================================================
+   FINITION DU MODE SOMBRE
+   Plusieurs éléments de l'application utilisent var(--black) comme fond plein — pertinent sur
+   la page publique et en mode clair, mais en mode sombre ce noir se confondait avec le fond
+   de page (--paper:#121210) et les cartes (--surface:#1C1C19) : pastilles d'icônes, étiquettes
+   pleines et carte "Informations clés" devenaient des blocs invisibles aux contours perdus.
+   On ne redéfinit pas --black globalement (la page publique, toujours claire, en dépend) :
+   seuls les éléments réellement concernés reçoivent une surface légèrement plus claire que le
+   fond, ce qui restaure le contraste sans changer l'intention visuelle.
+============================================================ */
+html.theme-dark .kpi-icon.strong,
+html.theme-dark .tag-strong,
+html.theme-dark .tile.urgent-tile .tile-icon{
+  /* #45453E : séparation de 1,77 avec la carte — nettement au-dessus du 1,48 que le site
+     utilise déjà pour ses bordures en mode sombre, tout en gardant un texte très lisible. */
+  background:#45453E;
+  color:var(--text);
+}
+/* Carte "Informations clés" : un encadré noir sur fond noir n'avait plus aucune limite
+   visible. Une surface plus claire que le fond de page lui rend sa présence de bloc distinct. */
+html.theme-dark .ai-box{
+  /* #343430 : séparation de 1,50 avec le fond de page, exactement le repère de contraste des
+     bordures du site — la carte redevient un bloc distinct sans jurer avec le reste. */
+  background:#343430;
+  border:1px solid var(--border);
+  color:var(--text);
+}
+html.theme-dark .ai-box .ai-head svg,
+html.theme-dark .ai-box .ai-title{ color:var(--text); }
+html.theme-dark .ai-dot{ background:var(--muted); }
+/* Contour de focus : var(--black) sur fond sombre était pratiquement invisible — or c'est le
+   seul repère d'une personne qui navigue au clavier. On passe sur la couleur de texte, lisible
+   dans les deux modes. */
+html.theme-dark .field input:focus,
+html.theme-dark .field select:focus,
+html.theme-dark .field textarea:focus{
+  outline-color:var(--text);
+  border-color:var(--text);
+}
+/* Le message flottant (toast) noir sur fond noir perdait ses contours : on lui rend une
+   bordure pour qu'il se détache nettement de la page. */
+html.theme-dark .toast{ background:#343430; color:var(--text); border:1px solid var(--border); }
+/* Le survol du bouton de suppression était figé en rose clair (#EAD0CB) : en mode sombre, un
+   bouton discret virait brusquement à une pastille claire au passage de la souris — un écart de
+   luminosité de 10 pour 1, et un texte rouge dessus à peine lisible (contraste 2,82). Ici, le
+   fond s'éclaircit modérément et le texte s'avive, ce qui porte la lisibilité à 4,69. */
+html.theme-dark .btn-danger:hover{ background:#4A2B25; color:#E68271; }
+/* Les traits pleins des documents (facture, récapitulatif) restaient noirs sur noir. */
+html.theme-dark .invoice-head,
+html.theme-dark .invoice-total-row{ border-color:var(--text); }
 </style>
 
 </head>
@@ -5142,7 +5202,7 @@ function orderStatusTag(o){
   let tag;
   if(s==='en_attente_validation') tag = `<span class="tag tag-neutral">En attente</span>`;
   else if(s==='validee') tag = `<span class="tag tag-neutral">Validée</span>`;
-  else if(s==='partiellement_recue') tag = `<span class="tag tag-subtle" style="background:#FFF3CD;color:#8A6100;">Partiellement reçue</span>`;
+  else if(s==='partiellement_recue') tag = `<span class="tag tag-warn">Partiellement reçue</span>`;
   else if(s==='livree') tag = `<span class="tag tag-strong">Livrée</span>`;
   else if(s==='refusee') tag = `<span class="tag tag-red">Refusée</span>`;
   else tag = `<span class="tag tag-subtle">${s}</span>`;
@@ -9452,7 +9512,7 @@ function buildHaccpReportHTML(period){
 
       <div class="invoice-meta-row">
         <div><div class="invoice-meta-label">Relevés de température</div><div class="invoice-meta-value">${tempLogs.length}</div></div>
-        <div><div class="invoice-meta-label">Non conformes</div><div class="invoice-meta-value" style="${anomalies.length?'color:#A93A2E;':''}">${anomalies.length}</div></div>
+        <div><div class="invoice-meta-label">Non conformes</div><div class="invoice-meta-value" style="${anomalies.length?'color:var(--urgent);':''}">${anomalies.length}</div></div>
         <div><div class="invoice-meta-label">Jours couverts</div><div class="invoice-meta-value">${daysWithTempLog}/${daysElapsed} (${coveragePct} %)</div></div>
         <div><div class="invoice-meta-label">Nettoyages enregistrés</div><div class="invoice-meta-value">${cleaningLogs.length}</div></div>
       </div>
