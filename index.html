@@ -397,6 +397,11 @@ tr.group-row:hover td{background:var(--gray-100);}
 .tag-strong{background:var(--black);color:#fff;}
 .tag-neutral{background:var(--surface);color:var(--text);border:1px solid var(--gray-300);}
 .tag-subtle{background:var(--gray-100);color:var(--gray-700);}
+/* Étiquette de lieu (zone de rangement) — volontairement distincte des étiquettes de
+   département : bord discontinu et icône de localisation, pour qu'on ne puisse pas les
+   confondre même quand les deux portent le même mot ("Cuisine"). */
+.tag-zone{background:transparent;color:var(--muted);border:1px dashed var(--gray-300);}
+.tag-zone svg{width:11px;height:11px;opacity:.75;}
 .tag-red{background:var(--urgent-tint);color:var(--urgent);}
 /* Pendants positif/informatif de .tag-red — même construction (fond teinté + texte plein),
    pour que le prochain badge "positif" ou "informatif" ait une classe toute prête plutôt que de
@@ -3716,7 +3721,7 @@ function viewPatronDashboard(){
       </div>
       <div class="card">
         <div class="card-title">Fournisseurs — fiabilité de livraison</div>
-        ${SUPPLIERS.length ? `<div class="chart-box sm"><canvas id="chartSuppliers"></canvas></div>` : emptyState('Ajoutez des fournisseurs pour voir apparaître ce graphique')}
+        ${SUPPLIERS.length ? `<div class="chart-box sm"><canvas id="chartSuppliers"></canvas></div>` : emptyState('Ajoutez des fournisseurs pour voir apparaître ce graphique', {label:'Ajouter un fournisseur', onclick:'openNewSupplierModal()'})}
       </div>
     </div>
   `;
@@ -3766,8 +3771,15 @@ function ticketDemande(r, viewerRole){
     </div>
   `;
 }
-function emptyState(msg){
-  return `<div class="empty">${I.check}<div>${msg}</div></div>`;
+// Un état vide peut proposer une action concrète plutôt que de constater seulement l'absence
+// de données. Le second argument est facultatif : tous les appels existants continuent de
+// fonctionner à l'identique, et seuls les endroits où une suite logique existe vraiment
+// reçoivent un bouton — proposer une action hors de propos serait pire que rien.
+function emptyState(msg, action){
+  const btn = action && action.label && action.onclick
+    ? `<div style="margin-top:12px;"><button class="btn btn-ghost btn-sm" onclick="${action.onclick}">${action.label}</button></div>`
+    : '';
+  return `<div class="empty">${I.check}<div>${msg}</div>${btn}</div>`;
 }
 
 function setStockFilter(f){ state.stockFilter = f; render(); }
@@ -3853,7 +3865,11 @@ function resetProductFilters(){
   render();
 }
 function zoneTagsFor(p){
-  return (p.zoneIds||[]).map(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z ? `<span class="tag tag-neutral" style="margin:2px;">${escapeHtml(z.name)}</span>` : ''; }).join('');
+  // Un lieu et un département sont deux notions différentes qui s'affichaient avec exactement
+  // la même pastille (tag-neutral) : un produit rangé en zone "Cuisine" et rattaché au
+  // département "Cuisine" montrait deux étiquettes identiques côte à côte, sans moyen de
+  // savoir laquelle disait quoi. L'icône de localisation lève l'ambiguïté d'un coup d'œil.
+  return (p.zoneIds||[]).map(zid=>{ const z=ZONES.find(zz=>zz.id===zid); return z ? `<span class="tag tag-zone" style="margin:2px;">${iconXs(I.mapPin)}${escapeHtml(z.name)}</span>` : ''; }).join('');
 }
 function ensureCollapsedCategories(){
   if(!state.collapsedCategories) state.collapsedCategories = {};
@@ -3944,7 +3960,7 @@ function viewStocks(){
           </tr>`).join('');
           return groupHeader + itemRows;
         }).join('')}
-      </table>` : emptyState(PRODUCTS.length ? 'Aucun produit ne correspond à ces critères' : 'Aucun produit ajouté pour le moment — créez votre premier produit')}
+      </table>` : emptyState(PRODUCTS.length ? 'Aucun produit ne correspond à ces critères' : 'Aucun produit ajouté pour le moment — créez votre premier produit', PRODUCTS.length ? null : {label:'Ajouter un produit', onclick:'openNewProductModal()'})}
     </div>
   `;
 }
@@ -4201,7 +4217,7 @@ function viewRecipes(){
       <div><h2>Fiches techniques</h2><div class="sub">Le coût de revient réel de chaque plat, calculé à partir de vos prix fournisseurs actuels</div></div>
       <button class="btn btn-primary" onclick="openNewRecipeModal()">${iconSm(I.plus)} Ajouter une fiche</button>
     </div>
-    ${RECIPES.length ? RECIPES.map(r=>renderRecipeCard(r)).join('') : emptyState("Aucune fiche technique pour le moment — ajoutez votre premier plat pour connaître son coût de revient réel.")}
+    ${RECIPES.length ? RECIPES.map(r=>renderRecipeCard(r)).join('') : emptyState("Aucune fiche technique pour le moment — ajoutez votre premier plat pour connaître son coût de revient réel.", {label:'Créer une fiche technique', onclick:'openNewRecipeModal()'})}
   `;
 }
 function renderRecipeCard(recipe){
@@ -5569,7 +5585,7 @@ function viewFournisseurs(){
             <button class="btn btn-primary btn-sm" style="flex:1;" onclick="openNewOrderModal('${s.id}')">Commander</button>
           </div>
         </div>
-      `;}).join('') : `<div style="grid-column:1/-1;">${emptyState('Aucun fournisseur ajouté pour le moment — créez votre premier fournisseur')}</div>`}
+      `;}).join('') : `<div style="grid-column:1/-1;">${emptyState('Aucun fournisseur ajouté pour le moment — créez votre premier fournisseur', {label:'Ajouter un fournisseur', onclick:'openNewSupplierModal()'})}</div>`}
     </div>
   `;
 }
