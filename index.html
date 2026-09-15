@@ -311,7 +311,10 @@ a{text-decoration:none;color:inherit;}
 }
 .btn svg{width:15px;height:15px;}
 .btn-primary{background:var(--accent);color:var(--accent-text);}
-.btn-primary:hover{background:#000;}
+/* Assombrit la couleur d'accent au lieu de forcer un noir pur : avec un thème coloré
+   (terracotta, vert...), survoler un bouton le faisait brutalement virer au noir, et en mode
+   sombre le bouton disparaissait dans le fond. Fonctionne avec n'importe quelle couleur. */
+.btn-primary:hover{filter:brightness(0.88);}
 .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);}
 .btn-ghost:hover{background:var(--paper);}
 .btn-danger{background:var(--urgent-tint);color:var(--urgent);}
@@ -476,11 +479,11 @@ tr.group-row:hover td{background:var(--gray-100);}
 .map-dot-new{background:#E08A2E;}
 .map-dot-producer{background:#2F9E44;}
 .font-style-grid{display:flex;gap:10px;flex-wrap:wrap;}
-.font-style-card{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 20px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
+.font-style-card{color:var(--text);display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 20px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
 .font-style-card:hover{border-color:var(--muted);}
 .font-style-card.selected{border-color:var(--accent);border-width:2px;}
 .color-theme-grid{display:flex;gap:10px;flex-wrap:wrap;}
-.color-theme-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
+.color-theme-card{color:var(--text);display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:border-color .15s ease;}
 .color-theme-card:hover{border-color:var(--muted);}
 .color-theme-card.selected{border-color:var(--accent);border-width:2px;}
 .color-theme-swatch{width:28px;height:28px;border-radius:50%;border:1px solid rgba(0,0,0,0.1);}
@@ -508,7 +511,12 @@ select{ max-width:100%; text-overflow:ellipsis; }
 
 .tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
 @media(max-width:900px){.tile-grid{grid-template-columns:repeat(2,1fr);}}
+/* color:var(--text) — une tuile est un <button> : sans couleur explicite, le navigateur
+   applique sa couleur par défaut (foncée), qui ne suit pas le thème. En mode sombre, les
+   libellés ("Commande urgente", "Voir le catalogue"...) s'affichaient donc en texte sombre
+   sur fond sombre, quasi illisibles. */
 .tile{
+  color:var(--text);
   background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 16px;
   display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;box-shadow:var(--shadow);
   border-bottom:3px solid transparent;
@@ -559,7 +567,7 @@ select{ max-width:100%; text-overflow:ellipsis; }
 .login-restaurant-tag{display:inline-flex;align-items:center;gap:6px;background:var(--paper);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px;}
 .login-restaurant-tag svg{width:12px;height:12px;}
 .login-person-list{display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto;padding-right:2px;}
-.login-person-row{display:flex;align-items:center;gap:12px;border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:11px 14px;text-align:left;}
+.login-person-row{color:var(--text);display:flex;align-items:center;gap:12px;border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:11px 14px;text-align:left;}
 .login-person-row:hover{border-color:var(--black);}
 .login-person-name{font-weight:700;font-size:13.5px;}
 .login-person-role{font-size:11.5px;color:var(--muted);}
@@ -1009,6 +1017,13 @@ body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
 .gap12{gap:12px;}
 .muted{color:var(--muted);}
 .small{font-size:12.5px;}
+
+/* Filet de sécurité : un <button> n'hérite pas de la couleur de texte de son parent, il prend
+   celle du navigateur — foncée, et insensible au thème. Chaque bouton stylé qui oubliait de
+   définir sa couleur devenait donc du texte sombre sur fond sombre. Cette règle leur fait
+   suivre le thème par défaut ; les boutons qui définissent leur propre couleur (btn-primary,
+   éléments sur fond noir...) restent prioritaires et ne sont pas affectés. */
+button{ color:inherit; }
 
 /* ============================================================
    FINITION DU MODE SOMBRE
