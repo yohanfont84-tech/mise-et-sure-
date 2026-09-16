@@ -1025,6 +1025,39 @@ body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
 .muted{color:var(--muted);}
 .small{font-size:12.5px;}
 
+/* ============================================================
+   CHAMPS DE SAISIE DE L'INVENTAIRE
+   Ces champs n'avaient aucun style : ils affichaient donc la bordure brute du navigateur
+   (carrée, noire, épaisse) et ses flèches natives, au milieu d'une interface aux angles
+   arrondis et aux bordures douces. Sur une page où l'on saisit des dizaines de valeurs à la
+   suite, c'était l'élément le plus répété et le moins soigné de tout le site.
+============================================================ */
+.inv-count-input{
+  width:112px;padding:8px 10px;
+  border:1px solid var(--border);border-radius:8px;
+  background:var(--surface);color:var(--text);
+  font-family:inherit;font-size:14px;font-weight:600;
+  /* Chiffres alignés à droite : en parcourant la colonne, les unités, dizaines et centaines
+     se superposent verticalement, ce qui rend les écarts lisibles d'un coup d'œil. */
+  text-align:right;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+/* Les flèches natives (haut/bas) sont masquées : elles occupaient de la place, s'affichaient
+   différemment selon le navigateur, et n'ont aucun intérêt pour saisir un poids au clavier. */
+.inv-count-input::-webkit-outer-spin-button,
+.inv-count-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.inv-count-input{-moz-appearance:textfield;appearance:textfield;}
+.inv-count-input:hover{border-color:var(--gray-400);}
+.inv-count-input:focus{
+  outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);
+}
+/* Une valeur déjà saisie se distingue visuellement de celles qui restent à remplir — repère
+   utile quand on compte une réserve entière et qu'on reprend après une interruption. */
+.inv-count-input:not(:placeholder-shown){
+  border-color:var(--accent);
+  box-shadow:inset 3px 0 0 var(--accent);
+}
+
 /* Filet de sécurité : un <button> n'hérite pas de la couleur de texte de son parent, il prend
    celle du navigateur — foncée, et insensible au thème. Chaque bouton stylé qui oubliait de
    définir sa couleur devenait donc du texte sombre sur fond sombre. Cette règle leur fait
@@ -2011,11 +2044,13 @@ const PRICING_FAQ = [
   { q:"Le coût de revient par plat et l'inventaire sont-ils aussi inclus partout ?", a:"Oui, comme le suivi HACCP — aucun des deux n'est réservé à un forfait supérieur. Les fiches techniques calculent le coût matière et la marge de chaque plat à partir de vos produits (activées par défaut) ; l'inventaire est un relevé de stock simple, sans rapprochement automatique (désactivé par défaut, comme HACCP). Chacun se règle indépendamment dans Paramètres." },
 ];
 const SITE_FEATURES = [
-  { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, un seul bon de commande." },
-  { icon:'team', title:'Un accès par personne', desc:"Patron, manager, cuisine, salle : chacun son espace, ses permissions, son mot de passe." },
-  { icon:'chef', title:'Coût de revient par plat', desc:"Calculé automatiquement à partir de vos produits — marge et food cost inclus, sans tableur à tenir à jour." },
-  { icon:'thermometer', title:'Suivi HACCP inclus', desc:"Numéro de lot, relevés de température, suivi du nettoyage — à tous les forfaits, activable en un clic." },
-  { icon:'box', title:'Inventaire simple', desc:"Un relevé de stock — quantité, date, qui l'a fait. Sans usine à gaz, activable en un clic." },
+  { icon:'cart', title:'Commandes centralisées', desc:"Regroupez vos besoins par fournisseur et envoyez une seule commande, un seul bon de commande. Le site vous rappelle ce que vous aviez pris la dernière fois, et quand." },
+  { icon:'alertTriangle', title:'Écarts de livraison repérés', desc:"À la réception, le site compare ce qui a été livré et facturé à ce qui était commandé — une quantité manquante ou un prix qui a bougé ressort immédiatement." },
+  { icon:'team', title:'Un accès par personne', desc:"Patron, manager, cuisine, salle : chacun son espace, ses permissions, son mot de passe. Vous décidez qui peut commander seul, et jusqu'à quel montant." },
+  { icon:'chef', title:'Coût de revient par plat', desc:"Calculé automatiquement à partir de vos produits — marge et food cost inclus, sans tableur à tenir à jour. Une préparation maison peut servir d'ingrédient à une autre fiche." },
+  { icon:'thermometer', title:'Suivi HACCP inclus', desc:"Numéro de lot, relevés de température, suivi du nettoyage — à tous les forfaits, activable en un clic. Compte-rendu téléchargeable en cas de contrôle." },
+  { icon:'box', title:'Inventaire simple', desc:"Un relevé de stock — quantité, date, qui l'a fait. Regroupé par catégorie, enregistrable catégorie par catégorie, et téléchargeable en PDF pour compter la réserve à la main." },
+  { icon:'settings', title:'À votre image', desc:"Thème de couleurs, police, logo et photo de votre établissement : l'espace de votre équipe ressemble à votre maison, pas à un logiciel de plus. Mode sombre inclus." },
   { icon:'building', title:'Multi-établissements', desc:"Gérez plusieurs restaurants depuis un même compte, sans jamais mélanger les données." },
 ];
 
@@ -4171,7 +4206,7 @@ function viewInventaire(){
               return `<tr class="tr-hover inv-row" data-category="${escapeHtml(g.category)}" data-search="${escapeHtml((p.name+' '+(p.cat||'')+' '+(p.packaging||'')).toLowerCase())}">
                 <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}${p.packaging?`<div class="small muted" style="font-weight:400;">${escapeHtml(p.packaging)}</div>`:''}</td>
                 <td data-label="Dernier relevé">${lastText}</td>
-                <td data-label="Nouveau relevé"><input type="number" min="0" step="${discreteUnit?'1':'0.1'}" placeholder="Ex : ${discreteUnit?'10':'2.5'}" data-inv-product-id="${p.id}" data-inv-discrete="${discreteUnit?'1':'0'}" class="inv-count-input" oninput="updateInventoryPendingLabel()" style="width:110px;background:var(--surface);color:var(--text);"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
+                <td data-label="Nouveau relevé"><input type="number" min="0" step="${discreteUnit?'1':'0.1'}" placeholder="Ex : ${discreteUnit?'10':'2.5'}" data-inv-product-id="${p.id}" data-inv-discrete="${discreteUnit?'1':'0'}" class="inv-count-input" oninput="updateInventoryPendingLabel()"> <span class="small muted">${escapeHtml(p.unit||'')}</span></td>
               </tr>`;
             }).join('');
             return groupHeader + itemRows;
