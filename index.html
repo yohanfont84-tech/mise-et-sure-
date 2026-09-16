@@ -257,10 +257,17 @@ a{text-decoration:none;color:inherit;}
 .content{padding:26px 28px 60px 28px;flex:1;min-width:0;}
 
 .demo-banner{
+  /* La couleur du texte est calculée à partir du fond réellement appliqué (voir
+     accentTextColor) : en mode sombre, la couleur d'accent devient claire, et un texte blanc
+     forcé devenait illisible sur ce fond clair. Les valeurs ci-dessous ne servent que de repli
+     si aucune couleur d'accent n'a encore été appliquée. */
   background:var(--black);color:#EDEDE8;
   padding:7px 24px;font-size:11.5px;display:flex;align-items:center;gap:8px;
 }
-.demo-banner b{color:#fff;}
+/* Le gras hérite de la couleur du bandeau au lieu d'être figé en blanc — c'est ce blanc forcé
+   qui rendait « Vous explorez une démo publique » illisible sur fond clair en mode sombre. */
+.demo-banner b{color:inherit;}
+.demo-banner a{color:inherit;}
 
 .grid{display:grid;gap:18px;}
 .grid-4{grid-template-columns:repeat(4,1fr);}
