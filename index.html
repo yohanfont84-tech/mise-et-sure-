@@ -290,15 +290,21 @@ a{text-decoration:none;color:inherit;}
 .kpi{position:relative;overflow:hidden;}
 /* L'icône du coin est positionnée en absolu par-dessus la carte : sans cette réserve d'espace,
    un titre long ("Achats fournisseurs (historique)") passait dessous et semblait tronqué. */
-.kpi .card-title{padding-right:46px;}
+/* Espacement resserré et réserve d'icône ajustée : les quatre titres passaient tous sur deux
+   lignes, ce qui donnait un bloc irrégulier en haut du tableau de bord. */
+.kpi .card-title{padding-right:42px;letter-spacing:.35px;}
 /* Une carte du tableau de bord ne se met en avant que lorsqu'elle appelle vraiment une action
    (au moins une demande ou une commande en attente). Les quatre cartes avaient jusqu'ici
    exactement le même poids visuel : l'œil ne savait pas où se poser, et la seule carte qui
    demandait une décision se noyait au milieu des chiffres purement informatifs. Le liseré
    reprend la couleur d'accent de l'établissement, donc il suit le thème choisi. */
 .kpi.kpi-action{
+  /* Mise en avant symétrique : la version précédente ajoutait une barre pleine de 3px sur le
+     seul bord gauche, à l'intérieur d'une carte par ailleurs parfaitement symétrique — d'où
+     une impression de cadre mal centré plutôt que de mise en avant voulue. Ici, un fond
+     légèrement teinté et une bordure d'accent traitent la carte entière, de façon homogène. */
   border-color:var(--accent);
-  box-shadow:inset 3px 0 0 var(--accent), var(--shadow);
+  background:var(--surface-subtle);
 }
 .kpi.kpi-action .val{ color:var(--accent); }
 .kpi .val{font-family:var(--heading-font);font-size:30px;font-weight:600;margin:6px 0 4px 0;}
@@ -3762,7 +3768,7 @@ function viewPatronDashboard(){
     <div class="grid grid-4">
       <div class="card kpi">
         <div class="kpi-icon">${I.invoice}</div>
-        <div class="card-title">Achats fournisseurs (historique)</div>
+        <div class="card-title">Achats fournisseurs</div>
         ${financialsHidden()
           ? `<div class="val">${ORDERS.length}</div><div class="delta good">commande${ORDERS.length>1?'s':''} au total</div>`
           : `<div class="val">${achatsTotal.toLocaleString('fr-FR',{maximumFractionDigits:0})} €</div><div class="delta good">${ORDERS.length} commande${ORDERS.length>1?'s':''} au total</div>`}
