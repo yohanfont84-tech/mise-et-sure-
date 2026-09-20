@@ -520,6 +520,10 @@ tr.group-row:hover td{background:var(--gray-100);}
      on garde une hauteur fixe généreuse mais bornée. */
   .supplier-map-canvas{height:60vh;min-height:380px;}
 }
+/* Ligne entière cliquable : le curseur et la surbrillance au survol indiquent qu'on peut
+   cliquer n'importe où, sans avoir à viser le petit bouton en bout de ligne. */
+.row-clickable{cursor:pointer;}
+.row-clickable:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
 .map-search-here-btn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:999;box-shadow:0 3px 14px rgba(0,0,0,0.25);white-space:nowrap;}
 .leaflet-control-layers{border-radius:8px !important;box-shadow:0 2px 10px rgba(0,0,0,0.2) !important;font-family:'Inter',sans-serif;}
 .leaflet-popup-content-wrapper{border-radius:10px !important;}
@@ -4025,7 +4029,7 @@ function viewPatronDashboard(){
         <div class="card-title">Historique des achats — commandes récentes</div>
         ${ORDERS.length ? `<table>
           <tr><th>Réf.</th><th>Fournisseur</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th></tr>
-          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td></tr>`).join('')}
+          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la commande" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td></tr>`).join('')}
         </table>` : emptyState('Aucun achat pour le moment')}
       </div>
       <div class="card">
@@ -5389,7 +5393,11 @@ function viewCommandes(role){
     <div class="card">
       ${rows.length ? `<table class="stack-mobile">
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th><th>Date</th><th></th></tr>
-        ${rows.map(o=>`<tr class="tr-hover">
+        ${rows.map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0"
+            title="Voir le détail de la commande"
+            aria-label="Commande ${o.id} — voir le détail"
+            onclick="openOrderRowDetail(event, '${o.id}')"
+            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}">
           <td data-label="Réf." class="mono">${o.id}</td>
           <td data-label="Fournisseur" style="font-weight:600;">${supplierName(o.supplier)}</td>
           <td data-label="Contenu" class="muted small">${escapeHtml(o.items)}</td>
@@ -5434,6 +5442,16 @@ function renderBasketCard(supplierId, role){
       </div>
     </div>
   `;
+}
+// Ouvre le détail d'une commande depuis n'importe quel endroit de sa ligne. Le petit bouton
+// en bout de ligne obligeait à viser une cible minuscule, tout à droite du tableau, alors que
+// consulter une commande est l'action la plus courante de cette page.
+// Le garde-fou : si le clic vise un bouton, un lien ou un champ de la ligne (Valider, PDF,
+// Dupliquer, Supprimer...), on laisse cette action faire son travail sans ouvrir le détail
+// par-dessus.
+function openOrderRowDetail(event, orderId){
+  if(event && event.target && event.target.closest('button, a, input, select, label')) return;
+  openOrderDocumentModal(orderId);
 }
 function orderRowActions(o, role){
   const canDuplicate = role==='patron' && !o.custom && (o.lineItems||[]).some(li=>li.productId);
@@ -7994,7 +8012,7 @@ function viewLivraisons(){
     <div class="card">
       <table>
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th><th></th></tr>
-        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td><td><button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')">${iconXs(I.doc)} Voir le détail</button></td></tr>`).join('')}
+        ${recent.map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la réception" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td><td><button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')">${iconXs(I.doc)} Voir le détail</button></td></tr>`).join('')}
         ${recent.length===0?`<tr><td colspan="6"><div class="empty">Aucune réception récente</div></td></tr>`:''}
       </table>
     </div>
