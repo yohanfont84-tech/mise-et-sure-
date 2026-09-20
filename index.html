@@ -1035,6 +1035,60 @@ body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
 .muted{color:var(--muted);}
 .small{font-size:12.5px;}
 
+
+/* ============================================================
+   DÉFILEMENTS INDÉPENDANTS + MENU RÉDUCTIBLE (ordinateur uniquement)
+   Avant : toute la page défilait d'un bloc, donc descendre dans une longue liste emportait
+   aussi le menu latéral — il fallait tout remonter pour changer de page. Désormais le menu et
+   la zone de contenu ont chacun leur propre défilement : l'un ne bouge plus quand on fait
+   défiler l'autre.
+   La règle est limitée à #app.app-shell, c'est-à-dire l'application connectée : la page
+   publique et l'écran de connexion vivent dans le même conteneur et doivent, eux, continuer
+   de défiler normalement sur toute leur hauteur.
+============================================================ */
+@media(min-width:761px){
+  #app.app-shell{height:100vh;min-height:100vh;overflow:hidden;}
+  #app.app-shell .sidebar{
+    position:static;height:100vh;min-height:0;
+    overflow-y:auto;overscroll-behavior:contain;
+  }
+  #app.app-shell .main{height:100vh;min-height:0;overflow:hidden;}
+  /* La barre du haut n'a plus besoin d'être collante : elle ne défile plus, puisque seul le
+     contenu en dessous bouge. */
+  #app.app-shell .topbar{position:static;flex-shrink:0;}
+  #app.app-shell .content{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+
+  /* --- Menu réduit : rendre l'écran au contenu --- */
+  #app.app-shell .sidebar{transition:width .22s ease;}
+  body.sidebar-collapsed #app.app-shell .sidebar{width:68px;}
+  body.sidebar-collapsed #app.app-shell .sidebar .brand-name,
+  body.sidebar-collapsed #app.app-shell .sidebar .brand-sub,
+  body.sidebar-collapsed #app.app-shell .role-tag,
+  body.sidebar-collapsed #app.app-shell .nav-section-label,
+  body.sidebar-collapsed #app.app-shell .nav-item > span,
+  body.sidebar-collapsed #app.app-shell .sidebar-foot{display:none;}
+  body.sidebar-collapsed #app.app-shell .nav-item{justify-content:center;padding:10px 0;position:relative;}
+  body.sidebar-collapsed #app.app-shell .brand{justify-content:center;padding-left:0;padding-right:0;}
+  body.sidebar-collapsed #app.app-shell .nav{padding-left:10px;padding-right:10px;}
+  /* Le compteur (demandes en attente) reste visible une fois réduit, sous forme de pastille
+     dans le coin : le masquer ferait disparaître une information qui appelle une action. */
+  body.sidebar-collapsed #app.app-shell .nav-item .nav-badge{
+    position:absolute;top:4px;right:6px;min-width:0;padding:0 4px;font-size:9.5px;line-height:14px;
+  }
+}
+/* Sur téléphone le menu est déjà un panneau qui se superpose : la réduction n'a pas de sens
+   et la règle ne s'y applique pas. */
+@media(max-width:760px){
+  body.sidebar-collapsed #app.app-shell .sidebar{width:250px;}
+  .sidebar-collapse-btn{display:none;}
+}
+@media(min-width:761px){
+  /* Le bouton pivote pour indiquer le sens de l'action : replier vers la gauche, déplier vers
+     la droite. Un seul repère visuel, pas deux icônes à maintenir. */
+  .sidebar-collapse-btn svg{transition:transform .22s ease;}
+  body.sidebar-collapsed .sidebar-collapse-btn svg{transform:rotate(180deg);}
+}
+
 /* ============================================================
    RÉVÉLATION AU DÉFILEMENT (page publique)
    Les sections apparaissent quand elles entrent dans l'écran, au lieu d'être toutes déjà là.
@@ -3448,6 +3502,11 @@ function renderShell(){
     <div class="topbar">
       <div class="topbar-left">
         <button class="menu-toggle" onclick="toggleSidebar()" title="Menu" aria-label="Menu">${I.menu}</button>
+        <!-- Réduction du menu : visible sur ordinateur seulement. Sur téléphone le menu est
+             déjà un panneau escamotable, ce bouton ferait doublon avec celui de gauche. -->
+        <button class="btn btn-ghost btn-sm sidebar-collapse-btn" id="sidebar-collapse-btn"
+                onclick="toggleSidebarCollapsed()"
+                title="Réduire le menu" aria-label="Réduire le menu" aria-expanded="true">${iconSm(I.menu)}</button>
         <div class="page-title">${(NAV[state.role].find(n=>n.id===state.view)||{}).label || ''}</div>
       </div>
       <div class="topbar-right">
@@ -3838,6 +3897,29 @@ function armScrollReveals(){
     window.addEventListener('scroll', onScroll, { passive:true });
     window.addEventListener('resize', onScroll, { passive:true });
   }
+}
+// Réduction du menu latéral : rend la largeur du menu au contenu, en ne gardant que les
+// icônes. Le choix est retenu d'une session à l'autre, parce que c'est une préférence de
+// confort de travail, pas un réglage qu'on veut refaire à chaque connexion.
+const SIDEBAR_COLLAPSE_KEY = 'mise_et_sure_sidebar_collapsed';
+function applyStoredSidebarCollapse(){
+  try{
+    document.body.classList.toggle('sidebar-collapsed', localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1');
+  }catch(e){ /* stockage indisponible : on reste simplement déplié */ }
+}
+function toggleSidebarCollapsed(){
+  const collapsed = !document.body.classList.contains('sidebar-collapsed');
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  try{ localStorage.setItem(SIDEBAR_COLLAPSE_KEY, collapsed ? '1' : '0'); }catch(e){}
+  const btn = document.getElementById('sidebar-collapse-btn');
+  if(btn){
+    const label = collapsed ? 'Afficher le menu' : 'Réduire le menu';
+    btn.title = label; btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-expanded', String(!collapsed));
+  }
+  // Les graphiques se dimensionnent sur la largeur disponible : sans ce redessin ils gardent
+  // l'ancienne largeur et laissent un vide à droite après la réduction.
+  requestAnimationFrame(()=>{ try{ drawCharts(); }catch(e){} });
 }
 function scrollToValidationQueue(){
   const el = document.getElementById('file-validation');
@@ -11834,6 +11916,11 @@ function dismissCookieBanner(){
 }
 function render(){
   try{
+    // Remise à zéro avant chaque affichage : seule la branche "application connectée" repose
+    // la classe app-shell. Sans ce retrait, revenir de l'application vers la page publique
+    // laisserait le conteneur en hauteur d'écran fixe, et la page publique ne défilerait plus.
+    const appRoot = document.getElementById('app');
+    if(appRoot) appRoot.className = '';
     renderInner();
   } catch(err){
     // Filet de sécurité : si un affichage plante pour une raison imprévue, on montre un message
@@ -11928,6 +12015,11 @@ function renderInner(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   if(resto) document.title = resto.name + ' — Mise & Sûre';
   const {sidebarHtml, topbarHtml} = renderShell();
+  // Marque le conteneur comme "application connectée" : c'est ce qui active les défilements
+  // indépendants du menu et du contenu. La page publique et l'écran de connexion partagent le
+  // même conteneur et doivent, eux, défiler d'un bloc — d'où le retrait systématique ailleurs.
+  document.getElementById('app').className = 'app-shell';
+  applyStoredSidebarCollapse();
   document.getElementById('app').innerHTML = `
     ${sidebarHtml}
     <div class="main">
