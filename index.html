@@ -5441,6 +5441,12 @@ function orderRowActions(o, role){
   const pdfBtn = (o.supplier && ['patron','manager'].includes(role) && !soloModeEnabled()) ? `<button class="btn btn-ghost btn-sm" onclick="openOrderPdfOptions('${o.id}')" title="Bon de commande PDF">${iconXs(I.doc)} PDF</button>` : '';
   if(role==='patron' && o.status==='en_attente_validation') return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openEditOrderModal('${o.id}')">Modifier</button><button class="btn btn-primary btn-sm" onclick="validateOrder('${o.id}')">Valider</button><button class="btn btn-danger btn-sm" onclick="refuseOrder('${o.id}')">Refuser</button></div>`;
   if((role==='manager' || role==='cuisine' || role==='patron') && (o.status==='validee' || o.status==='partiellement_recue')) return `<div class="flex gap8">${dupBtn}${pdfBtn}<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}')">${o.status==='partiellement_recue'?'Compléter la réception':'Marquer reçue'}</button></div>`;
+  // Commande déjà réceptionnée : patron et manager peuvent revenir dessus. Une erreur de
+  // saisie à la livraison, un prix mal relevé ou un bon de livraison oublié restaient sinon
+  // figés dans l'historique, et faussaient durablement les totaux et les statistiques.
+  if(['patron','manager'].includes(role) && ['livree','partiellement_recue'].includes(o.status)){
+    return `<div class="flex gap8">${pdfBtn}${dupBtn}<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}', true)" title="Corriger les quantités, les prix facturés ou le bon de livraison">${iconXs(I.copy)} Corriger</button></div>`;
+  }
   return `<div class="flex gap8">${pdfBtn}${dupBtn}</div>`;
 }
 async function duplicateOrder(id){
@@ -8208,12 +8214,25 @@ function toggleReceiveLine(id, idx){
   if(note) note.style.display = checkbox && checkbox.checked ? 'none' : '';
   updateReceiveSummary(id);
 }
-function openReceiveOrderModal(id){
-  if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
+// correcting=true : on revient sur une réception déjà confirmée. Une erreur de saisie à la
+// livraison (mauvaise quantité, prix mal relevé) ou un bon de livraison oublié ne devait pas
+// rester figé pour toujours — sans cela, la seule issue était de vivre avec un chiffre faux
+// dans l'historique et les statistiques.
+function openReceiveOrderModal(id, correcting){
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
-  if(!['validee','partiellement_recue'].includes(o.status)){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
+  if(correcting){
+    // Corriger touche aux montants déjà enregistrés : c'est un acte de gestion, réservé au
+    // patron et au manager. La cuisine constate la livraison, elle ne révise pas les prix.
+    if(!['patron','manager'].includes(state.role)){ toast('Seuls le patron et le manager peuvent corriger une réception','alert'); return; }
+    if(!['livree','partiellement_recue'].includes(o.status)){ toast("Cette commande n'a pas encore été réceptionnée", 'alert'); return; }
+  } else {
+    if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
+    if(!['validee','partiellement_recue'].includes(o.status)){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
+  }
   const hideFin = financialsHidden();
-  const isCompleting = o.status==='partiellement_recue';
+  // En correction, toutes les lignes redeviennent modifiables : on revient justement sur ce
+  // qui avait été saisi, y compris les lignes déjà validées.
+  const isCompleting = !correcting && o.status==='partiellement_recue';
   const lines = (o.lineItems||[]).map((li,idx)=>{
     const p = li.productId ? PRODUCTS.find(x=>x.id===li.productId) : null;
     const name = p ? p.name : (li.name || 'Article');
@@ -8236,12 +8255,12 @@ function openReceiveOrderModal(id){
         <div id="rcv-fields-${idx}">
           <div class="field-row">
             <div class="field"><label>Quantité commandée</label><input value="${li.qty}" disabled style="opacity:0.6;"></div>
-            <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${li.qty}" oninput="updateReceiveSummary('${id}')"></div>
+            <div class="field"><label>Quantité reçue</label><input type="number" step="0.01" id="rcv-qty-${idx}" value="${correcting && li.qtyReceived!=null ? li.qtyReceived : li.qty}" oninput="updateReceiveSummary('${id}')"></div>
           </div>
           ${hideFin ? '' : `
           <div class="field-row">
             <div class="field"><label>Prix attendu (€)</label><input value="${li.price!=null?Number(li.price).toFixed(2):'—'}" disabled style="opacity:0.6;"></div>
-            <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${li.price!=null?Number(li.price):0}" oninput="updateReceiveSummary('${id}')"></div>
+            <div class="field"><label>Prix facturé (€)</label><input type="number" step="0.01" id="rcv-price-${idx}" value="${correcting && li.priceReceived!=null ? Number(li.priceReceived) : (li.price!=null?Number(li.price):0)}" oninput="updateReceiveSummary('${id}')"></div>
           </div>`}
           ${(RESTOS.find(r=>r.id===state.resto)||{}).haccpEnabled ? `
           <div class="field"><label>Numéro de lot (facultatif)</label><input id="rcv-lot-${idx}" value="${escapeHtml(li.lotNumber||'')}" placeholder="Ex : L2026-0847"></div>
@@ -8254,8 +8273,8 @@ function openReceiveOrderModal(id){
   const expectedTotal = (o.lineItems||[]).filter(li=>!(isCompleting && li.received===true)).reduce((sum,li)=>sum+(Number(li.qty)||0)*(Number(li.price)||0),0);
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
-    <h3>${isCompleting ? 'Compléter la réception' : 'Réceptionner'} la commande ${o.id}</h3>
-    <div class="modal-sub">${isCompleting ? "Certaines lignes ont déjà été reçues — indiquez ce qui vient d'arriver parmi le reste." : `Vérifiez ce qui a vraiment été livré${hideFin?'':' et facturé'} — les écarts éventuels seront signalés automatiquement.`} Si un produit n'est pas encore arrivé, décochez-le : la commande restera ouverte pour le reste.</div>
+    <h3>${correcting ? 'Corriger la réception' : isCompleting ? 'Compléter la réception' : 'Réceptionner'} — commande ${o.id}</h3>
+    <div class="modal-sub">${correcting ? "Corrigez ce qui a été saisi à la réception : quantités, prix facturés, ou photo du bon de livraison. Les totaux et les écarts sont recalculés." : isCompleting ? "Certaines lignes ont déjà été reçues — indiquez ce qui vient d'arriver parmi le reste." : `Vérifiez ce qui a vraiment été livré${hideFin?'':' et facturé'} — les écarts éventuels seront signalés automatiquement.`} Si un produit n'est pas encore arrivé, décochez-le : la commande restera ouverte pour le reste.</div>
     <div style="max-height:320px;overflow-y:auto;">${lines || emptyState('Aucun article détaillé sur cette commande')}</div>
     ${hideFin ? '' : `
     <div id="rcv-summary" style="margin:14px 0;padding:12px 14px;border-radius:8px;background:var(--surface-subtle,rgba(0,0,0,0.03));">
@@ -8265,13 +8284,13 @@ function openReceiveOrderModal(id){
     </div>`}
     <div class="field">
       <label>Bon de livraison / facture (facultatif)</label>
-      <div id="rcv-photo-preview" style="margin-bottom:8px;"></div>
+      <div id="rcv-photo-preview" style="margin-bottom:8px;" ${correcting && o.deliveryNotePhotoUrl ? `data-value="${o.deliveryNotePhotoUrl}"` : ''}>${correcting && o.deliveryNotePhotoUrl ? `<img src="${o.deliveryNotePhotoUrl}" alt="Bon de livraison déjà joint" style="max-width:180px;width:100%;border:1px solid var(--border);border-radius:8px;display:block;"><div class="small muted" style="margin-top:4px;">Photo déjà jointe — en ajouter une nouvelle la remplacera.</div>` : ''}</div>
       <button type="button" class="btn btn-ghost btn-block" onclick="document.getElementById('rcv-scan-input').click()">${iconSm(I.camera)} Scanner un document</button>
       <input type="file" id="rcv-scan-input" accept="image/*" capture="environment" style="display:none;" onchange="handleDocumentScan(this,'rcv')">
       <div class="small muted" style="margin-top:6px;">Ouvre directement l'appareil photo — posez le document bien à plat, dans un endroit lumineux.</div>
     </div>
     ${hideFin ? '' : `<label class="flex center gap8" style="margin:10px 0 16px 0;"><input type="checkbox" id="rcv-update-catalog" checked> Mettre à jour le prix au catalogue si un prix facturé diffère</label>`}
-    <button class="btn btn-primary btn-block" onclick="confirmReceiveOrder('${id}')">Confirmer la réception</button>
+    <button class="btn btn-primary btn-block" onclick="confirmReceiveOrder('${id}')">${correcting ? 'Enregistrer la correction' : 'Confirmer la réception'}</button>
   `);
 }
 async function confirmReceiveOrder(id){
