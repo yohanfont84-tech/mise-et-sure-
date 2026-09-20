@@ -93,7 +93,11 @@ html.theme-dark{
   --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
 }
 *{box-sizing:border-box;}
-html,body{margin:0;padding:0;overflow-x:hidden;max-width:100%;}
+/* 'clip' plutôt que 'hidden' : hidden seul crée un conteneur de défilement, si bien qu'une
+   décoration qui dépasse d'un pixel permet encore de faire glisser la page latéralement au
+   doigt. 'clip' coupe sans rendre la zone défilable ; 'hidden' reste en repli pour les
+   navigateurs plus anciens. */
+html,body{margin:0;padding:0;overflow-x:hidden;overflow-x:clip;max-width:100%;}
 body{
   font-family:'Inter',sans-serif;
   background:var(--paper);
@@ -1030,6 +1034,35 @@ body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
 .gap12{gap:12px;}
 .muted{color:var(--muted);}
 .small{font-size:12.5px;}
+
+/* ============================================================
+   RÉVÉLATION AU DÉFILEMENT (page publique)
+   Les sections apparaissent quand elles entrent dans l'écran, au lieu d'être toutes déjà là.
+   Le décalage entre éléments voisins est posé par le script au moment de la révélation puis
+   retiré : une règle CSS de décalage resterait active ensuite et rendrait les survols mous.
+============================================================ */
+.reveal{
+  opacity:0;transform:translateY(16px);
+  transition:opacity .65s cubic-bezier(.22,.61,.36,1), transform .65s cubic-bezier(.22,.61,.36,1);
+  will-change:opacity, transform;
+}
+.reveal.revealed{opacity:1;transform:none;}
+/* Une fois révélé, l'élément n'a plus besoin d'être promu en couche séparée : le relâcher
+   évite de garder inutilement de la mémoire graphique sur une longue page. */
+.reveal.reveal-done{will-change:auto;}
+
+/* Mouvement réduit : réglage système de qui est gêné par les animations. On neutralise les
+   durées sans jamais écrire 'transform:none' globalement, ce qui casserait les positions
+   d'éléments qui s'appuient sur une transformation (menu latéral, modales, tuiles). */
+@media (prefers-reduced-motion: reduce){
+  .reveal{opacity:1;transform:none;transition:none;}
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+    scroll-behavior:auto!important;
+  }
+}
 
 /* ============================================================
    CHAMPS DE SAISIE DE L'INVENTAIRE
@@ -3751,6 +3784,61 @@ function onboardingChecklist(){
 }
 // Amène directement à la file de validation depuis les cartes de résumé du tableau de bord.
 // Défilement doux plutôt qu'un saut brutal, pour que la personne garde le fil de la page.
+// Révélation au défilement de la page publique. Un seul observateur pour toute la page :
+// chaque élément marqué .reveal apparaît quand il entre dans l'écran, avec un léger décalage
+// entre voisins d'un même groupe. Le décalage est posé ici puis retiré une fois l'animation
+// finie — laissé en CSS, il rendrait les survols mous pendant toute la vie de la page.
+let REVEAL_OBSERVER = null;
+function armScrollReveals(){
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const items = document.querySelectorAll('.reveal:not(.revealed)');
+  if(!items.length) return;
+  // Mouvement réduit : on montre tout immédiatement, sans animation ni observateur.
+  if(reduced){ items.forEach(el=>el.classList.add('revealed','reveal-done')); return; }
+  if(!REVEAL_OBSERVER){
+    REVEAL_OBSERVER = new IntersectionObserver((entries)=>{
+      entries.forEach(entry=>{
+        if(!entry.isIntersecting) return;
+        const el = entry.target;
+        const idx = Number(el.dataset.revealIndex || 0);
+        el.style.transitionDelay = Math.min(idx, 6) * 70 + 'ms';
+        el.classList.add('revealed');
+        el.addEventListener('transitionend', ()=>{
+          el.style.transitionDelay = '';
+          el.classList.add('reveal-done');
+        }, { once:true });
+        REVEAL_OBSERVER.unobserve(el);
+      });
+    }, { threshold:0.12, rootMargin:'0px 0px -40px 0px' });
+  }
+  items.forEach(el=>REVEAL_OBSERVER.observe(el));
+  // Filet de sécurité contre le défilement rapide : quand on saute d'un coup vers le bas
+  // (molette rapide, touche Fin, lien d'ancrage), l'observateur ne reçoit aucun signal pour
+  // les éléments survolés au passage — ils resteraient invisibles pour de bon. Ce balayage
+  // révèle tout ce qui se trouve déjà au-dessus du bas de l'écran.
+  if(!armScrollReveals._sweepArmed){
+    armScrollReveals._sweepArmed = true;
+    let pending = false;
+    const sweep = () => {
+      pending = false;
+      const rest = document.querySelectorAll('.reveal:not(.revealed)');
+      if(!rest.length) return;
+      rest.forEach(el=>{
+        if(el.getBoundingClientRect().top < window.innerHeight){
+          el.classList.add('revealed');
+          el.addEventListener('transitionend', ()=>{
+            el.style.transitionDelay = '';
+            el.classList.add('reveal-done');
+          }, { once:true });
+          if(REVEAL_OBSERVER) REVEAL_OBSERVER.unobserve(el);
+        }
+      });
+    };
+    const onScroll = () => { if(!pending){ pending = true; requestAnimationFrame(sweep); } };
+    window.addEventListener('scroll', onScroll, { passive:true });
+    window.addEventListener('resize', onScroll, { passive:true });
+  }
+}
 function scrollToValidationQueue(){
   const el = document.getElementById('file-validation');
   if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
@@ -11010,7 +11098,7 @@ function renderMarketingPage(){
 
       <section class="site-showcase">
         ${SITE_SHOWCASE.map((s,i)=>`
-          <div class="showcase-block ${i%2===1?'reverse':''}">
+          <div class="showcase-block reveal ${i%2===1?'reverse':''}" data-reveal-index="0">
             <div class="showcase-text">
               <div class="site-hero-tag">${escapeHtml(s.tag)}</div>
               <h3>${escapeHtml(s.title)}</h3>
@@ -11023,8 +11111,8 @@ function renderMarketingPage(){
 
       <section class="site-features">
         <div class="site-feature-grid">
-          ${SITE_FEATURES.map(f=>`
-            <div class="site-feature-card">
+          ${SITE_FEATURES.map((f,i)=>`
+            <div class="site-feature-card reveal" data-reveal-index="${i}">
               <div class="tile-icon">${I[f.icon]}</div>
               <div style="font-weight:700;margin-top:10px;">${f.title}</div>
               <div class="small muted" style="margin-top:4px;">${f.desc}</div>
@@ -11773,6 +11861,7 @@ function renderInner(){
   if(state.site==='marketing'){
     document.title = 'Mise & Sûre — la gestion de restaurant, sans friction';
     document.getElementById('app').innerHTML = renderMarketingPage();
+    requestAnimationFrame(armScrollReveals);
     requestAnimationFrame(initMarketing3D);
     requestAnimationFrame(initRestoJourneyReveal);
     requestAnimationFrame(initProductCarousel);
