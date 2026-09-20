@@ -1634,7 +1634,7 @@ function calculateSupplierReliability(id){
   // régulièrement des articles. On les inclut désormais, comptées comme un écart.
   const relevant = ORDERS.filter(o=>o.supplier===id && (o.status==='livree' || o.status==='partiellement_recue'));
   if(relevant.length === 0) return null;
-  const withIssue = relevant.filter(o=>o.hasDiscrepancy || o.status==='partiellement_recue').length;
+  const withIssue = relevant.filter(o=>(o.hasDiscrepancy && !o.discrepancyResolved) || o.status==='partiellement_recue').length;
   const score = Math.round(((relevant.length - withIssue) / relevant.length) * 100);
   return { score, totalOrders: relevant.length, discrepancyCount: withIssue };
 }
@@ -3680,7 +3680,7 @@ function viewStats(){
     <div class="grid grid-3">
       <div class="card"><div class="small muted">Dépenses ce mois-ci</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${fmtEUR(thisMonth)}</div></div>
       <div class="card"><div class="small muted">Commandes au total</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.status!=='refusee').length}</div></div>
-      <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy).length}</div></div>
+      <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy && !o.discrepancyResolved).length}</div></div>
     </div>
     <div class="grid grid-2b">
       <div class="card">
@@ -4908,10 +4908,22 @@ function viewEcarts(){
     <div class="card">
       ${filtered.length ? filtered.map(o=>`
         <div style="padding:14px 0;border-bottom:1px solid var(--border);">
-          <div class="flex between center" style="margin-bottom:8px;">
-            <div><span class="mono" style="font-weight:600;">${o.id}</span> · <span class="muted">${supplierName(o.supplier)}</span> · <span class="muted small">${o.date}</span></div>
-            ${hideFin ? '' : `<span class="mono" style="font-weight:600;">${fmtEUR(o.amount)}</span>`}
+          <div class="flex between center" style="margin-bottom:8px;gap:10px;flex-wrap:wrap;">
+            <div><span class="mono" style="font-weight:600;">${o.id}</span> · <span class="muted">${supplierName(o.supplier)}</span> · <span class="muted small">${o.date}</span>
+              ${o.discrepancyResolved ? `<span class="tag tag-subtle" style="margin-left:8px;">${iconXs(I.check)} Réglé</span>` : ''}
+            </div>
+            <div class="flex gap8 center">
+              ${hideFin ? '' : `<span class="mono" style="font-weight:600;">${fmtEUR(o.amount)}</span>`}
+              <button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir la réception et le bon de livraison">${iconXs(I.doc)} Détail</button>
+              ${canResolveDiscrepancy() ? (o.discrepancyResolved
+                ? `<button class="btn btn-ghost btn-sm" onclick="reopenDiscrepancy('${o.id}')">Rouvrir</button>`
+                : `<button class="btn btn-primary btn-sm" onclick="openResolveDiscrepancyModal('${o.id}')">${iconXs(I.check)} Clore l'écart</button>`) : ''}
+            </div>
           </div>
+          ${o.discrepancyResolved && o.discrepancyResolution ? `
+            <div class="small muted" style="margin:-2px 0 8px 0;">
+              Réglé : ${escapeHtml(o.discrepancyResolution.reason || '')}${o.discrepancyResolution.note ? ' — ' + escapeHtml(o.discrepancyResolution.note) : ''}${o.discrepancyResolution.by ? ' · par ' + escapeHtml(o.discrepancyResolution.by) : ''}
+            </div>` : ''}
           <table style="width:100%;">
             <tr><th class="small muted">Article</th><th class="small muted">Qté commandée</th><th class="small muted">Qté reçue</th>${hideFin?'':'<th class="small muted">Prix attendu</th><th class="small muted">Prix facturé</th>'}</tr>
             ${(o.lineItems||[]).filter(li=>li.discrepancy).map(li=>`
@@ -6186,6 +6198,15 @@ async function syncOrdersFromServer(localId){
         items: o.items, lineItems, amount: parseFloat(o.amount), status: o.status,
         date: o.order_date, createdAt: new Date(o.created_at), custom: o.is_custom,
         hasDiscrepancy: o.has_discrepancy, deliveryNotePhotoUrl: o.delivery_note_photo_url,
+        // Sans ces deux champs, un écart clos réapparaîtrait comme non traité au prochain
+        // chargement : l'information ne serait retenue que le temps de la session en cours.
+        discrepancyResolved: !!o.discrepancy_resolved,
+        discrepancyResolution: o.discrepancy_resolved ? {
+          reason: o.discrepancy_resolution_reason || '',
+          note: o.discrepancy_resolution_note || '',
+          by: o.discrepancy_resolved_by || '',
+          at: o.discrepancy_resolved_at ? new Date(o.discrepancy_resolved_at) : null,
+        } : null,
       };
     });
     if(state.resto === localId) ORDERS = d.orders;
@@ -7915,7 +7936,10 @@ function viewManagerDemandes(){
 }
 function viewLivraisons(){
   const awaiting = ORDERS.filter(o=>o.status==='validee' || o.status==='partiellement_recue');
-  const recent = ORDERS.filter(o=>o.status==='livree').slice(0,5);
+  // 20 et non 5 : c'est ici que la cuisine et le manager retrouvent une réception passée pour
+  // revoir ce qui avait été livré et relire le bon de livraison photographié. Cinq lignes ne
+  // couvrent pas une semaine de service.
+  const recent = ORDERS.filter(o=>o.status==='livree' || o.status==='partiellement_recue').slice(0,20);
   return `
     <div class="section-head" style="margin-top:0;"><div><h2>Livraisons</h2><div class="sub">Réceptionnez les commandes validées par le patron</div></div></div>
     <div class="card">
@@ -7926,12 +7950,12 @@ function viewLivraisons(){
         ${awaiting.length===0?`<tr><td colspan="6"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
-    <div class="section-head"><div><h2>Réceptionnées récemment</h2></div></div>
+    <div class="section-head"><div><h2>Réceptions récentes</h2><div class="sub">Ouvrez une réception pour revoir ce qui a été livré et le bon de livraison photographié</div></div></div>
     <div class="card">
       <table>
-        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}</tr>
-        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}</tr>`).join('')}
-        ${recent.length===0?`<tr><td colspan="4"><div class="empty">Aucune réception récente</div></td></tr>`:''}
+        <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th><th></th></tr>
+        ${recent.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td><td><button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')">${iconXs(I.doc)} Voir le détail</button></td></tr>`).join('')}
+        ${recent.length===0?`<tr><td colspan="6"><div class="empty">Aucune réception récente</div></td></tr>`:''}
       </table>
     </div>
   `;
@@ -9612,11 +9636,133 @@ function downloadHtmlFile(filename, innerHtml){
   URL.revokeObjectURL(url);
   toast('Document téléchargé');
 }
+// ============================================================
+// DÉTAIL DE RÉCEPTION — ce qui a réellement été livré, et le bon de livraison photographié
+// La photo prise par l'employé au moment de la réception était bien enregistrée, mais
+// n'était affichée nulle part : personne ne pouvait la consulter ensuite. Ce bloc rend
+// consultables, pour le patron comme pour l'équipe, les quantités réellement reçues, les
+// prix réellement facturés, et la photo du bon — la trace qui permet de contester un écart
+// auprès du fournisseur.
+// ============================================================
+// ============================================================
+// RÉSOLUTION D'UN ÉCART DE LIVRAISON
+// Un écart détecté n'était jamais refermable : il restait signalé indéfiniment, même après
+// que le fournisseur ait envoyé l'appoint ou qu'on ait constaté une simple erreur de saisie
+// de l'employé. La liste se remplissait donc de cas déjà traités, et plus personne ne la
+// regardait. On peut désormais clore un écart en disant pourquoi, et la trace est conservée.
+// ============================================================
+const DISCREPANCY_REASONS = [
+  { id:'appoint',    label:"Le fournisseur a envoyé l'appoint" },
+  { id:'avoir',      label:'Le fournisseur a fait un avoir ou un geste commercial' },
+  { id:'saisie',     label:'Erreur de saisie à la réception' },
+  { id:'accepte',    label:"Écart accepté, rien à réclamer" },
+  { id:'autre',      label:'Autre motif' },
+];
+// Clore un écart engage une décision commerciale vis-à-vis du fournisseur : réservé au patron
+// et au manager. La cuisine et la salle constatent la livraison, elles ne tranchent pas.
+function canResolveDiscrepancy(){
+  return state.role === 'patron' || state.role === 'manager';
+}
+function openResolveDiscrepancyModal(orderId){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Clore l'écart — ${escapeHtml(o.id)}</h3>
+    <p class="small muted" style="margin-bottom:14px;">La commande et son détail de réception restent consultables : seule l'alerte est levée.</p>
+    <div class="field">
+      <label>Pourquoi cet écart est-il réglé ?</label>
+      <select id="disc-reason">
+        ${DISCREPANCY_REASONS.map(r=>`<option value="${r.id}">${escapeHtml(r.label)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Précision (facultatif)</label>
+      <input id="disc-note" placeholder="Ex : 1,5 Kg de saumon relivrés le 18">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="confirmResolveDiscrepancy('${orderId}')">Clore l'écart</button>
+  `);
+}
+async function confirmResolveDiscrepancy(orderId){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  const reasonId = (document.getElementById('disc-reason')||{}).value || 'autre';
+  const note = ((document.getElementById('disc-note')||{}).value || '').trim();
+  const reason = (DISCREPANCY_REASONS.find(r=>r.id===reasonId)||{}).label || 'Autre motif';
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/discrepancy`, {
+      method:'PATCH', body:{ resolved:true, reason, note, byName: currentPersonDisplayName() },
+    });
+    o.discrepancyResolved = true;
+    o.discrepancyResolution = { reason, note, by: currentPersonDisplayName(), at: new Date() };
+    closeModal();
+    toast('Écart clos');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+async function reopenDiscrepancy(orderId){
+  const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/discrepancy`, {
+      method:'PATCH', body:{ resolved:false },
+    });
+    o.discrepancyResolved = false;
+    o.discrepancyResolution = null;
+    toast('Écart rouvert');
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+function receptionDetailHTML(o){
+  const delivered = o.status === 'livree' || o.status === 'partiellement_recue';
+  if(!delivered) return '';
+  const lines = (o.lineItems || []).filter(li => li.qtyReceived != null || li.priceReceived != null);
+  const photo = o.deliveryNotePhotoUrl;
+  if(!lines.length && !photo) return '';
+  const hideFin = financialsHidden();
+  return `
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+      <div class="card-title" style="margin-bottom:10px;">Réception</div>
+      ${lines.length ? `
+        <table class="stack-mobile">
+          <tr>
+            <th>Article</th><th>Commandé</th><th>Reçu</th>
+            ${hideFin ? '' : '<th>Prix attendu</th><th>Prix facturé</th>'}
+          </tr>
+          ${lines.map(li => {
+            const qtyOk = li.qtyReceived == null || Number(li.qtyReceived) === Number(li.qty);
+            const priceOk = li.priceReceived == null || Number(li.priceReceived) === Number(li.price);
+            return `<tr>
+              <td data-label="Article">${escapeHtml(li.name || '—')}</td>
+              <td data-label="Commandé" class="mono">${Number(li.qty).toLocaleString('fr-FR')}</td>
+              <td data-label="Reçu" class="mono ${qtyOk ? '' : 'text-alert'}">${li.qtyReceived != null ? Number(li.qtyReceived).toLocaleString('fr-FR') : '—'}</td>
+              ${hideFin ? '' : `
+                <td data-label="Prix attendu" class="mono">${li.price != null ? fmtEUR(li.price) : '—'}</td>
+                <td data-label="Prix facturé" class="mono ${priceOk ? '' : 'text-alert'}">${li.priceReceived != null ? fmtEUR(li.priceReceived) : '—'}</td>`}
+            </tr>`;
+          }).join('')}
+        </table>
+      ` : '<div class="small muted">Réception confirmée sans détail ligne par ligne.</div>'}
+      ${photo ? `
+        <div style="margin-top:14px;">
+          <div class="small muted" style="margin-bottom:6px;">Bon de livraison photographié à la réception</div>
+          <img src="${photo}" alt="Bon de livraison de la commande ${escapeHtml(o.id)}"
+               style="max-width:280px;width:100%;border:1px solid var(--border);border-radius:8px;cursor:zoom-in;display:block;"
+               onclick="openImageLightbox('${photo}', 'Bon de livraison ${escapeHtml(o.id)}')">
+          <div class="small muted" style="margin-top:6px;">Cliquez sur la photo pour l'agrandir.</div>
+        </div>
+      ` : `<div class="small muted" style="margin-top:12px;">Aucune photo de bon de livraison n'a été jointe à cette réception.</div>`}
+    </div>`;
+}
 function openOrderDocumentModal(orderId){
   const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     ${buildOrderDocumentHTML(o)}
+    ${receptionDetailHTML(o)}
     <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="downloadOrderDocument('${orderId}')">${iconSm(I.download)} Télécharger le document</button>
   `);
 }
@@ -9988,7 +10134,7 @@ function openQuickAddSuppliersModal(){
     <h3>Ajouter plusieurs fournisseurs d'un coup</h3>
     <div class="modal-sub">Un nom par ligne — le reste (catégorie, délai, coordonnées) se complète ensuite, fournisseur par fournisseur, quand vous avez cinq minutes.</div>
     <div class="field">
-      <textarea id="qas-names" rows="8" placeholder="Fromagerie Lambert&#10;Boucherie Centrale&#10;Primeur des Halles&#10;Boissons Générales&#10;..."></textarea>
+      <textarea id="qas-names" rows="8" placeholder="Fromagerie Lambert&#10;Boucherie Centrale&#10;Primeur des Halles&#10;Boissons Générales&#10;…"></textarea>
     </div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickAddSuppliers(this)">Ajouter ces fournisseurs</button>
     <button type="button" class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="openNewSupplierModal()">← Revenir au formulaire détaillé</button>
