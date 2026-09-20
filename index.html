@@ -504,6 +504,22 @@ tr.group-row:hover td{background:var(--gray-100);}
 .color-theme-card:hover{border-color:var(--muted);}
 .color-theme-card.selected{border-color:var(--accent);border-width:2px;}
 .color-theme-swatch{width:28px;height:28px;border-radius:50%;border:1px solid rgba(0,0,0,0.1);}
+/* La carte occupait une hauteur figée de 520px : sur un grand écran elle laissait un large
+   vide en dessous et restait trop petite pour distinguer les fournisseurs proches les uns des
+   autres. Elle prend désormais la hauteur réellement disponible sous les filtres, avec un
+   plancher pour rester utilisable sur un écran court. */
+.supplier-map-canvas{
+  width:100%;
+  height:calc(100vh - 300px);
+  min-height:460px;
+  max-height:900px;
+  border-radius:var(--radius);
+}
+@media(max-width:760px){
+  /* Sur téléphone, une carte plein écran empêcherait de faire défiler la page au doigt :
+     on garde une hauteur fixe généreuse mais bornée. */
+  .supplier-map-canvas{height:60vh;min-height:380px;}
+}
 .map-search-here-btn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:999;box-shadow:0 3px 14px rgba(0,0,0,0.25);white-space:nowrap;}
 .leaflet-control-layers{border-radius:8px !important;box-shadow:0 2px 10px rgba(0,0,0,0.2) !important;font-family:'Inter',sans-serif;}
 .leaflet-popup-content-wrapper{border-radius:10px !important;}
@@ -5574,15 +5590,14 @@ function viewSupplierMap(){
         ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-new"></span> Grossistes détectés (${NEARBY_SUPPLIERS.filter(s=>!s.isProducer).length})</span>` : ''}
       </div>
       <div class="card" style="padding:0;overflow:hidden;position:relative;">
-        <div id="supplier-map" style="height:520px;width:100%;"></div>
+        <div id="supplier-map" class="supplier-map-canvas"></div>
         ${state.mapShowSearchHere ? `
           <button class="btn btn-primary map-search-here-btn" onclick="searchThisArea()" ${SUPPLIER_MAP_SEARCHING_AREA?'disabled':''}>
             ${SUPPLIER_MAP_SEARCHING_AREA ? 'Recherche en cours…' : iconSm(I.mapPin) + ' Rechercher dans cette zone'}
           </button>
         ` : ''}
       </div>
-      ${NEARBY_SUPPLIERS_LOADING ? `<div class="small muted" style="margin-top:10px;">Recherche des fournisseurs à proximité (rayon ${state.mapRadiusKm} km)…</div>` : ''}
-      ${NEARBY_SUPPLIERS_ERROR ? `<div class="small" style="margin-top:10px;color:var(--urgent);">${escapeHtml(NEARBY_SUPPLIERS_ERROR)}</div>` : ''}
+      ${NEARBY_SUPPLIERS_LOADING ? `<div class="small muted" style="margin-top:10px;">Recherche en cours…</div>` : ''}
       ${suppliersMissingCoords.length > 0 ? `
         <div class="small muted" style="margin-top:14px;">${suppliersMissingCoords.length} fournisseur(s) avec une adresse mais pas encore localisé(s) sur la carte (probablement ajoutés avant cette fonctionnalité).
         <button class="btn btn-ghost btn-sm" style="margin-left:8px;" onclick="geocodeSuppliersNow()" ${state.geocodingSuppliers?'disabled':''}>${state.geocodingSuppliers?'Localisation en cours…':'Les localiser maintenant'}</button></div>
@@ -5591,6 +5606,16 @@ function viewSupplierMap(){
   `;
 }
 
+// Annonce du résultat d'une recherche sur la carte, en notification plutôt qu'en petit texte
+// sous la carte. Le message dit ce qui a été trouvé et dans quel rayon, pour qu'on sache
+// immédiatement s'il faut élargir la zone.
+function announceNearbySearchResult(count, radiusKm){
+  if(count > 0){
+    toast(`${count} fournisseur${count>1?'s':''} trouvé${count>1?'s':''} dans un rayon de ${radiusKm} km`);
+  } else {
+    toast(`Aucun fournisseur trouvé dans un rayon de ${radiusKm} km — essayez d'élargir la zone`, 'alert');
+  }
+}
 async function loadNearbySuppliers(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   if(!resto || !resto.remoteId) return;
@@ -5603,9 +5628,14 @@ async function loadNearbySuppliers(){
     NEARBY_SUPPLIERS_LOADED_FOR = state.resto;
     NEARBY_SUPPLIERS_LOADED_RADIUS = state.mapRadiusKm;
     SUPPLIER_MAP_LAST_SEARCH = [resto.latitude, resto.longitude];
-    if(data.reason) NEARBY_SUPPLIERS_ERROR = data.reason;
+    if(data.reason){ NEARBY_SUPPLIERS_ERROR = data.reason; toast(data.reason, 'alert'); }
+    // Le résultat s'annonçait par une ligne de texte sous la carte, à un endroit où le regard
+    // n'est pas : on est en train de regarder la carte, pas ce qui se trouve dessous. La
+    // notification passe en bas à droite, comme toutes les autres confirmations du site.
+    else announceNearbySearchResult(NEARBY_SUPPLIERS.length, state.mapRadiusKm);
   } catch(err){
     NEARBY_SUPPLIERS_ERROR = "Impossible de charger les fournisseurs à proximité pour le moment.";
+    toast(NEARBY_SUPPLIERS_ERROR, 'alert');
   } finally {
     NEARBY_SUPPLIERS_LOADING = false;
     render();
@@ -5789,6 +5819,10 @@ async function searchSuppliersAtMapCenter(lat, lng){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/nearby-suppliers?radiusKm=${state.mapRadiusKm}&lat=${lat}&lng=${lng}`);
     NEARBY_SUPPLIERS = data.nearby || [];
+    // C'est le bouton « Rechercher dans cette zone » : on vient de déplacer la carte et on la
+    // regarde. Annoncer le nombre de résultats en notification évite d'avoir à deviner si la
+    // recherche a réellement abouti ou si la carte est simplement vide à cet endroit.
+    announceNearbySearchResult(NEARBY_SUPPLIERS.length, state.mapRadiusKm);
   } catch(err){
     // Silencieux : une recherche liée à un déplacement de carte ne doit pas interrompre
     // l'exploration avec un message d'erreur intrusif — les résultats précédents restent affichés.
