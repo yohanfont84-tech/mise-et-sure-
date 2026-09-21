@@ -495,6 +495,12 @@ tr.group-row:hover td{background:var(--gray-100);}
 .map-stat-val{font-family:var(--heading-font);font-size:22px;font-weight:600;line-height:1.1;}
 .map-stat-of{font-size:14px;color:var(--muted);font-weight:500;}
 .map-stat-label{font-size:12px;color:var(--muted);margin-top:4px;}
+/* Achat divers : sur téléphone, les cinq champs d'une ligne passent sur deux rangées (le nom
+   de l'article en pleine largeur) au lieu d'être écrasés sur une seule. */
+@media(max-width:760px){
+  .misc-line{grid-template-columns:1fr 1fr 1fr auto !important;}
+  .misc-line .field:first-child{grid-column:1 / -1;}
+}
 .map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted);}
 .map-legend span{display:flex;align-items:center;gap:7px;}
 .map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
@@ -1879,7 +1885,11 @@ function tvaBreakdown(lines){
     const rate = Number(l.tvaRate||0);
     if(!byRate[rate]) byRate[rate] = { rate, baseHT: 0, tvaAmount: 0 };
     byRate[rate].baseHT += l.totalHT;
-    byRate[rate].tvaAmount += calcTvaAmount(l.totalHT, rate);
+    // TVA réelle quand elle est connue (achat divers saisi en TTC, relevé sur le ticket), sinon
+    // calculée à partir du HT comme pour toute commande au catalogue. Recalculer la TVA d'un
+    // ticket TTC à partir de son HT ne retombait pas sur le TTC du ticket dans près d'un quart
+    // des cas : deux arrondis successifs ne permettent pas d'atteindre certains montants.
+    byRate[rate].tvaAmount += (typeof l.tvaAmount === 'number') ? l.tvaAmount : calcTvaAmount(l.totalHT, rate);
   });
   // Arrondi au centime PAR TAUX avant de renvoyer — pas seulement au moment de l'affichage.
   // Sans ça, le "Total TVA" (somme des valeurs exactes non arrondies) pouvait afficher un
@@ -4053,7 +4063,7 @@ function viewPatronDashboard(){
         <div class="card-title">Historique des achats — commandes récentes</div>
         ${ORDERS.length ? `<table>
           <tr><th>Réf.</th><th>Fournisseur</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th></tr>
-          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la commande" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td></tr>`).join('')}
+          ${ORDERS.slice(0,6).map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la commande" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${orderVendorLabel(o)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td></tr>`).join('')}
         </table>` : emptyState('Aucun achat pour le moment')}
       </div>
       <div class="card">
@@ -4069,7 +4079,7 @@ function ticketOrder(o){
   return `
     <div class="ticket normal">
       <div class="ticket-top">
-        <div><span class="ticket-id">${o.id}</span><div class="ticket-item">${supplierName(o.supplier)}</div></div>
+        <div><span class="ticket-id">${o.id}</span><div class="ticket-item">${orderVendorLabel(o)}</div></div>
         ${financialsHidden() ? '' : `<div class="mono" style="font-weight:700;">${fmtEUR(o.amount)}</div>`}
       </div>
       <div class="ticket-meta">${escapeHtml(o.items)}</div>
@@ -4953,7 +4963,7 @@ function viewEcarts(){
       ${filtered.length ? filtered.map(o=>`
         <div style="padding:14px 0;border-bottom:1px solid var(--border);">
           <div class="flex between center" style="margin-bottom:8px;gap:10px;flex-wrap:wrap;">
-            <div><span class="mono" style="font-weight:600;">${o.id}</span> · <span class="muted">${supplierName(o.supplier)}</span> · <span class="muted small">${o.date}</span>
+            <div><span class="mono" style="font-weight:600;">${o.id}</span> · <span class="muted">${orderVendorLabel(o)}</span> · <span class="muted small">${o.date}</span>
               ${o.discrepancyResolved ? `<span class="tag tag-subtle" style="margin-left:8px;">${iconXs(I.check)} Réglé</span>` : ''}
             </div>
             <div class="flex gap8 center">
@@ -5376,7 +5386,10 @@ function viewCommandes(role){
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Commandes fournisseurs</h2><div class="sub">${role==='manager' ? 'Préparez les paniers par fournisseur — seul le patron peut les envoyer' : 'Paniers en attente, historique et validation des commandes'}</div></div>
-      <button class="btn btn-primary" onclick="openNewOrderModal()">${iconSm(I.plus)} Ajouter au panier</button>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        ${state.role==='patron' ? `<button class="btn btn-ghost" onclick="openMiscPurchaseModal()" title="Un achat hors catalogue ou sans fournisseur enregistré : quincaillerie, réparation, petit matériel…">${iconSm(I.plus)} Achat divers</button>` : ''}
+        <button class="btn btn-primary" onclick="openNewOrderModal()">${iconSm(I.plus)} Ajouter au panier</button>
+      </div>
     </div>
     ${basketSupplierIds.length ? `
       <div class="section-head" style="margin-top:0;"><div><h2 style="font-size:15px;">Paniers en attente d'envoi</h2><div class="sub">Un panier = une commande = un bon de commande, par fournisseur</div></div></div>
@@ -5424,7 +5437,7 @@ function viewCommandes(role){
             onclick="openOrderRowDetail(event, '${o.id}')"
             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}">
           <td data-label="Réf." class="mono">${o.id}</td>
-          <td data-label="Fournisseur" style="font-weight:600;">${supplierName(o.supplier)}</td>
+          <td data-label="Fournisseur" style="font-weight:600;">${orderVendorLabel(o)}</td>
           <td data-label="Contenu" class="muted small">${escapeHtml(o.items)}</td>
           ${financialsHidden()?'':`<td data-label="Montant" class="mono">${fmtEUR(o.amount)}</td>`}
           <td data-label="Statut">${orderStatusTag(o)}</td>
@@ -5474,6 +5487,14 @@ function renderBasketCard(supplierId, role){
 // Le garde-fou : si le clic vise un bouton, un lien ou un champ de la ligne (Valider, PDF,
 // Dupliquer, Supprimer...), on laisse cette action faire son travail sans ouvrir le détail
 // par-dessus.
+// Nom à afficher pour « qui a vendu » : le fournisseur enregistré s'il y en a un, sinon le
+// vendeur saisi à la main pour un achat divers (magasin, artisan...). Utilisé partout, et
+// surtout dans l'export comptable, où un achat sans nom de vendeur ne serait pas exploitable.
+function orderVendorLabel(o){
+  if(o.supplier){ const s = SUPPLIERS.find(x=>x.id===o.supplier); if(s) return s.name; }
+  if(o.vendorName) return o.vendorName;
+  return o.custom ? 'Achat divers' : '—';
+}
 function openOrderRowDetail(event, orderId){
   if(event && event.target && event.target.closest('button, a, input, select, label')) return;
   openOrderDocumentModal(orderId);
@@ -5504,7 +5525,7 @@ async function duplicateOrder(id){
     addedCount++;
   }
   if(addedCount===0){ toast("Aucun produit de cette commande n'existe plus dans le catalogue",'alert'); return; }
-  toast('Commande dupliquée dans le panier '+supplierName(o.supplier)+' — modifiez-la si besoin avant de l\u2019envoyer');
+  toast('Commande dupliquée dans le panier '+orderVendorLabel(o)+' — modifiez-la si besoin avant de l\u2019envoyer');
   setView('commandes');
 }
 function orderStatusTag(o){
@@ -6438,6 +6459,7 @@ async function syncOrdersFromServer(localId){
         items: o.items, lineItems, amount: parseFloat(o.amount), status: o.status,
         date: o.order_date, createdAt: new Date(o.created_at), custom: o.is_custom,
         hasDiscrepancy: o.has_discrepancy, deliveryNotePhotoUrl: o.delivery_note_photo_url,
+        vendorName: o.vendor_name || '',
         // Sans ces deux champs, un écart clos réapparaîtrait comme non traité au prochain
         // chargement : l'information ne serait retenue que le temps de la session en cours.
         discrepancyResolved: !!o.discrepancy_resolved,
@@ -8186,7 +8208,7 @@ function viewLivraisons(){
       <div class="card-title">En attente de réception</div>
       <table>
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th><th>Statut</th>${financialsHidden()?"":"<th>Montant</th>"}<th></th></tr>
-        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td><td>${orderStatusTag(o)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">${o.status==='partiellement_recue'?'Compléter la réception':'Marquer reçue'}</button></td></tr>`).join('')}
+        ${awaiting.map(o=>`<tr class="tr-hover"><td class="mono">${o.id}</td><td style="font-weight:600;">${orderVendorLabel(o)}</td><td class="muted small">${escapeHtml(o.items)}</td><td>${orderStatusTag(o)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td><button class="btn btn-primary btn-sm" onclick="openReceiveOrderModal('${o.id}')">${o.status==='partiellement_recue'?'Compléter la réception':'Marquer reçue'}</button></td></tr>`).join('')}
         ${awaiting.length===0?`<tr><td colspan="6"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
@@ -8194,7 +8216,7 @@ function viewLivraisons(){
     <div class="card">
       <table>
         <tr><th>Réf.</th><th>Fournisseur</th><th>Contenu</th>${financialsHidden()?"":"<th>Montant</th>"}<th>Statut</th><th></th></tr>
-        ${recent.map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la réception" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${supplierName(o.supplier)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td><td><button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')">${iconXs(I.doc)} Voir le détail</button></td></tr>`).join('')}
+        ${recent.map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la réception" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${orderVendorLabel(o)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td><td><button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')">${iconXs(I.doc)} Voir le détail</button></td></tr>`).join('')}
         ${recent.length===0?`<tr><td colspan="6"><div class="empty">Aucune réception récente</div></td></tr>`:''}
       </table>
     </div>
@@ -8624,7 +8646,7 @@ function openEditOrderModal(orderId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Modifier la commande ${o.id}</h3>
-    <div class="modal-sub">${supplierName(o.supplier)} — envoyée, en attente de votre validation</div>
+    <div class="modal-sub">${orderVendorLabel(o)} — envoyée, en attente de votre validation</div>
     <table style="margin-bottom:14px;">
       <tr><th>Produit</th><th>Qté</th><th></th></tr>
       ${(o.lineItems&&o.lineItems.length ? o.lineItems : [{name:o.items, qty:1}]).map((li,idx)=>{
@@ -9011,7 +9033,9 @@ async function confirmApproveCustomRequest(id){
   if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
   const cr = CUSTOM_REQUESTS.find(x=>x.id===id); if(!cr) return;
   const supplierId = document.getElementById('cr-supplier').value || null;
-  const qty = Math.round(parseFloat(document.getElementById('cr-qty').value)) || 1;
+  // parseFloat seul : la quantité était arrondie à l'entier (Math.round), si bien que 2,5 m de
+  // câble ou 1,5 L devenaient 3 et 2 dans la commande, faussant le montant de l'achat.
+  const qty = parseFloat(String(document.getElementById('cr-qty').value).replace(',','.')) || 1;
   const price = parseFloat(document.getElementById('cr-price').value) || 0;
   const tvaRate = parseFloat(document.getElementById('cr-tva').value) || 5.5;
   const now = new Date();
@@ -9022,7 +9046,7 @@ async function confirmApproveCustomRequest(id){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
       method:'POST',
       body:{
-        supplierId: supplierObj?supplierObj.remoteId:null, items: `${escapeHtml(cr.itemName)} × ${qty} (achat personnalisé)`,
+        supplierId: supplierObj?supplierObj.remoteId:null, items: `${cr.itemName} × ${Number(qty).toLocaleString('fr-FR')} (achat personnalisé)`,
         lineItems: [{name: cr.itemName, qty, price, tvaRate}], amount: Math.round(qty*price*100)/100, status:'validee',
         orderDate: fmtDateShort(now), isCustom: true,
       },
@@ -9030,7 +9054,9 @@ async function confirmApproveCustomRequest(id){
     cr.status = 'approuvee';
     ORDERS.unshift({
       id:'CMD-'+nextId(), remoteId: data.order.id, supplier: supplierId,
-      items: `${escapeHtml(cr.itemName)} × ${qty} (achat personnalisé)`,
+      // Texte brut : il est échappé au moment de l'affichage. L'échapper aussi ici produisait
+      // "Sauce &amp; épices" à l'écran au lieu de "Sauce & épices".
+      items: `${cr.itemName} × ${Number(qty).toLocaleString('fr-FR')} (achat personnalisé)`,
       lineItems: [{name: cr.itemName, qty, price, tvaRate}],
       amount: Math.round(qty*price*100)/100, status:'validee', date: fmtDateShort(now), createdAt: now, custom:true
     });
@@ -9038,6 +9064,178 @@ async function confirmApproveCustomRequest(id){
     toast('Achat approuvé — commande créée');
     render();
   } catch(err){
+    toast(err.message, 'alert');
+  }
+}
+// ============================================================
+// ACHAT DIVERS — saisi directement par le patron
+// Tout ce qui ne passe pas par le catalogue : quincaillerie, réparation, petit matériel, un
+// dépannage, un achat en magasin. Sans cette saisie, ces dépenses échappaient à l'export
+// comptable, qui ne reflétait donc qu'une partie des achats réels de l'établissement.
+// Enregistré directement comme livré : l'achat est déjà fait, il n'y a rien à valider.
+// ============================================================
+function miscTodayISO(){
+  const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0,10);
+}
+function miscLineHTML(idx){
+  return `
+    <div class="misc-line" data-idx="${idx}" style="display:grid;grid-template-columns:2.2fr .8fr 1fr 1.1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
+      <div class="field" style="margin:0;"><label>Article</label><input class="misc-name" placeholder="Ex : Joint de porte chambre froide" oninput="updateMiscTotals()"></div>
+      <div class="field" style="margin:0;"><label>Qté</label><input class="misc-qty" type="number" min="0" step="0.01" value="1" oninput="updateMiscTotals()"></div>
+      <div class="field" style="margin:0;"><label>Prix unitaire</label><input class="misc-price" type="number" min="0" step="0.01" placeholder="0,00" oninput="updateMiscTotals()"></div>
+      <div class="field" style="margin:0;"><label>TVA</label>
+        <select class="misc-tva" onchange="updateMiscTotals()">${TVA_RATES.map(t=>`<option value="${t.value}" ${t.value===20?'selected':''}>${String(t.value).replace('.',',')} %</option>`).join('')}</select>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm misc-remove" onclick="removeMiscLine(this)" title="Retirer cette ligne" aria-label="Retirer cette ligne" style="margin-bottom:2px;">${iconXs(I.x)}</button>
+    </div>`;
+}
+function openMiscPurchaseModal(){
+  if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
+  const today = miscTodayISO();
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Achat divers</h3>
+    <div class="modal-sub">Un achat hors catalogue ou sans fournisseur enregistré. Il sera compté dans vos dépenses et apparaîtra dans l'export comptable, à sa date d'achat.</div>
+    <div class="field-row">
+      <div class="field">
+        <label>Acheté chez</label>
+        <input id="misc-vendor" list="misc-vendor-list" placeholder="Ex : Leroy Merlin, un plombier…" autocomplete="off">
+        <datalist id="misc-vendor-list">${SUPPLIERS.map(s=>`<option value="${escapeHtml(s.name)}">`).join('')}</datalist>
+      </div>
+      <div class="field">
+        <label>Date d'achat</label>
+        <input id="misc-date" type="date" value="${today}" max="${today}">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label>Les prix saisis sont</label>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        <label class="flex center gap8" style="cursor:pointer;"><input type="radio" name="misc-mode" value="ttc" checked onchange="updateMiscTotals()"> TTC <span class="small muted">(comme sur un ticket de caisse)</span></label>
+        <label class="flex center gap8" style="cursor:pointer;"><input type="radio" name="misc-mode" value="ht" onchange="updateMiscTotals()"> HT <span class="small muted">(comme sur une facture pro)</span></label>
+      </div>
+    </div>
+    <div id="misc-lines">${miscLineHTML(0)}</div>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="addMiscLine()">${iconXs(I.plus)} Ajouter une ligne</button>
+    <div id="misc-totals" style="margin:14px 0;padding:12px 14px;border-radius:8px;background:var(--surface-subtle);"></div>
+    <div class="field">
+      <label>Ticket ou facture (facultatif, conseillé)</label>
+      <div id="misc-photo-preview" style="margin-bottom:8px;"></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('misc-scan-input').click()">${iconXs(I.camera)} Photographier le justificatif</button>
+      <input type="file" id="misc-scan-input" accept="image/*" capture="environment" style="display:none;" onchange="handleDocumentScan(this,'misc')">
+      <div class="small muted" style="margin-top:6px;">La pièce justificative reste attachée à l'achat, consultable depuis son détail.</div>
+    </div>
+    <button class="btn btn-primary btn-block" id="misc-save-btn" onclick="saveMiscPurchase()">Enregistrer l'achat</button>
+  `);
+  updateMiscTotals();
+}
+function addMiscLine(){
+  const box = document.getElementById('misc-lines'); if(!box) return;
+  box.insertAdjacentHTML('beforeend', miscLineHTML(box.children.length));
+  updateMiscTotals();
+  const names = box.querySelectorAll('.misc-name'); names[names.length-1].focus();
+}
+function removeMiscLine(btn){
+  const box = document.getElementById('misc-lines');
+  // On garde toujours au moins une ligne : un achat vide n'a pas de sens.
+  if(box && box.children.length > 1){ btn.closest('.misc-line').remove(); updateMiscTotals(); }
+}
+// Lit les lignes saisies. Le site stocke des prix HT (convention entre professionnels).
+// En mode TTC, chaque ligne garde son HT et sa TVA EXACTS, déduits du TTC du ticket :
+//   HT = TTC / (1 + taux) arrondi au centime, puis TVA = TTC − HT.
+// Ainsi HT + TVA retombe toujours exactement sur le TTC du ticket. Recalculer la TVA à partir
+// du HT (méthode des commandes au catalogue) ne retombait pas sur le TTC du ticket dans près
+// d'un quart des cas, avec jusqu'à 3 centimes d'écart dans l'export comptable.
+function readMiscLines(){
+  const r2 = x => Math.round(x*100)/100;
+  const modeEl = document.querySelector('input[name="misc-mode"]:checked');
+  const ttcMode = !modeEl || modeEl.value === 'ttc';
+  return [...document.querySelectorAll('#misc-lines .misc-line')].map(row=>{
+    const name = row.querySelector('.misc-name').value.trim();
+    const qty = parseFloat(String(row.querySelector('.misc-qty').value).replace(',','.')) || 0;
+    const entered = parseFloat(String(row.querySelector('.misc-price').value).replace(',','.')) || 0;
+    const tvaRate = parseFloat(row.querySelector('.misc-tva').value) || 20;
+    if(ttcMode){
+      const lineTTC = r2(qty*entered);
+      const totalHT = r2(lineTTC / (1 + tvaRate/100));
+      const tvaAmount = r2(lineTTC - totalHT);
+      return { name, qty, tvaRate, entered, totalHT, tvaAmount, priceHT: qty>0 ? totalHT/qty : 0, explicit:true };
+    }
+    return { name, qty, tvaRate, entered, totalHT: r2(qty*entered), tvaAmount: undefined, priceHT: entered, explicit:false };
+  });
+}
+function updateMiscTotals(){
+  const box = document.getElementById('misc-totals'); if(!box) return;
+  const lines = readMiscLines().filter(l=>l.qty>0 && l.entered>0);
+  // Même calcul que l'export comptable : ce qu'affiche la fenêtre est exactement ce qui
+  // apparaîtra dans l'export, au centime près.
+  const breakdown = tvaBreakdown(lines.map(l=>({totalHT:l.totalHT, tvaRate:l.tvaRate, tvaAmount:l.tvaAmount})));
+  const ht = breakdown.reduce((s,b)=>s+b.baseHT, 0);
+  const tva = breakdown.reduce((s,b)=>s+b.tvaAmount, 0);
+  box.innerHTML = `
+    <div class="flex between"><span class="small muted">Total HT</span><span class="mono">${fmtEURRaw(ht)}</span></div>
+    <div class="flex between" style="margin-top:4px;"><span class="small muted">TVA</span><span class="mono">${fmtEURRaw(tva)}</span></div>
+    <div class="flex between" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);"><span style="font-weight:600;">Total TTC</span><span class="mono" style="font-weight:700;">${fmtEURRaw(ht+tva)}</span></div>`;
+  // Une seule ligne restante : inutile d'afficher un bouton pour la retirer.
+  const rows = document.querySelectorAll('#misc-lines .misc-line');
+  rows.forEach(r=>{ const b = r.querySelector('.misc-remove'); if(b) b.style.visibility = rows.length > 1 ? 'visible' : 'hidden'; });
+}
+async function saveMiscPurchase(){
+  if(state.role!=='patron'){ toast('Action réservée au patron','alert'); return; }
+  const vendorRaw = (document.getElementById('misc-vendor').value || '').trim();
+  const dateStr = document.getElementById('misc-date').value;
+  const all = readMiscLines();
+  const lines = all.filter(l=>l.name && l.qty>0 && l.entered>0);
+  if(!vendorRaw){ toast("Indiquez où l'achat a été fait — l'export comptable en a besoin", 'alert'); return; }
+  if(!dateStr){ toast("Indiquez la date d'achat", 'alert'); return; }
+  if(dateStr > miscTodayISO()){ toast("La date d'achat ne peut pas être dans le futur", 'alert'); return; }
+  if(!lines.length){ toast('Ajoutez au moins un article avec une quantité et un prix', 'alert'); return; }
+  if(lines.length < all.filter(l=>l.name || l.entered>0).length){
+    toast('Une ligne est incomplète : chaque article a besoin d’un nom, d’une quantité et d’un prix', 'alert'); return;
+  }
+  // Si le nom saisi correspond à un fournisseur déjà enregistré, on rattache l'achat à ce
+  // fournisseur : ses statistiques et sa fiche en tiendront compte.
+  const known = SUPPLIERS.find(s=>normSearch(s.name) === normSearch(vendorRaw));
+  // Midi plutôt que minuit : une date à minuit peut basculer au jour précédent selon le fuseau
+  // horaire, et un achat du 1er du mois passerait alors dans l'export du mois d'avant.
+  const purchaseDate = new Date(`${dateStr}T12:00:00`);
+  const lineItems = lines.map(l=>{
+    const li = { name:l.name, qty:l.qty, price:l.priceHT, tvaRate:l.tvaRate };
+    // HT et TVA exacts du ticket, conservés tels quels pour l'export et les documents.
+    if(l.explicit){ li.totalHT = l.totalHT; li.tvaAmount = l.tvaAmount; }
+    return li;
+  });
+  const amount = Math.round(lines.reduce((s,l)=>s + l.totalHT, 0)*100)/100;
+  const items = lines.map(l=>`${l.name} × ${Number(l.qty).toLocaleString('fr-FR')}`).join(', ');
+  const photoPreview = document.getElementById('misc-photo-preview');
+  const deliveryNotePhotoUrl = (photoPreview && photoPreview.dataset.value) || null;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const btn = document.getElementById('misc-save-btn'); if(btn) btn.disabled = true;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`, {
+      method:'POST',
+      body:{
+        supplierId: known ? known.remoteId : null,
+        vendorName: known ? null : vendorRaw,
+        items, lineItems, amount, status:'livree',
+        orderDate: fmtDateShort(purchaseDate), isCustom:true,
+        purchaseDate: purchaseDate.toISOString(), deliveryNotePhotoUrl,
+      },
+    });
+    ORDERS.push({
+      id:'CMD-'+data.order.id, remoteId:data.order.id, supplier: known ? known.id : null,
+      vendorName: known ? '' : vendorRaw, items, lineItems, amount, status:'livree',
+      date: fmtDateShort(purchaseDate),
+      createdAt: data.order.created_at ? new Date(data.order.created_at) : purchaseDate,
+      custom:true, hasDiscrepancy:false, deliveryNotePhotoUrl,
+    });
+    // Un achat antidaté doit se ranger à sa vraie place dans l'historique, pas en tête de liste.
+    ORDERS.sort((a,b)=> new Date(b.createdAt||0) - new Date(a.createdAt||0));
+    closeModal();
+    toast(`Achat enregistré — ${fmtEURRaw(amount)} HT`);
+    render();
+  } catch(err){
+    if(btn) btn.disabled = false;
     toast(err.message, 'alert');
   }
 }
@@ -9772,8 +9970,15 @@ function orderDocLines(o){
     return o.lineItems.map(li=>{
       if(!li.productId){
         // ligne d'achat personnalisé (hors catalogue) : nom/prix saisis directement
-        const price = li.price || 0;
-        return {name: li.name || o.items, qty: li.qty, unit:'', price, total: Math.round(li.qty*price*100)/100, tvaRate: li.tvaRate??5.5};
+        // Après une réception ou une correction, ce sont les valeurs reçues qui comptent. Le HT
+        // et la TVA exacts d'un ticket ne valent que tant que la ligne n'a pas été rectifiée.
+        const corrected = li.priceReceived != null || li.qtyReceived != null;
+        const price = li.priceReceived != null ? Number(li.priceReceived) : (li.price || 0);
+        const qty = li.qtyReceived != null ? Number(li.qtyReceived) : li.qty;
+        return {name: li.name || o.items, qty, unit:'', price,
+          total: (!corrected && typeof li.totalHT === 'number') ? li.totalHT : Math.round(qty*price*100)/100,
+          tvaRate: li.tvaRate??5.5,
+          tvaAmount: (!corrected && typeof li.tvaAmount === 'number') ? li.tvaAmount : undefined};
       }
       const p = PRODUCTS.find(x=>x.id===li.productId);
       const name = p ? p.name : o.items;
@@ -9790,16 +9995,17 @@ function orderDocLines(o){
 }
 function buildOrderDocumentHTML(o){
   const resto = RESTOS.find(r=>r.id===state.resto) || {name:'—', city:''};
-  const supplier = SUPPLIERS.find(s=>s.id===o.supplier) || {name:'—', cat:''};
+  // Pour un achat divers sans fournisseur enregistré, le document affiche le vendeur saisi.
+  const supplier = SUPPLIERS.find(s=>s.id===o.supplier) || {name: orderVendorLabel(o), cat:''};
   const isDelivered = o.status==='livree' || o.status==='partiellement_recue';
   // Important : ce document est émis par le RESTAURANT (l'acheteur), pas par le fournisseur —
   // seul le fournisseur (le vendeur) a le droit d'émettre une véritable "facture" au sens
   // légal du terme. On l'appelle donc toujours "Bon de commande", y compris une fois la
   // marchandise reçue, avec un avertissement explicite en bas de page.
-  const docType = isDelivered ? 'Bon de commande — réceptionné' : 'Bon de commande';
+  const docType = (o.custom && !o.supplier) ? 'Achat divers' : isDelivered ? 'Bon de commande — réceptionné' : 'Bon de commande';
   const lines = orderDocLines(o);
   const totalHT = lines.reduce((a,l)=>a+l.total,0);
-  const breakdown = tvaBreakdown(lines.map(l=>({totalHT:l.total, tvaRate:l.tvaRate})));
+  const breakdown = tvaBreakdown(lines.map(l=>({totalHT:l.total, tvaRate:l.tvaRate, tvaAmount:l.tvaAmount})));
   const totalTVA = breakdown.reduce((a,b)=>a+b.tvaAmount,0);
   const totalTTC = totalHT + totalTVA;
   const when = o.createdAt ? fmtDateLong(new Date(o.createdAt)) + ' à ' + fmtTime(new Date(o.createdAt)) : o.date;
@@ -9818,7 +10024,7 @@ function buildOrderDocumentHTML(o){
       </div>
       <div class="invoice-meta-row">
         <div>
-          <div class="invoice-meta-label">Fournisseur</div>
+          <div class="invoice-meta-label">${(o.custom && !o.supplier) ? 'Acheté chez' : 'Fournisseur'}</div>
           <div class="invoice-meta-value">${escapeHtml(supplier.name)}</div>
           ${supplier.address ? `<div class="invoice-meta-sub">${escapeHtml(supplier.address)}</div>` : ''}
           ${supplier.email ? `<div class="invoice-meta-sub">${escapeHtml(supplier.email)}</div>` : ''}
@@ -10063,7 +10269,7 @@ function buildHistoryDocumentHTML(period){
   const totalHT = orders.reduce((a,o)=>a+o.amount,0);
   // La ventilation TVA de la période agrège les lignes de TOUTES les commandes, taux par taux —
   // pas juste la somme des montants, qui ne dirait rien de la répartition entre taux.
-  const allLines = orders.flatMap(o=>orderDocLines(o).map(l=>({totalHT:l.total, tvaRate:l.tvaRate})));
+  const allLines = orders.flatMap(o=>orderDocLines(o).map(l=>({totalHT:l.total, tvaRate:l.tvaRate, tvaAmount:l.tvaAmount})));
   const breakdown = tvaBreakdown(allLines);
   const totalTVA = breakdown.reduce((a,b)=>a+b.tvaAmount,0);
   const totalTTC = totalHT + totalTVA;
@@ -10084,7 +10290,7 @@ function buildHistoryDocumentHTML(period){
       <table class="invoice-table history">
         <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th>${financialsHidden()?"":"<th>Montant HT</th>"}</tr></thead>
         <tbody>
-          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${fmtEURRaw(o.amount||0)}</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
+          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${orderVendorLabel(o)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${fmtEURRaw(o.amount||0)}</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -10253,10 +10459,10 @@ function buildAccountingExportWorkbook(period){
       allLines.push({
         date: o.createdAt ? new Date(o.createdAt) : null,
         ref: o.id,
-        fournisseur: supplier ? supplier.name : '—',
+        fournisseur: orderVendorLabel(o),
         article: l.name, qty: l.qty, unit: l.unit||'',
         priceHT: l.price||0, tvaRate: l.tvaRate,
-        totalHT: l.total, tvaAmount: calcTvaAmount(l.total, l.tvaRate),
+        totalHT: l.total, tvaAmount: (typeof l.tvaAmount === 'number') ? l.tvaAmount : calcTvaAmount(l.total, l.tvaRate),
         statut: orderStatusLabel(o.status),
       });
     });
@@ -10265,7 +10471,7 @@ function buildAccountingExportWorkbook(period){
   const wb = XLSX.utils.book_new();
 
   // ---------- Feuille 1 : Récapitulatif TVA ----------
-  const breakdown = tvaBreakdown(allLines.map(l=>({totalHT:l.totalHT, tvaRate:l.tvaRate})));
+  const breakdown = tvaBreakdown(allLines.map(l=>({totalHT:l.totalHT, tvaRate:l.tvaRate, tvaAmount:l.tvaAmount})));
   const totalHT1 = breakdown.reduce((a,b)=>a+b.baseHT,0);
   const totalTVA1 = breakdown.reduce((a,b)=>a+b.tvaAmount,0);
   const aoa1 = [
@@ -10843,8 +11049,10 @@ function buildOrderPdf(o){
     const price = li.priceReceived != null ? li.priceReceived : (li.price != null ? li.price : (p?p.price:0));
     const qty = li.qtyReceived != null ? li.qtyReceived : li.qty;
     const tvaRate = li.tvaRate != null ? li.tvaRate : (p ? (p.tvaRate??5.5) : 5.5);
-    const totalHT = Math.round(Number(qty)*Number(price)*100)/100;
-    return { name, unit, price:Number(price), qty:Number(qty), tvaRate, totalHT };
+    // Achat divers saisi en TTC : HT et TVA de la ligne sont ceux du ticket, conservés tels quels.
+    const totalHT = (typeof li.totalHT === 'number' && li.priceReceived == null) ? li.totalHT : Math.round(Number(qty)*Number(price)*100)/100;
+    const tvaAmount = (typeof li.tvaAmount === 'number' && li.priceReceived == null) ? li.tvaAmount : undefined;
+    return { name, unit, price:Number(price), qty:Number(qty), tvaRate, totalHT, tvaAmount };
   });
   const rows = pdfLines.map(l => hideFin
     ? [l.name, `${l.qty} ${l.unit}`.trim()]
@@ -10860,7 +11068,7 @@ function buildOrderPdf(o){
   }) : null;
   if(!hideFin){
     const totalHT = pdfLines.reduce((a,l)=>a+l.totalHT,0);
-    const breakdown = tvaBreakdown(pdfLines.map(l=>({totalHT:l.totalHT, tvaRate:l.tvaRate})));
+    const breakdown = tvaBreakdown(pdfLines.map(l=>({totalHT:l.totalHT, tvaRate:l.tvaRate, tvaAmount:l.tvaAmount})));
     const totalTVA = breakdown.reduce((a,b)=>a+b.tvaAmount,0);
     const totalTTC = totalHT + totalTVA;
     let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 8 + rows.length*8;
