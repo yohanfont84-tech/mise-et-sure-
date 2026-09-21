@@ -1701,6 +1701,15 @@ function staleSuppliersReminderHTML(){
     </div>
   `;
 }
+// Formats monétaires français sans la logique de masquage de fmtEUR : utilisés là où l'écran
+// gère déjà lui-même l'affichage des montants. Ils remplacent des toFixed(2) qui produisaient
+// "6.00 €" à l'anglaise, au milieu de montants correctement écrits "6,00 €".
+function fmtNumFR2(n){ const v = Number(n); return (Number.isFinite(v) ? v : 0).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtEURRaw(n){ return fmtNumFR2(n) + '\u00A0€'; }
+// Version PDF : le navigateur écrit les milliers avec une espace fine insécable (U+202F), que
+// les polices standard de jsPDF n'ont pas — "1 250,00 €" deviendrait "1?250,00 €". On la
+// remplace par une espace ordinaire, seulement dans les PDF.
+function fmtEURPdf(n){ return fmtNumFR2(n).replace(/[\u202F\u00A0]/g,' ') + ' €'; }
 function fmtEUR(n){ if(financialsHidden()) return ''; const v = Number(n); return (Number.isFinite(v) ? v : 0).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + '\u00A0€'; }
 // ============================================================
 // FICHES TECHNIQUES — conversion d'unités et calcul de coût. Un produit est acheté dans une
@@ -4935,6 +4944,7 @@ function viewEcarts(){
             <div class="flex gap8 center">
               ${hideFin ? '' : `<span class="mono" style="font-weight:600;">${fmtEUR(o.amount)}</span>`}
               <button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir la réception et le bon de livraison">${iconXs(I.doc)} Détail</button>
+              ${canResolveDiscrepancy() && !o.discrepancyResolved ? `<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}', true)" title="La saisie était fausse ? Rectifiez les quantités ou les prix : l'écart disparaîtra de lui-même s'il n'y en a plus">${iconXs(I.copy)} Corriger</button>` : ''}
               ${canResolveDiscrepancy() ? (o.discrepancyResolved
                 ? `<button class="btn btn-ghost btn-sm" onclick="reopenDiscrepancy('${o.id}')">Rouvrir</button>`
                 : `<button class="btn btn-primary btn-sm" onclick="openResolveDiscrepancyModal('${o.id}')">${iconXs(I.check)} Clore l'écart</button>`) : ''}
@@ -8209,14 +8219,14 @@ function updateReceiveSummary(id){
     if(qty !== Number(li.qty) || price !== Number(li.price)) hasDiscrepancy = true;
   });
   const totalEl = document.getElementById('rcv-total-received');
-  if(totalEl) totalEl.textContent = receivedTotal.toFixed(2)+' €';
+  if(totalEl) totalEl.textContent = fmtEURRaw(receivedTotal);
   const expectedEl = document.getElementById('rcv-total-expected');
-  if(expectedEl) expectedEl.textContent = expectedTotal.toFixed(2)+' €';
+  if(expectedEl) expectedEl.textContent = fmtEURRaw(expectedTotal);
   const diffRow = document.getElementById('rcv-diff-row');
   if(diffRow){
     const diff = receivedTotal - expectedTotal;
     diffRow.innerHTML = hasDiscrepancy
-      ? `<span class="small" style="color:var(--urgent);font-weight:700;">⚠ Écart détecté</span><span class="mono" style="color:var(--urgent);font-weight:700;">${diff>=0?'+':''}${diff.toFixed(2)} €</span>`
+      ? `<span class="small" style="color:var(--urgent);font-weight:700;">⚠ Écart détecté</span><span class="mono" style="color:var(--urgent);font-weight:700;">${diff>=0?'+':''}${fmtEURRaw(diff)}</span>`
       : `<span class="small muted">Aucun écart pour l'instant</span><span class="mono muted">0.00 €</span>`;
   }
 }
@@ -8296,8 +8306,8 @@ function openReceiveOrderModal(id, correcting){
     <div style="max-height:320px;overflow-y:auto;">${lines || emptyState('Aucun article détaillé sur cette commande')}</div>
     ${hideFin ? '' : `
     <div id="rcv-summary" style="margin:14px 0;padding:12px 14px;border-radius:8px;background:var(--surface-subtle,rgba(0,0,0,0.03));">
-      <div class="flex between"><span class="small muted">Total commandé (reste à recevoir)</span><span class="mono" id="rcv-total-expected">${expectedTotal.toFixed(2)} €</span></div>
-      <div class="flex between" style="margin-top:4px;"><span class="small muted">Total facturé maintenant</span><span class="mono" id="rcv-total-received">${expectedTotal.toFixed(2)} €</span></div>
+      <div class="flex between"><span class="small muted">Total commandé (reste à recevoir)</span><span class="mono" id="rcv-total-expected">${fmtEURRaw(expectedTotal)}</span></div>
+      <div class="flex between" style="margin-top:4px;"><span class="small muted">Total facturé maintenant</span><span class="mono" id="rcv-total-received">${fmtEURRaw(expectedTotal)}</span></div>
       <div class="flex between" style="margin-top:4px;" id="rcv-diff-row"></div>
     </div>`}
     <div class="field">
@@ -8346,6 +8356,10 @@ async function confirmReceiveOrder(id){
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/receive`, {
       method:'PATCH', body:{ receivedLineItems, updateCatalogPrices, deliveryNotePhotoUrl },
     });
+    // Une commande déjà 'livree' avant cet enregistrement : c'est une correction, pas une
+    // nouvelle réception. On le note avant d'écraser le statut avec la réponse du serveur.
+    const wasCorrection = o.status === 'livree';
+    const hadDiscrepancy = !!o.hasDiscrepancy;
     o.status = data.order.status; // 'livree' ou 'partiellement_recue', selon ce qui a vraiment été reçu — jamais deviné côté navigateur
     o.hasDiscrepancy = data.order.has_discrepancy;
     o.lineItems = (data.order.line_items||[]).map(li=>{
@@ -8353,7 +8367,9 @@ async function confirmReceiveOrder(id){
       return { ...li, productId: localProduct ? localProduct.id : null };
     });
     o.amount = parseFloat(data.order.amount);
-    if(data.order.has_discrepancy){
+    // Pas de nouvel e-mail sur une correction : l'écart avait déjà été signalé à la réception,
+    // et le prévenir à nouveau à chaque rectification finirait par être ignoré.
+    if(data.order.has_discrepancy && !wasCorrection){
       notifyByEmail('patron', `écart détecté à la réception de la commande ${o.id}.`, 'ecart');
       notifyByEmail('manager', `écart détecté à la réception de la commande ${o.id}.`, 'ecart');
     }
@@ -8365,7 +8381,13 @@ async function confirmReceiveOrder(id){
       });
     }
     closeModal();
-    if(o.status==='partiellement_recue'){
+    if(wasCorrection){
+      toast(hadDiscrepancy && !data.order.has_discrepancy
+        ? "Réception corrigée — plus aucun écart, il a été retiré de la liste"
+        : data.order.has_discrepancy
+          ? 'Réception corrigée — un écart subsiste par rapport à la commande'
+          : 'Réception corrigée');
+    } else if(o.status==='partiellement_recue'){
       toast('Réception partielle enregistrée — vous pourrez compléter le reste dès son arrivée.');
     } else {
       toast(data.order.has_discrepancy ? 'Réception confirmée — écart détecté par rapport à la commande' : 'Livraison réceptionnée — tout correspond à la commande');
@@ -9351,8 +9373,8 @@ async function loadPriceHistoryForProduct(id){
           const prev = (prevRaw !== null && !isNaN(prevRaw)) ? prevRaw : null;
           let trend = '';
           if(prev !== null){
-            if(price > prev) trend = `<span style="color:var(--urgent);font-weight:600;">▲ +${(price-prev).toFixed(2)}€</span>`;
-            else if(price < prev) trend = `<span style="color:#2F9E44;font-weight:600;">▼ ${(price-prev).toFixed(2)}€</span>`;
+            if(price > prev) trend = `<span style="color:var(--urgent);font-weight:600;">▲ +${fmtEURRaw(price-prev)}</span>`;
+            else if(price < prev) trend = `<span style="color:#2F9E44;font-weight:600;">▼ ${fmtEURRaw(price-prev)}</span>`;
             else trend = `<span class="small muted">stable</span>`;
           }
           const date = new Date(h.recorded_at).toLocaleDateString('fr-FR', { day:'numeric', month:'short', year:'numeric' });
@@ -9641,7 +9663,7 @@ function buildOrderDocumentHTML(o){
       <table class="invoice-table">
         <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit. HT</th><th>TVA</th><th>Total HT</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${(l.total||0).toFixed(2)} €</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${fmtEURRaw(l.total||0)}</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -9739,7 +9761,14 @@ function openResolveDiscrepancyModal(orderId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Clore l'écart — ${escapeHtml(o.id)}</h3>
-    <p class="small muted" style="margin-bottom:14px;">La commande et son détail de réception restent consultables : seule l'alerte est levée.</p>
+    <p class="small muted" style="margin-bottom:12px;">La commande et son détail de réception restent consultables : seule l'alerte est levée.</p>
+    <!-- Clore un écart qui n'en était pas un laisserait des quantités fausses dans l'historique,
+         les statistiques et l'inventaire. Si la saisie était erronée, il faut corriger les
+         chiffres, pas seulement faire taire l'alerte. -->
+    <div style="padding:10px 12px;border-radius:8px;background:var(--surface-subtle);margin-bottom:16px;">
+      <div class="small" style="margin-bottom:8px;"><b>Tout a finalement bien été reçu ?</b> Si l'écart vient d'une erreur de saisie, corrigez plutôt la réception : les quantités et les totaux seront justes, et l'écart disparaîtra de lui-même.</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal(); openReceiveOrderModal('${orderId}', true);">${iconXs(I.copy)} Corriger la réception</button>
+    </div>
     <div class="field">
       <label>Pourquoi cet écart est-il réglé ?</label>
       <select id="disc-reason">
@@ -9883,7 +9912,7 @@ function buildHistoryDocumentHTML(period){
       <table class="invoice-table history">
         <thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Statut</th>${financialsHidden()?"":"<th>Montant HT</th>"}</tr></thead>
         <tbody>
-          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${(o.amount||0).toFixed(2)} €</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
+          ${orders.length ? orders.map(o=>`<tr><td>${o.id}</td><td>${supplierName(o.supplier)}</td><td>${o.date}</td><td>${orderStatusLabel(o.status)}</td>${financialsHidden()?'':`<td>${fmtEURRaw(o.amount||0)}</td>`}</tr>`).join('') : `<tr><td colspan="5">Aucune commande sur cette période</td></tr>`}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -10647,7 +10676,7 @@ function buildOrderPdf(o){
   });
   const rows = pdfLines.map(l => hideFin
     ? [l.name, `${l.qty} ${l.unit}`.trim()]
-    : [l.name, `${l.qty} ${l.unit}`.trim(), `${l.price.toFixed(2)} €`, tvaRateLabel(l.tvaRate), `${l.totalHT.toFixed(2)} €`]
+    : [l.name, `${l.qty} ${l.unit}`.trim(), fmtEURPdf(l.price), tvaRateLabel(l.tvaRate), fmtEURPdf(l.totalHT)]
   );
   doc.autoTable ? doc.autoTable({
     startY: y, margin:{left:marginX,right:15},
