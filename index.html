@@ -488,6 +488,13 @@ tr.group-row:hover td{background:var(--gray-100);}
 .faq-answer{padding:0 4px 18px 4px;font-size:14px;line-height:1.6;color:var(--text);}
 .faq-answer p{margin:0 0 12px 0;}
 .faq-image{display:block;max-width:340px;width:100%;border-radius:8px;border:1px solid var(--border);}
+/* Synthèse de la carte : trois chiffres clés, lisibles d'un coup d'œil. */
+.map-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;}
+.map-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;}
+.map-stat[role="button"]:hover{border-color:var(--accent);}
+.map-stat-val{font-family:var(--heading-font);font-size:22px;font-weight:600;line-height:1.1;}
+.map-stat-of{font-size:14px;color:var(--muted);font-weight:500;}
+.map-stat-label{font-size:12px;color:var(--muted);margin-top:4px;}
 .map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted);}
 .map-legend span{display:flex;align-items:center;gap:7px;}
 .map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
@@ -527,6 +534,14 @@ tr.group-row:hover td{background:var(--gray-100);}
 .map-search-here-btn{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:999;box-shadow:0 3px 14px rgba(0,0,0,0.25);white-space:nowrap;}
 .leaflet-control-layers{border-radius:8px !important;box-shadow:0 2px 10px rgba(0,0,0,0.2) !important;font-family:'Inter',sans-serif;}
 .leaflet-popup-content-wrapper{border-radius:10px !important;}
+/* Les fiches de la carte suivent le thème du site. La bibliothèque de cartographie impose un
+   fond blanc et un texte gris foncé : en mode sombre, les boutons et libellés de la fiche
+   (qui utilisent les couleurs du site) devenaient du texte clair sur fond blanc, illisible. */
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface) !important;color:var(--text) !important;}
+.leaflet-popup-content{font-family:'Inter',sans-serif;font-size:13px;line-height:1.5;margin:14px 16px !important;}
+.leaflet-popup-content a{color:var(--text);}
+.leaflet-container a.leaflet-popup-close-button{color:var(--muted) !important;}
+.leaflet-popup-content .btn{text-decoration:none;}
 .product-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;align-items:center;}
 .product-filter-bar input[type="text"]{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;}
 /* Règle générale de sécurité : un menu déroulant s'élargit par défaut à la taille de sa plus
@@ -5577,6 +5592,135 @@ let SUPPLIER_MAP_VIEW = null; // {center:[lat,lng], zoom} — retenu pour ne pas
 let SUPPLIER_MAP_LAST_SEARCH = null; // [lat,lng] du dernier endroit réellement recherché
 let SUPPLIER_MAP_SEARCHING_AREA = false;
 
+// ============================================================
+// CARTE DES FOURNISSEURS — données utiles
+// La carte montrait OÙ se trouvent les fournisseurs, mais rien sur ce qu'ils représentent pour
+// l'établissement. Ces fonctions ajoutent la distance, l'itinéraire, et surtout l'historique
+// d'achat de chaque fournisseur connu, pour que la carte serve à décider, pas seulement à voir.
+// ============================================================
+// Seuil "local" : 50 km, un ordre de grandeur courant pour parler d'approvisionnement de
+// proximité. Sert à calculer la part des achats faits près de chez soi — un vrai argument à
+// mettre en avant auprès des clients.
+// Recherche insensible aux accents et à la casse : "metro" doit trouver "Métro", "legume"
+// doit trouver "Légume". Personne ne tape les accents dans un champ de recherche.
+function normSearch(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+const LOCAL_SOURCING_KM = 50;
+let SUPPLIER_MAP_MARKERS = {};
+// Distance à vol d'oiseau (formule de haversine). La distance par la route est plus longue,
+// d'où la mention "à vol d'oiseau" partout où elle s'affiche.
+function mapDistanceKm(lat1, lng1, lat2, lng2){
+  if([lat1,lng1,lat2,lng2].some(v=>v==null || isNaN(v))) return null;
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2-lat1), dLng = toRad(lng2-lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function fmtKm(km){
+  if(km == null) return '';
+  return km < 10 ? km.toLocaleString('fr-FR',{maximumFractionDigits:1}) + '\u00A0km'
+                 : Math.round(km).toLocaleString('fr-FR') + '\u00A0km';
+}
+// Itinéraire depuis l'établissement : ouvre l'application de cartographie du téléphone ou
+// l'itinéraire Google Maps sur ordinateur.
+function mapDirectionsUrl(resto, lat, lng){
+  const origin = resto && resto.latitude != null ? `&origin=${resto.latitude},${resto.longitude}` : '';
+  return `https://www.google.com/maps/dir/?api=1${origin}&destination=${lat},${lng}`;
+}
+// Ce qu'un fournisseur représente réellement : montant acheté, nombre de commandes, dernière
+// commande et fiabilité. Les commandes refusées ne comptent pas, elles n'ont jamais été passées.
+function supplierMapStats(id){
+  const orders = ORDERS.filter(o=>o.supplier===id && o.status!=='refusee');
+  const spent = orders.reduce((s,o)=>s+(Number(o.amount)||0), 0);
+  const dated = orders.filter(o=>o.createdAt);
+  const last = dated.length ? dated.reduce((a,b)=> new Date(a.createdAt) > new Date(b.createdAt) ? a : b) : null;
+  return { spent, orderCount: orders.length, lastDate: last ? new Date(last.createdAt) : null, reliability: calculateSupplierReliability(id) };
+}
+// Vue d'ensemble : combien de fournisseurs sont localisés, le plus proche, et la part des
+// achats réalisée à moins de LOCAL_SOURCING_KM.
+function supplierMapSummary(resto){
+  const rows = SUPPLIERS.map(s=>{
+    const km = mapDistanceKm(resto.latitude, resto.longitude, s.latitude, s.longitude);
+    return { s, km, stats: supplierMapStats(s.id) };
+  });
+  const located = rows.filter(r=>r.km != null);
+  const totalSpent = rows.reduce((t,r)=>t+r.stats.spent, 0);
+  const localSpent = located.filter(r=>r.km <= LOCAL_SOURCING_KM).reduce((t,r)=>t+r.stats.spent, 0);
+  const nearest = located.slice().sort((a,b)=>a.km-b.km)[0] || null;
+  return {
+    rows, located,
+    localShare: totalSpent > 0 ? Math.round(localSpent / totalSpent * 100) : null,
+    localCount: located.filter(r=>r.km <= LOCAL_SOURCING_KM).length,
+    nearest,
+  };
+}
+// Depuis la liste sous la carte : centre la carte sur le fournisseur et ouvre sa fiche.
+function focusSupplierOnMap(id){
+  const marker = SUPPLIER_MAP_MARKERS[id];
+  if(!marker || !SUPPLIER_MAP_INSTANCE) return;
+  const el = document.getElementById('supplier-map');
+  if(el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+  SUPPLIER_MAP_INSTANCE.setView(marker.getLatLng(), Math.max(SUPPLIER_MAP_INSTANCE.getZoom(), 13), { animate:true });
+  // Un marqueur regroupé dans une grappe doit d'abord être rendu visible pour ouvrir sa fiche.
+  if(SUPPLIER_MAP_CLUSTER && SUPPLIER_MAP_CLUSTER.zoomToShowLayer){
+    SUPPLIER_MAP_CLUSTER.zoomToShowLayer(marker, ()=>marker.openPopup());
+  } else {
+    marker.openPopup();
+  }
+}
+let SUPPLIER_MAP_CLUSTER = null;
+// Synthèse en haut de la carte : trois chiffres qui répondent à des questions concrètes.
+// Combien de mes fournisseurs sont réellement placés ? Quelle part de mes achats est locale ?
+// Qui est le plus proche ? La part locale est un vrai argument à mettre en avant (carte,
+// réseaux sociaux) — encore faut-il la connaître.
+function supplierMapSummaryHTML(resto){
+  if(!SUPPLIERS.length) return '';
+  const sum = supplierMapSummary(resto);
+  const hideFin = financialsHidden();
+  const cards = [];
+  cards.push(`<div class="map-stat"><div class="map-stat-val">${sum.located.length}<span class="map-stat-of">/${SUPPLIERS.length}</span></div><div class="map-stat-label">fournisseurs localisés</div></div>`);
+  if(!hideFin && sum.localShare !== null){
+    cards.push(`<div class="map-stat"><div class="map-stat-val">${sum.localShare}\u00A0%</div><div class="map-stat-label">de vos achats à moins de ${LOCAL_SOURCING_KM}\u00A0km</div></div>`);
+  } else {
+    cards.push(`<div class="map-stat"><div class="map-stat-val">${sum.localCount}</div><div class="map-stat-label">fournisseurs à moins de ${LOCAL_SOURCING_KM}\u00A0km</div></div>`);
+  }
+  if(sum.nearest){
+    cards.push(`<div class="map-stat" role="button" tabindex="0" style="cursor:pointer;" onclick="focusSupplierOnMap('${sum.nearest.s.id}')" onkeydown="if(event.key==='Enter'){focusSupplierOnMap('${sum.nearest.s.id}');}"><div class="map-stat-val">${fmtKm(sum.nearest.km)}</div><div class="map-stat-label">le plus proche : ${escapeHtml(sum.nearest.s.name)}</div></div>`);
+  }
+  return `<div class="map-stats">${cards.join('')}</div>`;
+}
+// Liste sous la carte, triée par distance. Une carte seule oblige à cliquer sur chaque
+// marqueur pour savoir de qui il s'agit ; la liste donne la vue d'ensemble d'un coup d'œil,
+// et un clic sur une ligne centre la carte sur ce fournisseur et ouvre sa fiche.
+function supplierMapListHTML(resto){
+  const sum = supplierMapSummary(resto);
+  if(!sum.located.length) return '';
+  const hideFin = financialsHidden();
+  const q = normSearch(state.mapSearchQuery);
+  const rows = sum.located
+    .filter(r => !q || normSearch(r.s.name).includes(q))
+    .filter(r => !state.mapCategoryFilter || r.s.cat === state.mapCategoryFilter)
+    .sort((a,b)=>a.km-b.km);
+  if(!rows.length) return '';
+  return `
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title" style="margin-bottom:10px;">Vos fournisseurs, du plus proche au plus éloigné</div>
+      <table class="stack-mobile">
+        <tr><th>Fournisseur</th><th>Distance</th><th>Commandes</th>${hideFin?'':'<th>Montant acheté</th>'}<th>Fiabilité</th><th></th></tr>
+        ${rows.map(r=>`
+          <tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir sur la carte"
+              onclick="if(!event.target.closest('button, a')) focusSupplierOnMap('${r.s.id}')"
+              onkeydown="if(event.key==='Enter'){focusSupplierOnMap('${r.s.id}');}">
+            <td data-label="Fournisseur" style="font-weight:600;">${escapeHtml(r.s.name)}${r.km <= LOCAL_SOURCING_KM ? ' <span class="tag tag-subtle" style="margin-left:4px;">Local</span>' : ''}${r.s.isApproximate ? ' <span class="small muted">(position approx.)</span>' : ''}</td>
+            <td data-label="Distance" class="mono">${fmtKm(r.km)}</td>
+            <td data-label="Commandes" class="mono">${r.stats.orderCount || '—'}</td>
+            ${hideFin ? '' : `<td data-label="Montant acheté" class="mono">${r.stats.spent ? fmtEUR(r.stats.spent) : '—'}</td>`}
+            <td data-label="Fiabilité" class="mono">${r.stats.reliability ? r.stats.reliability.score + '\u00A0%' : '—'}</td>
+            <td><a class="btn btn-ghost btn-sm" href="${escapeHtml(mapDirectionsUrl(resto, r.s.latitude, r.s.longitude))}" target="_blank" rel="noopener noreferrer" title="Itinéraire depuis l'établissement">Itinéraire</a></td>
+          </tr>`).join('')}
+      </table>
+      <div class="small muted" style="margin-top:8px;">Distances à vol d'oiseau depuis votre établissement — le trajet routier est plus long.</div>
+    </div>`;
+}
 function viewSupplierMap(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   const hasLocation = resto && resto.latitude != null && resto.longitude != null;
@@ -5617,6 +5761,7 @@ function viewSupplierMap(){
           <input type="checkbox" ${state.mapProducersOnly?'checked':''} onchange="toggleProducersOnly()"> N'afficher que les petits producteurs
         </label>
       </div>
+      ${supplierMapSummaryHTML(resto)}
       <div class="map-legend">
         <span><span class="map-dot map-dot-resto"></span> Votre établissement</span>
         ${!state.mapProducersOnly ? `<span><span class="map-dot map-dot-known"></span> Fournisseurs déjà ajoutés (${knownWithCoords.length}${knownApproxCount>0?`, dont ${knownApproxCount} en position approximative`:''})</span>` : ''}
@@ -5632,6 +5777,7 @@ function viewSupplierMap(){
         ` : ''}
       </div>
       ${NEARBY_SUPPLIERS_LOADING ? `<div class="small muted" style="margin-top:10px;">Recherche en cours…</div>` : ''}
+      ${supplierMapListHTML(resto)}
       ${suppliersMissingCoords.length > 0 ? `
         <div class="small muted" style="margin-top:14px;">${suppliersMissingCoords.length} fournisseur(s) avec une adresse mais pas encore localisé(s) sur la carte (probablement ajoutés avant cette fonctionnalité).
         <button class="btn btn-ghost btn-sm" style="margin-left:8px;" onclick="geocodeSuppliersNow()" ${state.geocodingSuppliers?'disabled':''}>${state.geocodingSuppliers?'Localisation en cours…':'Les localiser maintenant'}</button></div>
@@ -5774,11 +5920,13 @@ function initSupplierMapNow(){
   // pour les distinguer un par un — la carte reste fluide même avec beaucoup de résultats, au
   // lieu d'afficher des dizaines de marqueurs superposés d'un coup.
   const supplierCluster = L.markerClusterGroup ? L.markerClusterGroup({ maxClusterRadius: 50, spiderfyOnMaxZoom: true }) : map;
+  SUPPLIER_MAP_CLUSTER = supplierCluster !== map ? supplierCluster : null;
+  SUPPLIER_MAP_MARKERS = {};
 
-  const q = (state.mapSearchQuery||'').toLowerCase().trim();
+  const q = normSearch(state.mapSearchQuery);
   const catFilter = state.mapCategoryFilter||'';
   const matchesFilters = (name, category) => {
-    if(q && !name.toLowerCase().includes(q)) return false;
+    if(q && !normSearch(name).includes(q)) return false;
     if(catFilter && category !== catFilter) return false;
     return true;
   };
@@ -5796,11 +5944,34 @@ function initSupplierMapNow(){
         if(s.contactEmail) contactLines.push(`✉️ <a href="mailto:${escapeHtml(s.contactEmail)}">${escapeHtml(s.contactEmail)}</a> (commercial)`);
       }
       const googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent([s.name, s.address].filter(Boolean).join(' '));
-      L.marker([s.latitude, s.longitude], {icon, opacity: s.isApproximate ? 0.7 : 1}).addTo(supplierCluster).bindPopup(
-        `<b>${escapeHtml(s.name)}</b><br><span class="small muted">Déjà dans vos fournisseurs</span>${approxNote}`
+      // Ce que ce fournisseur représente pour l'établissement : c'est l'information qui manquait
+      // pour que la carte serve à décider (lequel relancer, lequel privilégier, lequel est loin
+      // pour ce qu'on lui achète).
+      const st = supplierMapStats(s.id);
+      const km = mapDistanceKm(resto.latitude, resto.longitude, s.latitude, s.longitude);
+      const hideFin = financialsHidden();
+      const statLines = [];
+      if(st.orderCount){
+        statLines.push(`${st.orderCount} commande${st.orderCount>1?'s':''}${hideFin ? '' : ' · <b>' + fmtEUR(st.spent) + '</b> au total'}`);
+        if(st.lastDate) statLines.push(`Dernière commande : ${fmtDateShort(st.lastDate)}`);
+        if(st.reliability) statLines.push(`Fiabilité de livraison : <b>${st.reliability.score} %</b>${st.reliability.discrepancyCount ? ` (${st.reliability.discrepancyCount} écart${st.reliability.discrepancyCount>1?'s':''})` : ''}`);
+      } else {
+        statLines.push('Aucune commande passée pour le moment');
+      }
+      if(s.delay) statLines.push(`Délai annoncé : ${escapeHtml(s.delay)}`);
+      const marker = L.marker([s.latitude, s.longitude], {icon, opacity: s.isApproximate ? 0.7 : 1}).addTo(supplierCluster).bindPopup(
+        `<b>${escapeHtml(s.name)}</b><br><span class="small muted">Déjà dans vos fournisseurs${km!=null ? ' · à ' + fmtKm(km) + ' à vol d\'oiseau' : ''}</span>${approxNote}`
+        + `<div class="small" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);line-height:1.65;">${statLines.join('<br>')}</div>`
         + (contactLines.length ? `<div class="small" style="margin-top:6px;line-height:1.6;">${contactLines.join('<br>')}</div>` : '')
-        + `<br><a href="${escapeHtml(googleUrl)}" target="_blank" rel="noopener noreferrer" class="small">🔎 Chercher sur Internet</a>`
+        + `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">`
+        +   `<button class="btn btn-primary btn-sm" onclick="openNewOrderModal('${s.id}')">Commander</button>`
+        +   `<button class="btn btn-ghost btn-sm" onclick="openSupplierDetail('${s.id}')">Fiche</button>`
+        +   `<a class="btn btn-ghost btn-sm" href="${escapeHtml(mapDirectionsUrl(resto, s.latitude, s.longitude))}" target="_blank" rel="noopener noreferrer">Itinéraire</a>`
+        + `</div>`
+        + `<div style="margin-top:6px;"><a href="${escapeHtml(googleUrl)}" target="_blank" rel="noopener noreferrer" class="small">🔎 Chercher sur Internet</a></div>`,
+        { minWidth: 250 }
       );
+      SUPPLIER_MAP_MARKERS[s.id] = marker;
     });
   }
 
@@ -5816,7 +5987,8 @@ function initSupplierMapNow(){
     const linkLine = s.link ? `<a href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer" class="small">${s.linkIsWebsite?'🔗 Voir le site':'🔎 Chercher sur Internet'}</a>` : '';
     L.marker([s.latitude, s.longitude], {icon}).addTo(supplierCluster)
       .bindPopup(
-        `${badge}<b>${escapeHtml(s.name)}</b><br><span class="small muted">${escapeHtml(s.category)}</span>`
+        `${badge}<b>${escapeHtml(s.name)}</b><br><span class="small muted">${escapeHtml(s.category)}${(()=>{ const km = mapDistanceKm(resto.latitude, resto.longitude, s.latitude, s.longitude); return km!=null ? ' · à ' + fmtKm(km) + ' à vol d\'oiseau' : ''; })()}</span>`
+        + `<div style="margin-top:6px;"><a class="small" href="${escapeHtml(mapDirectionsUrl(resto, s.latitude, s.longitude))}" target="_blank" rel="noopener noreferrer">🧭 Itinéraire depuis l'établissement</a></div>`
         + (contactLines.length ? `<div class="small" style="margin-top:6px;line-height:1.6;">${contactLines.join('<br>')}</div>` : '')
         + (linkLine ? `<div style="margin-top:4px;">${linkLine}</div>` : '')
         + `<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="prefillSupplierFromMap('${escapeHtml(s.name).replace(/'/g,"\\'")}','${escapeHtml(s.address||'').replace(/'/g,"\\'")}')">+ Ajouter à mes fournisseurs</button>`
