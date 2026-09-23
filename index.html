@@ -501,6 +501,17 @@ tr.group-row:hover td{background:var(--gray-100);}
   .misc-line{grid-template-columns:1fr 1fr 1fr auto !important;}
   .misc-line .field:first-child{grid-column:1 / -1;}
 }
+/* Bandeau de rappel (HACCP de fin de journée) : visible sans être alarmant — il signale une
+   tâche à terminer, pas un incident. Il reprend la teinte d'alerte du site pour rester
+   cohérent avec le reste, et s'adapte au mode sombre par ses variables. */
+.banner-alert{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 14px;border-radius:var(--radius);
+  background:var(--urgent-tint);color:var(--urgent);
+  border:1px solid var(--urgent);
+  font-size:13.5px;font-weight:600;
+}
+.banner-alert svg{flex-shrink:0;}
 .map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted);}
 .map-legend span{display:flex;align-items:center;gap:7px;}
 .map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
@@ -2205,6 +2216,10 @@ let CREDENTIALS = {
   patron: { username:'', password:'', theme:'light' }, // initialisés à la création du premier établissement
 };
 
+// Rappel HACCP de fin de journée. L'heure est rangée dans les réglages de notification déjà
+// existants (un objet JSON par établissement), sous sa propre clé : pas de nouvelle colonne en
+// base, et le réglage vaut pour toute l'équipe, pas seulement pour l'appareil qui l'a saisi.
+let HACCP_REMINDER = { hour: 21 };
 let NOTIF_STATE = {
   patron:{email:'', enabled:true, events:{urgent:true, commandes:true, demande_normale:true, ecart:true, achat_personnalise:true}},
   manager:{email:'', enabled:true, events:{demandes:true, commandes:true, demande_normale:true, ecart:true}},
@@ -2338,11 +2353,18 @@ async function notifyByEmail(roleKey, message, eventKey){
       method:'POST',
       body:{ role: roleKey, message },
     });
-    if(data.sent) toast(`<b>Email envoyé</b> à ${escapeHtml(maskEmail(cfg.email))} — ${message}`, 'mail');
+    if(data.sent){
+      toast(`<b>Email envoyé</b> à ${escapeHtml(maskEmail(cfg.email))} — ${message}`, 'mail');
+    } else if(data.simulated){
+      // Le serveur n'a pas de clé d'envoi : rien n'est parti. Le dire franchement plutôt que
+      // d'afficher « Email envoyé », qui laisserait croire le problème réglé.
+      toast(data.reason || "L'envoi d'emails n'est pas configuré sur le serveur.", 'alert');
+    }
   } catch(err){
     // Une notification manquée ne doit jamais bloquer l'action en cours (approbation d'une
-    // demande, envoi d'une commande...) — on l'indique discrètement, sans interrompre.
-    toast(`Email non envoyé (${err.message})`, 'alert');
+    // demande, envoi d'une commande...) — on l'indique, avec la raison exacte renvoyée par le
+    // serveur, pour qu'on sache quoi corriger.
+    toast(`Email non envoyé — ${err.message}`, 'alert');
   }
 }
 function openModal(html){
@@ -3462,6 +3484,12 @@ function requirePerm(roles, msg){
 ============================================================ */
 function getNotificationsForRole(role){
   const items = [];
+  // Rappel de fin de journée — patron, manager et cuisine : ceux qui tiennent réellement les
+  // relevés. La salle n'est pas concernée.
+  if(['patron','manager','cuisine'].includes(role)){
+    const haccpStatus = haccpReminderDue();
+    if(haccpStatus) items.push({icon:I.thermometer, text:haccpReminderText(haccpStatus), view:'haccp'});
+  }
   if(role==='patron'){
     ORDERS.filter(o=>o.status==='en_attente_validation').forEach(o=>items.push({icon:I.cart, text:`Commande ${o.id} en attente de validation`, view:'commandes'}));
     REQUESTS.filter(r=>r.from==='Cuisine' && r.status==='attente').forEach(r=>items.push({icon:I.chef, text:`Demande cuisine : ${escapeHtml(r.item)} (${escapeHtml(r.by)})`, view:'dashboard'}));
@@ -5013,7 +5041,15 @@ function viewHaccp(role){
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Suivi HACCP</h2><div class="sub">Températures et nettoyage — la trace à garder en cas de contrôle sanitaire</div></div>
+      ${role==='patron' ? `
+        <div class="flex center gap8" style="flex-wrap:wrap;">
+          <label class="small muted" for="haccp-reminder-hour">Rappel de fin de journée à partir de</label>
+          <select id="haccp-reminder-hour" onchange="saveHaccpReminderHour(this.value)" style="width:auto;">
+            ${[16,17,18,19,20,21,22,23].map(h=>`<option value="${h}" ${HACCP_REMINDER.hour===h?'selected':''}>${h}h</option>`).join('')}
+          </select>
+        </div>` : ''}
     </div>
+    ${(() => { const st = haccpReminderDue(); return st ? `<div class="banner-alert" style="margin-bottom:16px;">${iconSm(I.thermometer)} <span>${haccpReminderText(st)}</span></div>` : ''; })()}
     <div class="flex between center" style="margin-bottom:22px;flex-wrap:wrap;gap:12px;">
       <div class="flex gap8">
         <button class="btn ${tab==='temperatures'?'btn-primary':'btn-ghost'} btn-sm" onclick="setHaccpTab('temperatures')">${iconXs(I.thermometer)} Températures</button>
@@ -5133,6 +5169,54 @@ function haccpTodayStatus(){
   const totalMissing = missingEquipment.length + dueTasks.length;
   if(totalMissing===0) return null; // rien à rappeler : soit tout est fait, soit rien n'est configuré
   return { missingEquipment, dueTasks, totalMissing };
+}
+// Le rappel ne se déclenche qu'en fin de journée, et seulement s'il reste vraiment quelque
+// chose à faire : un rappel qui s'affiche alors que tout est à jour finit par être ignoré, et
+// c'est précisément le jour où il compte qu'on ne le regardera plus.
+function haccpReminderDue(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto || !resto.haccpEnabled) return null;
+  if(new Date().getHours() < HACCP_REMINDER.hour) return null;
+  return haccpTodayStatus();
+}
+function haccpReminderText(status){
+  const parts = [];
+  if(status.missingEquipment.length) parts.push(`${status.missingEquipment.length} température${status.missingEquipment.length>1?'s':''} à relever`);
+  if(status.dueTasks.length) parts.push(`${status.dueTasks.length} nettoyage${status.dueTasks.length>1?'s':''} à cocher`);
+  return `Avant de fermer : ${parts.join(' et ')}`;
+}
+// Alerte à l'écran, une seule fois par jour et par personne : au-delà, le rappel devient du
+// bruit et on finit par le fermer sans le lire. La cloche, elle, le garde disponible.
+function maybeShowHaccpReminderToast(){
+  const status = haccpReminderDue();
+  if(!status) return;
+  if(!['patron','manager','cuisine'].includes(state.role)) return;
+  const key = `mise_et_sure_haccp_rappel_${state.resto}_${state.role}_${new Date().toDateString()}`;
+  try{
+    if(localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+  }catch(e){ return; } // stockage indisponible : pas d'alerte plutôt qu'une alerte à répétition
+  toast(haccpReminderText(status), 'alert');
+}
+async function saveHaccpReminderHour(value){
+  const hour = Number(value);
+  if(!Number.isFinite(hour)) return;
+  const previous = HACCP_REMINDER.hour;
+  HACCP_REMINDER.hour = hour;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    // Rangé sous sa propre clé dans les réglages de notification de l'établissement : le choix
+    // vaut pour toute l'équipe, pas seulement pour l'appareil du patron.
+    await apiRequest(`/api/restaurants/${resto.remoteId}/notification-settings`, {
+      method:'PATCH', body:{ role:'haccp', settings:{ reminderHour: hour } },
+    });
+    toast(`Rappel HACCP réglé à ${hour}h`);
+    render();
+  } catch(err){
+    HACCP_REMINDER.hour = previous; // on ne garde pas un réglage que le serveur n'a pas accepté
+    toast(err.message, 'alert');
+    render();
+  }
 }
 function haccpDashboardReminderHTML(){
   const status = haccpTodayStatus();
@@ -6660,6 +6744,8 @@ async function syncNotificationSettingsFromServer(localId){
         NOTIF_STATE[role] = { ...NOTIF_STATE[role], ...data.notificationSettings[role] };
       }
     });
+    const h = data.notificationSettings && data.notificationSettings.haccp && data.notificationSettings.haccp.reminderHour;
+    if(Number.isFinite(Number(h))) HACCP_REMINDER.hour = Number(h);
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncNotificationSettingsFromServer —', err); }
 }
 async function syncRestoOperationalData(localId){
@@ -8127,6 +8213,9 @@ async function saveNotifSettings(role){
     await apiRequest(`/api/restaurants/${resto.remoteId}/notification-settings`, {
       method:'PATCH', body:{ role, settings: cfg },
     });
+    // Les préférences sont enregistrées quoi qu'il arrive ensuite : l'e-mail de confirmation
+    // est un test, son échec ne remet pas en cause l'enregistrement. Sans cette distinction,
+    // voir un message rouge juste après laissait croire que rien n'avait été sauvegardé.
     toast('Préférences enregistrées');
     if(cfg.enabled) notifyByEmail(role, "confirmation : vos notifications arriveront ici désormais.");
     render();
@@ -12656,6 +12745,7 @@ function renderInner(){
   `;
   requestAnimationFrame(()=>drawCharts());
   requestAnimationFrame(initSupplierMap);
+  requestAnimationFrame(maybeShowHaccpReminderToast);
   // filterInventaireRows() ne fait rien si on n'est pas sur la page Inventaire (les sélecteurs
   // ne trouvent simplement rien) — appelée sans condition ici, comme initSupplierMap juste
   // au-dessus, pour réappliquer recherche et catégories repliées après un vrai rechargement de
