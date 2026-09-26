@@ -5603,6 +5603,7 @@ function viewCommandes(role){
         ${basketSupplierIds.map(sid=>renderBasketCard(sid, role)).join('')}
       </div>
     ` : ''}
+    ${accountingReminderHTML()}
     ${orderTemplatesHTML()}
     ${restockSuggestionsHTML()}
     <div class="section-head">
@@ -5613,6 +5614,7 @@ function viewCommandes(role){
         ${financialsHidden() ? '' : `
           <button class="btn btn-ghost btn-sm" onclick="downloadAccountingExport('month')">${iconXs(I.download)} Export comptable — ce mois</button>
           <button class="btn btn-ghost btn-sm" onclick="downloadAccountingExport('year')">${iconXs(I.download)} Export comptable — cette année</button>
+          ${state.role==='patron' && ACCOUNTING_EMAIL ? `<button class="btn btn-ghost btn-sm" onclick="sendAccountingExportToAccountant('month')" title="Envoyer l'export du mois à ${escapeHtml(maskEmail(ACCOUNTING_EMAIL))}">${iconXs(I.mail)} Envoyer au comptable</button>` : ''}
         `}
       </div>
     </div>
@@ -5727,6 +5729,94 @@ async function deleteOrderTemplate(templateId){
     toast('Panier type supprimé');
     render();
   } catch(err){ toast(err.message, 'alert'); }
+}
+// ============================================================
+// ENVOI DE L'EXPORT COMPTABLE
+// L'adresse du comptable est rangée dans les réglages de notification de l'établissement,
+// sous sa propre clé : pas de nouvelle colonne en base, et le réglage vaut pour tout le monde.
+// ============================================================
+let ACCOUNTING_EMAIL = '';
+function accountingPeriodLabel(period){
+  const now = new Date();
+  return period === 'year' ? `année ${now.getFullYear()}` : `${MONTHS_LONG[now.getMonth()]} ${now.getFullYear()}`;
+}
+async function saveAccountantEmail(value){
+  const email = (value || '').trim();
+  if(email && !email.includes('@')){ toast('Adresse email invalide', 'alert'); return; }
+  const previous = ACCOUNTING_EMAIL;
+  ACCOUNTING_EMAIL = email;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/notification-settings`, {
+      method:'PATCH', body:{ role:'accounting', settings:{ email } },
+    });
+    toast(email ? `Export comptable adressé à ${maskEmail(email)}` : "Adresse du comptable retirée");
+    render();
+  } catch(err){
+    ACCOUNTING_EMAIL = previous; // on ne garde pas un réglage que le serveur n'a pas accepté
+    toast(err.message, 'alert');
+    render();
+  }
+}
+// Le fichier est construit ici (avec les règles de TVA du site), puis transmis au serveur pour
+// l'envoi : une seule et même logique comptable, quel que soit le chemin emprunté.
+function sendAccountingExportToAccountant(period){
+  if(!ACCOUNTING_EMAIL){ toast("Renseignez d'abord l'adresse de votre comptable", 'alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  ensureSheetJS(async () => {
+    try{
+      const wb = buildAccountingExportWorkbook(period);
+      const base64 = XLSX.write(wb, { bookType:'xlsx', type:'base64' });
+      const filename = `export-comptable-${(resto?.name||'etablissement').replace(/[^a-z0-9]+/gi,'-').toLowerCase()}-${period}-${new Date().toISOString().slice(0,10)}.xlsx`;
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/send-accounting-export`, {
+        method:'POST', body:{ email: ACCOUNTING_EMAIL, filename, base64, periodLabel: accountingPeriodLabel(period) },
+      });
+      if(data.sent){
+        markAccountingSentThisMonth();
+        toast(`Export envoyé à ${maskEmail(ACCOUNTING_EMAIL)}`);
+        render();
+      } else if(data.simulated){
+        toast(data.reason || "L'envoi d'emails n'est pas configuré sur le serveur.", 'alert');
+      }
+    } catch(err){ toast(`Export non envoyé — ${err.message}`, 'alert'); }
+  });
+}
+// Rappel en début de mois, une fois le mois précédent terminé. Volontairement une suggestion
+// que l'on peut écarter, pas une alerte qui revient : c'est au restaurateur de décider quand
+// il transmet sa comptabilité.
+function accountingReminderKey(){
+  const d = new Date();
+  return `mise_et_sure_export_compta_${state.resto}_${d.getFullYear()}-${d.getMonth()}`;
+}
+function markAccountingSentThisMonth(){
+  try{ localStorage.setItem(accountingReminderKey(), 'fait'); }catch(e){}
+}
+function dismissAccountingReminder(){
+  try{ localStorage.setItem(accountingReminderKey(), 'ecarte'); }catch(e){}
+  render();
+}
+function accountingReminderHTML(){
+  if(financialsHidden() || state.role !== 'patron') return '';
+  if(!ORDERS.length) return '';
+  const d = new Date();
+  if(d.getDate() > 10) return ''; // passé le 10, le rappel n'a plus lieu d'être
+  try{ if(localStorage.getItem(accountingReminderKey())) return ''; }catch(e){ return ''; }
+  const prev = new Date(d.getFullYear(), d.getMonth()-1, 1);
+  const label = `${MONTHS_LONG[prev.getMonth()]} ${prev.getFullYear()}`;
+  return `
+    <div class="card" style="margin-bottom:18px;border:1.5px solid var(--border);background:var(--paper);">
+      <div class="flex center gap8" style="margin-bottom:4px;">
+        ${iconSm(I.invoice)}
+        <div class="card-title" style="margin-bottom:0;">Comptabilité de ${escapeHtml(label)}</div>
+      </div>
+      <div class="small muted" style="margin-bottom:12px;">${ACCOUNTING_EMAIL ? `Prêt à envoyer à ${escapeHtml(maskEmail(ACCOUNTING_EMAIL))}.` : "Renseignez l'adresse de votre comptable pour l'envoyer en un clic."}</div>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="dismissAccountingReminder()">Pas maintenant</button>
+        ${ACCOUNTING_EMAIL
+          ? `<button class="btn btn-primary btn-sm" onclick="sendAccountingExportToAccountant('month')">${iconXs(I.mail)} Envoyer à mon comptable</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="setView('parametres')">Renseigner l'adresse</button>`}
+      </div>
+    </div>`;
 }
 function orderTemplatesHTML(){
   if(!ORDER_TEMPLATES.length) return '';
@@ -7218,6 +7308,8 @@ async function syncNotificationSettingsFromServer(localId){
         NOTIF_STATE[role] = { ...NOTIF_STATE[role], ...data.notificationSettings[role] };
       }
     });
+    const acc = data.notificationSettings && data.notificationSettings.accounting;
+    ACCOUNTING_EMAIL = (acc && acc.email) || '';
     const h = data.notificationSettings && data.notificationSettings.haccp && data.notificationSettings.haccp.reminderHour;
     if(Number.isFinite(Number(h))) HACCP_REMINDER.hour = Number(h);
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncNotificationSettingsFromServer —', err); }
@@ -7388,7 +7480,15 @@ function viewParametres(){
     ${tab==='general' ? `
     <div class="grid grid-2b">
       <div class="card">
-        <div class="card-title">Informations établissement</div>
+        <div class="card-title">Comptabilité</div>
+      <div class="small muted" style="margin-bottom:10px;">L'adresse à laquelle envoyer l'export comptable en un clic. Laissez vide pour ne pas utiliser cette fonction.</div>
+      <div class="field" style="max-width:420px;">
+        <label>Adresse de votre comptable</label>
+        <input id="accountant-email" type="email" value="${escapeHtml(ACCOUNTING_EMAIL)}" placeholder="comptable@cabinet.fr" onchange="saveAccountantEmail(this.value)">
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Informations établissement</div>
         <div class="field"><label>Nom du restaurant</label><input id="set-name" value="${escapeHtml(resto.name)}"></div>
         <div class="field"><label>Adresse</label><input id="set-address" value="${escapeHtml(resto.address||'')}" placeholder="12 rue de la République" list="set-address-list" oninput="wireAddressAutocomplete('set-address','set-address-list')"><datalist id="set-address-list"></datalist></div>
         <div class="field-row">
