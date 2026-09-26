@@ -512,6 +512,25 @@ tr.group-row:hover td{background:var(--gray-100);}
   font-size:13.5px;font-weight:600;
 }
 .banner-alert svg{flex-shrink:0;}
+/* Résultats de la recherche globale : une ligne cliquable pleine largeur, lisible au clavier
+   comme à la souris. */
+.gs-item{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  width:100%;text-align:left;padding:9px 10px;margin-bottom:4px;
+  background:transparent;border:1px solid transparent;border-radius:8px;
+  color:var(--text);cursor:pointer;font-family:inherit;font-size:13.5px;
+}
+.gs-item:hover{background:var(--surface-subtle);border-color:var(--border);}
+.gs-item:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+#gs-results{max-height:min(52vh,420px);overflow-y:auto;}
+/* Relevé groupé : une ligne par équipement, le champ de saisie aligné à droite pour qu'on
+   descende la colonne des températures d'un seul mouvement. */
+.haccp-bulk-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.haccp-bulk-row:last-child{border-bottom:none;}
+#haccp-bulk-rows{max-height:min(46vh,380px);overflow-y:auto;}
 .map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted);}
 .map-legend span{display:flex;align-items:center;gap:7px;}
 .map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
@@ -1581,6 +1600,8 @@ let REQUESTS = [];
 
 let ORDERS = [];
 
+// Paniers types : { id, remoteId, name, supplier (id local), items:[{productId, qty}] }
+let ORDER_TEMPLATES = [];
 let BASKETS = {}; // { [supplierId]: [{productId, qty}, ...] } — panier en attente d'envoi, par fournisseur
 
 let CUSTOM_REQUESTS = []; // propositions d'achat libres (hors catalogue), approuvées ou non par le patron
@@ -3596,6 +3617,7 @@ function renderShell(){
         <div class="role-switcher">
           ${Object.keys(ROLE_META).map(r=>`<button class="role-btn ${state.role===r?'active':''}" onclick="previewRole('${r}')">${ROLE_META[r].label}</button>`).join('')}
         </div>` : `<span class="tag tag-neutral" style="padding:7px 14px;font-size:12.5px;">${meta.label}</span>`}
+        <button class="btn btn-ghost btn-sm" onclick="openGlobalSearch()" title="Rechercher (Ctrl+K)" aria-label="Rechercher">${iconSm(I.search || I.doc)}</button>
         <button class="btn btn-ghost btn-sm" onclick="manualRefresh()" title="Actualiser les données" aria-label="Actualiser les données">${iconSm(I.refresh)}</button>
         <div class="notif-wrap">
           <button class="btn btn-ghost btn-sm" style="position:relative" onclick="toggleNotifPanel()" title="Notifications" aria-label="Notifications">
@@ -3764,6 +3786,8 @@ function viewStats(){
       <div class="card"><div class="small muted">Commandes au total</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.status!=='refusee').length}</div></div>
       <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy && !o.discrepancyResolved).length}</div></div>
     </div>
+    <!-- Après les chiffres clés : c'est une lecture d'analyse, pas une alerte urgente. -->
+    ${priceIncreaseAlertsHTML()}
     <div class="grid grid-2b">
       <div class="card">
         <div class="card-title">Dépenses par fournisseur</div>
@@ -3891,6 +3915,9 @@ function buildAIInsights(){
 function onboardingChecklist(){
   // N'apparaît que tant que l'essentiel n'est pas en place — une fois les bases posées, cette
   // carte disparaît d'elle-même et ne revient jamais gêner un usage déjà installé.
+  // Et jamais avant que les données de l'établissement ne soient arrivées : sinon elle
+  // s'affiche à chaque connexion, le temps que le catalogue et les fournisseurs soient reçus.
+  if(!restoDataReady()) return '';
   const hasSuppliers = SUPPLIERS.length > 0;
   const hasOrganisation = CATEGORIES.length > 0 || ZONES.length > 0;
   const hasProducts = PRODUCTS.length > 0;
@@ -5090,7 +5117,10 @@ function viewHaccpTemperatures(role){
   return `
     ${HACCP_EQUIPMENT.length ? `
     <div class="card" style="margin-bottom:20px;">
-      <div class="card-title">Relever une température</div>
+      <div class="flex between center" style="gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <div class="card-title" style="margin-bottom:0;">Relever une température</div>
+        ${HACCP_EQUIPMENT.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="openHaccpBulkModal()" title="Saisir tous les équipements sur un seul écran">${iconXs(I.thermometer)} Relever tous les équipements</button>` : ''}
+      </div>
       <div class="field-row">
         <div class="field"><label>Équipement</label>
           <select id="haccp-temp-equipment" onchange="updateHaccpTempTodayNotice()">
@@ -5348,6 +5378,98 @@ async function submitHaccpTemperatureLog(){
     render();
   } catch(err){ toast(err.message, 'alert'); }
 }
+// ============================================================
+// RELEVÉ GROUPÉ DES TEMPÉRATURES
+// Relever trois équipements demandait trois passages dans la même fenêtre. Ici, un seul écran.
+// Les champs restent VOLONTAIREMENT VIDES : pré-remplir avec la dernière valeur reviendrait à
+// proposer d'enregistrer un relevé qui n'a pas été fait — sans valeur pour le restaurateur, et
+// sans valeur devant un contrôle. La dernière valeur est affichée à côté, comme repère.
+// ============================================================
+function haccpBulkRowHTML(eq){
+  const todayLogs = haccpTempLogsToday(eq.id);
+  const done = todayLogs.length > 0;
+  const last = HACCP_TEMP_LOGS.filter(l=>l.equipmentId===eq.id)
+    .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
+  return `
+    <div class="haccp-bulk-row" data-eq="${eq.id}">
+      <div style="min-width:0;">
+        <div style="font-weight:600;">${escapeHtml(eq.name)}</div>
+        <div class="small muted">Seuils ${eq.minTemp}° à ${eq.maxTemp}°${last ? ` · dernier relevé ${last.temperature}°` : ''}</div>
+        ${done ? `<div class="small" style="color:var(--good);">${iconXs(I.check)} déjà relevé aujourd'hui</div>` : ''}
+      </div>
+      <div class="field" style="margin:0;">
+        <input class="haccp-bulk-temp" type="number" step="0.1" placeholder="°C"
+               data-eq-id="${eq.id}" oninput="updateHaccpBulkSummary()" style="width:92px;text-align:right;">
+      </div>
+    </div>`;
+}
+function openHaccpBulkModal(){
+  if(!HACCP_EQUIPMENT.length){ toast('Aucun équipement configuré pour le moment', 'alert'); return; }
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Relever les températures</h3>
+    <div class="modal-sub">Renseignez ce que vous avez relevé. Laissez vide ce que vous n'avez pas contrôlé — rien n'est enregistré à votre place.</div>
+    <div id="haccp-bulk-rows">${HACCP_EQUIPMENT.map(e=>haccpBulkRowHTML(e)).join('')}</div>
+    <div class="field" style="margin-top:12px;"><label>Note commune (facultatif)</label>
+      <input id="haccp-bulk-note" placeholder="Ex : contrôle de fin de service">
+    </div>
+    <div id="haccp-bulk-summary" class="small muted" style="margin:10px 0;"></div>
+    <button class="btn btn-primary btn-block" id="haccp-bulk-save" onclick="submitHaccpBulk()">Enregistrer les relevés</button>
+  `);
+  updateHaccpBulkSummary();
+}
+// Aperçu en direct : ce qui sera enregistré, et ce qui sort des seuils avant même d'envoyer.
+function updateHaccpBulkSummary(){
+  const box = document.getElementById('haccp-bulk-summary'); if(!box) return;
+  const filled = [...document.querySelectorAll('.haccp-bulk-temp')].filter(i=>i.value.trim() !== '');
+  if(!filled.length){ box.textContent = 'Aucun relevé saisi pour le moment.'; box.style.color=''; return; }
+  const outOfRange = filled.filter(i=>{
+    const eq = HACCP_EQUIPMENT.find(e=>e.id===i.dataset.eqId); if(!eq) return false;
+    const t = parseFloat(String(i.value).replace(',','.'));
+    return !Number.isNaN(t) && (t < eq.minTemp || t > eq.maxTemp);
+  }).length;
+  box.innerHTML = `${filled.length} relevé${filled.length>1?'s':''} à enregistrer`
+    + (outOfRange ? ` — <span style="color:var(--urgent);font-weight:600;">${outOfRange} hors seuils</span>` : '');
+}
+async function submitHaccpBulk(){
+  const inputs = [...document.querySelectorAll('.haccp-bulk-temp')].filter(i=>i.value.trim() !== '');
+  if(!inputs.length){ toast('Renseignez au moins une température', 'alert'); return; }
+  const note = (document.getElementById('haccp-bulk-note') || {}).value || '';
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const btn = document.getElementById('haccp-bulk-save'); if(btn) btn.disabled = true;
+  let saved = 0, outOfRange = 0;
+  const failed = [];
+  for(const input of inputs){
+    const eq = HACCP_EQUIPMENT.find(e=>e.id===input.dataset.eqId);
+    const temperature = parseFloat(String(input.value).replace(',','.'));
+    if(!eq || Number.isNaN(temperature)) continue;
+    try{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/temperature-logs`, {
+        method:'POST', body:{ equipmentId: eq.remoteId, temperature, note: note.trim(), loggedByName: currentActorName() },
+      });
+      HACCP_TEMP_LOGS.push({
+        id:'tl'+data.temperatureLog.id, remoteId:data.temperatureLog.id, equipmentId:eq.id, equipmentName:eq.name,
+        minTemp:eq.minTemp, maxTemp:eq.maxTemp, temperature:parseFloat(data.temperatureLog.temperature),
+        inRange:data.temperatureLog.in_range, note:data.temperatureLog.note, loggedByName:data.temperatureLog.logged_by_name,
+        createdAt:new Date(data.temperatureLog.created_at),
+      });
+      saved++;
+      if(!data.temperatureLog.in_range) outOfRange++;
+    } catch(err){
+      // Un échec sur un équipement ne doit pas faire perdre les relevés déjà enregistrés :
+      // on poursuit, et on dit précisément lesquels n'ont pas été pris en compte.
+      failed.push(eq.name);
+    }
+  }
+  if(btn) btn.disabled = false;
+  if(saved){
+    closeModal();
+    toast(`${saved} relevé${saved>1?'s':''} enregistré${saved>1?'s':''}`
+      + (outOfRange ? ` — ${outOfRange} hors seuils, à surveiller` : ''), outOfRange ? 'alert' : undefined);
+  }
+  if(failed.length) toast(`Non enregistré${failed.length>1?'s':''} : ${failed.join(', ')}`, 'alert');
+  render();
+}
 function openQuickHaccpTempModal(){
   if(!HACCP_EQUIPMENT.length){ toast('Aucun équipement configuré pour le moment', 'alert'); return; }
   openModal(`
@@ -5481,6 +5603,8 @@ function viewCommandes(role){
         ${basketSupplierIds.map(sid=>renderBasketCard(sid, role)).join('')}
       </div>
     ` : ''}
+    ${orderTemplatesHTML()}
+    ${restockSuggestionsHTML()}
     <div class="section-head">
       <div><h2 style="font-size:15px;">Historique des commandes</h2><div class="sub">Filtrez le tableau, ou téléchargez un récapitulatif complet</div></div>
       <div class="flex gap8">
@@ -5532,6 +5656,97 @@ function viewCommandes(role){
     </div>
   `;
 }
+// ============================================================
+// PANIERS TYPES — « ma commande du mardi »
+// Une commande habituelle enregistrée sous un nom, rechargée en un clic. Rien n'est envoyé
+// automatiquement : le panier est rempli, on ajuste les quantités, puis on envoie comme
+// d'habitude. L'outil fait gagner la saisie, il ne décide pas à la place du restaurateur.
+// ============================================================
+function openSaveTemplateModal(supplierId){
+  const items = BASKETS[supplierId] || [];
+  if(!items.length){ toast('Ce panier est vide', 'alert'); return; }
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Enregistrer comme panier type</h3>
+    <div class="modal-sub">${items.length} produit${items.length>1?'s':''} de ${escapeHtml(supplierName(supplierId))}. Vous pourrez recharger ce panier en un clic, et ajuster les quantités avant d'envoyer.</div>
+    <div class="field"><label>Nom</label><input id="tpl-name" placeholder="Ex : Commande du mardi" autocomplete="off"></div>
+    <button class="btn btn-primary btn-block" onclick="saveOrderTemplate('${supplierId}')">Enregistrer</button>
+  `);
+  const el = document.getElementById('tpl-name'); if(el) el.focus();
+}
+async function saveOrderTemplate(supplierId){
+  const name = (document.getElementById('tpl-name').value || '').trim();
+  if(!name){ toast('Donnez un nom à ce panier type', 'alert'); return; }
+  const lines = BASKETS[supplierId] || [];
+  if(!lines.length){ toast('Ce panier est vide', 'alert'); return; }
+  const supplier = SUPPLIERS.find(s=>s.id===supplierId);
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  // Les produits sont enregistrés par leur identifiant serveur : un panier type doit rester
+  // valable d'un appareil à l'autre, pas seulement dans ce navigateur.
+  const items = lines.map(li=>{
+    const p = PRODUCTS.find(x=>x.id===li.productId);
+    return p ? { productId: p.remoteId, qty: Number(li.qty)||1 } : null;
+  }).filter(Boolean);
+  if(!items.length){ toast('Aucun produit de ce panier ne peut être enregistré', 'alert'); return; }
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/order-templates`, {
+      method:'POST', body:{ name, supplierId: supplier ? supplier.remoteId : null, items },
+    });
+    ORDER_TEMPLATES.push({
+      id:'tpl'+data.orderTemplate.id, remoteId:data.orderTemplate.id, name,
+      supplier: supplierId, items: lines.map(li=>({ productId:li.productId, qty:Number(li.qty)||1 })),
+    });
+    ensureRestoData(state.resto).orderTemplates = ORDER_TEMPLATES;
+    closeModal();
+    toast(`Panier type « ${name} » enregistré`);
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+async function applyOrderTemplate(templateId){
+  const tpl = ORDER_TEMPLATES.find(t=>t.id===templateId); if(!tpl) return;
+  if(!tpl.supplier){ toast("Ce panier type n'a plus de fournisseur valide", 'alert'); return; }
+  let added = 0, missing = 0;
+  for(const it of tpl.items){
+    // Un produit supprimé du catalogue depuis l'enregistrement est ignoré, et signalé : mieux
+    // vaut un panier incomplet annoncé qu'un panier silencieusement amputé.
+    if(!PRODUCTS.some(p=>p.id===it.productId)){ missing++; continue; }
+    await addToBasket(tpl.supplier, it.productId, it.qty);
+    added++;
+  }
+  if(!added){ toast("Aucun produit de ce panier type n'existe encore au catalogue", 'alert'); return; }
+  toast(`${added} produit${added>1?'s':''} ajouté${added>1?'s':''} au panier${missing ? ` — ${missing} introuvable${missing>1?'s':''} au catalogue` : ''}`, missing ? 'alert' : undefined);
+  setView('commandes');
+}
+async function deleteOrderTemplate(templateId){
+  const tpl = ORDER_TEMPLATES.find(t=>t.id===templateId); if(!tpl) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/order-templates/${tpl.remoteId}`, { method:'DELETE' });
+    ORDER_TEMPLATES = ORDER_TEMPLATES.filter(t=>t.id!==templateId);
+    ensureRestoData(state.resto).orderTemplates = ORDER_TEMPLATES;
+    toast('Panier type supprimé');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+function orderTemplatesHTML(){
+  if(!ORDER_TEMPLATES.length) return '';
+  return `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-title" style="margin-bottom:4px;">${iconSm(I.copy)} Vos paniers types</div>
+      <div class="small muted" style="margin-bottom:12px;">Rechargez une commande habituelle, puis ajustez les quantités avant d'envoyer.</div>
+      ${ORDER_TEMPLATES.map(t=>`
+        <div class="flex between center" style="padding:9px 0;border-top:1px solid var(--border);gap:10px;flex-wrap:wrap;">
+          <div style="min-width:0;">
+            <div style="font-weight:600;">${escapeHtml(t.name)}</div>
+            <div class="small muted">${escapeHtml(supplierName(t.supplier))} · ${t.items.length} produit${t.items.length>1?'s':''}</div>
+          </div>
+          <div class="flex gap8" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="deleteOrderTemplate('${t.id}')" title="Supprimer ce panier type" aria-label="Supprimer ce panier type">${iconXs(I.trash)}</button>
+            <button class="btn btn-primary btn-sm" onclick="applyOrderTemplate('${t.id}')">Remplir le panier</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
 function renderBasketCard(supplierId, role){
   const items = BASKETS[supplierId] || [];
   const total = basketTotal(supplierId);
@@ -5556,6 +5771,7 @@ function renderBasketCard(supplierId, role){
       <div class="flex between center" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
         ${financialsHidden() ? '<div></div>' : `<div class="mono" style="font-weight:700;font-size:15px;">${fmtEUR(total)}</div>`}
         <div class="flex gap8 center">
+          <button class="btn btn-ghost btn-sm" onclick="openSaveTemplateModal('${supplierId}')" title="Réutiliser ce panier plus tard en un clic">${iconXs(I.copy)} Enregistrer</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewOrderModal('${supplierId}')">Ajouter</button>
           ${canSend
             ? `<button class="btn btn-primary btn-sm" onclick="sendBasket('${supplierId}')">Envoyer la commande</button>`
@@ -5574,6 +5790,231 @@ function renderBasketCard(supplierId, role){
 // Nom à afficher pour « qui a vendu » : le fournisseur enregistré s'il y en a un, sinon le
 // vendeur saisi à la main pour un achat divers (magasin, artisan...). Utilisé partout, et
 // surtout dans l'export comptable, où un achat sans nom de vendeur ne serait pas exploitable.
+// ============================================================
+// SUGGESTIONS DE RÉAPPROVISIONNEMENT ET DÉRIVES DE PRIX
+// Deux lectures de l'historique déjà enregistré : aucune saisie supplémentaire n'est demandée
+// au restaurateur, le site se contente d'exploiter ce qu'il sait déjà. Rien n'est imposé —
+// ce sont des suggestions, qu'on peut écarter.
+// ============================================================
+const DAY_MS = 86400000;
+// Dates auxquelles un produit a réellement été acheté, de la plus ancienne à la plus récente.
+function productPurchaseDates(productId){
+  return ORDERS
+    .filter(o => o.status !== 'refusee' && o.createdAt && Array.isArray(o.lineItems)
+                 && o.lineItems.some(li => li.productId === productId))
+    .map(o => new Date(o.createdAt))
+    .sort((a,b) => a - b);
+}
+// Un produit est "en cours" s'il est déjà dans un panier ou dans une commande pas encore
+// livrée : le suggérer alors qu'il arrive serait le meilleur moyen de commander en double.
+function productAlreadyComing(productId){
+  // BASKETS est un objet indexé par fournisseur ({ f1: [ligne, ligne], f2: [...] }), pas un
+  // tableau : il faut parcourir ses valeurs, sinon l'appel échoue et fait tomber toute la page.
+  const inBasket = Object.values(BASKETS).some(lines =>
+    Array.isArray(lines) && lines.some(li => li.productId === productId));
+  const inOrder = ORDERS.some(o => ['en_attente_validation','validee','partiellement_recue'].includes(o.status)
+                                   && Array.isArray(o.lineItems) && o.lineItems.some(li => li.productId === productId));
+  return inBasket || inOrder;
+}
+// Suggestions écartées par le restaurateur : ignorées pendant une semaine. Un conseil qu'on ne
+// peut pas faire taire devient une contrainte, et on finit par ne plus le lire du tout.
+function restockSnoozeKey(productId){ return `mise_et_sure_restock_snooze_${state.resto}_${productId}`; }
+function isRestockSnoozed(productId){
+  try{
+    const until = Number(localStorage.getItem(restockSnoozeKey(productId)) || 0);
+    return until > Date.now();
+  }catch(e){ return false; }
+}
+function snoozeRestock(productId){
+  try{ localStorage.setItem(restockSnoozeKey(productId), String(Date.now() + 7*DAY_MS)); }catch(e){}
+  toast('Suggestion masquée pour une semaine');
+  render();
+}
+// Un produit est proposé quand le délai habituel entre deux achats est dépassé. Il faut au
+// moins trois achats pour parler d'habitude : avec deux, un seul intervalle ne prouve rien.
+function restockSuggestions(){
+  const out = [];
+  PRODUCTS.forEach(p => {
+    // Sans fournisseur rattaché, l'ajout au panier en un clic est impossible : proposer une
+    // action qui n'aboutit pas est pire que ne rien proposer.
+    if(!p.supplier) return;
+    if(productAlreadyComing(p.id) || isRestockSnoozed(p.id)) return;
+    const dates = productPurchaseDates(p.id);
+    if(dates.length < 3) return;
+    const intervals = [];
+    for(let i=1; i<dates.length; i++) intervals.push((dates[i]-dates[i-1]) / DAY_MS);
+    const avg = intervals.reduce((a,b)=>a+b,0) / intervals.length;
+    if(avg < 1) return; // achats le même jour : pas de rythme exploitable
+    const daysSince = (Date.now() - dates[dates.length-1]) / DAY_MS;
+    if(daysSince < avg) return;
+    out.push({ product:p, avgDays:Math.round(avg), daysSince:Math.round(daysSince), lastDate:dates[dates.length-1], ratio:daysSince/avg });
+  });
+  return out.sort((a,b)=>b.ratio-a.ratio).slice(0, 6);
+}
+// Dérives de prix, lues sur les prix réellement facturés à la réception. Le prix du catalogue
+// ne suffit pas : c'est ce qui a été facturé qui compte, et c'est là que les hausses passent
+// inaperçues pendant des mois.
+function priceIncreaseAlerts(){
+  if(financialsHidden()) return [];
+  const out = [];
+  PRODUCTS.forEach(p => {
+    const points = [];
+    ORDERS.filter(o => (o.status==='livree' || o.status==='partiellement_recue') && o.createdAt && Array.isArray(o.lineItems))
+      .forEach(o => {
+        const li = o.lineItems.find(x => x.productId === p.id);
+        if(!li) return;
+        const price = li.priceReceived != null ? Number(li.priceReceived) : (li.price != null ? Number(li.price) : null);
+        if(price == null || !(price > 0)) return;
+        points.push({ date:new Date(o.createdAt), price });
+      });
+    if(points.length < 2) return;
+    points.sort((a,b)=>a.date-b.date);
+    const first = points[0], last = points[points.length-1];
+    if(!(last.price > first.price)) return;
+    const pct = (last.price - first.price) / first.price * 100;
+    if(pct < 10) return; // en dessous, c'est le bruit habituel des marchés
+    out.push({ product:p, from:first.price, to:last.price, pct:Math.round(pct), since:first.date, points:points.length });
+  });
+  return out.sort((a,b)=>b.pct-a.pct).slice(0, 5);
+}
+function restockSuggestionsHTML(){
+  const items = restockSuggestions();
+  if(!items.length) return '';
+  return `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-title" style="margin-bottom:4px;">${iconSm(I.refresh)} À recommander bientôt</div>
+      <div class="small muted" style="margin-bottom:12px;">D'après votre rythme d'achat habituel. Rien d'obligatoire — écartez ce qui ne vous concerne pas.</div>
+      ${items.map(s=>`
+        <div class="flex between center" style="padding:9px 0;border-top:1px solid var(--border);gap:10px;flex-wrap:wrap;">
+          <div style="min-width:0;">
+            <div style="font-weight:600;">${escapeHtml(s.product.name)}</div>
+            <div class="small muted">Habituellement tous les ${s.avgDays} jour${s.avgDays>1?'s':''} — dernier achat il y a ${s.daysSince} jour${s.daysSince>1?'s':''}</div>
+          </div>
+          <div class="flex gap8" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="snoozeRestock('${s.product.id}')" title="Ne plus proposer pendant une semaine">Pas maintenant</button>
+            <button class="btn btn-primary btn-sm" onclick="addToBasket('${s.product.supplier}','${s.product.id}',${s.product.qtyCommande||1})">Ajouter au panier</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+function priceIncreaseAlertsHTML(){
+  const items = priceIncreaseAlerts();
+  if(!items.length) return '';
+  return `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-title" style="margin-bottom:4px;">${iconSm(I.up)} Prix qui ont augmenté</div>
+      <div class="small muted" style="margin-bottom:12px;">Comparaison entre le premier et le dernier prix réellement facturé à la réception.</div>
+      ${items.map(a=>`
+        <div class="flex between center" style="padding:9px 0;border-top:1px solid var(--border);gap:10px;flex-wrap:wrap;">
+          <div style="min-width:0;">
+            <div style="font-weight:600;">${escapeHtml(a.product.name)}</div>
+            <div class="small muted">${fmtEURRaw(a.from)} → ${fmtEURRaw(a.to)} depuis le ${fmtDateShort(a.since)} · ${a.points} réceptions</div>
+          </div>
+          <span class="tag tag-red">+${a.pct}&nbsp;%</span>
+        </div>`).join('')}
+      <div class="small muted" style="margin-top:10px;">Un bon moment pour renégocier, ou comparer avec un autre fournisseur.</div>
+    </div>`;
+}
+// ============================================================
+// RECHERCHE GLOBALE
+// Un seul champ pour retrouver un produit, un fournisseur, une fiche technique ou une
+// commande, depuis n'importe quelle page. Sans elle, retrouver « le saumon » demandait de
+// savoir d'avance dans quelle rubrique chercher.
+// ============================================================
+function globalSearchResults(query){
+  const q = normSearch(query);
+  if(q.length < 2) return [];
+  const groups = [];
+  const take = arr => arr.slice(0, 5);
+
+  const products = PRODUCTS.filter(p => normSearch(p.name).includes(q)
+    || normSearch(p.cat||'').includes(q) || normSearch(p.supplierReference||'').includes(q));
+  if(products.length) groups.push({ label:'Produits', icon:I.doc, total:products.length, items: take(products).map(p=>({
+    title: p.name,
+    sub: [p.cat, supplierName(p.supplier)].filter(Boolean).join(' · '),
+    action: `openSearchProduct('${p.id}')`,
+  }))});
+
+  const suppliers = SUPPLIERS.filter(s => normSearch(s.name).includes(q) || normSearch(s.cat||'').includes(q));
+  if(suppliers.length) groups.push({ label:'Fournisseurs', icon:I.truck, total:suppliers.length, items: take(suppliers).map(s=>({
+    title: s.name, sub: s.cat || '', action: `closeModal();openSupplierDetail('${s.id}')`,
+  }))});
+
+  const recipes = RECIPES.filter(r => normSearch(r.name).includes(q) || normSearch(r.category||'').includes(q));
+  if(recipes.length) groups.push({ label:'Fiches techniques', icon:I.chef, total:recipes.length, items: take(recipes).map(r=>({
+    title: r.name, sub: r.category || '', action: `closeModal();setView('recettes')`,
+  }))});
+
+  // Commandes : par référence, par vendeur, ou par ce qu'elles contiennent — c'est souvent
+  // « la commande où il y avait du saumon » qu'on cherche, pas son numéro.
+  const orders = ORDERS.filter(o => normSearch(o.id).includes(q)
+    || normSearch(orderVendorLabel(o)).includes(q) || normSearch(o.items||'').includes(q));
+  if(orders.length) groups.push({ label:'Commandes', icon:I.cart, total:orders.length, items: take(orders).map(o=>({
+    title: `${o.id} · ${orderVendorLabel(o)}`,
+    sub: [o.date, o.items].filter(Boolean).join(' · ').slice(0, 70),
+    action: `closeModal();openOrderDocumentModal('${o.id}')`,
+  }))});
+
+  return groups;
+}
+// Un produit trouvé renvoie vers le catalogue, filtré sur son nom : on voit le produit dans son
+// contexte (prix, fournisseur, lieux) plutôt qu'une fiche isolée, et on peut agir dessus.
+function openSearchProduct(id){
+  const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
+  closeModal();
+  ensureProductFilters();
+  state.productFilters.search = p.name;
+  state.productFilters.category = 'tous';
+  state.productFilters.zone = 'tous';
+  state.productFilters.supplier = 'tous';
+  setView('stocks');
+}
+// Ctrl+K (Cmd+K sur Mac) : le raccourci auquel tout le monde s'attend aujourd'hui. Ignoré
+// pendant une saisie, pour ne jamais interrompre quelqu'un en train de taper.
+document.addEventListener('keydown', (e)=>{
+  if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){
+    if(state.site !== 'app') return;
+    e.preventDefault();
+    openGlobalSearch();
+  }
+});
+function openGlobalSearch(){
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Rechercher</h3>
+    <div class="field">
+      <input id="gs-input" placeholder="Un produit, un fournisseur, une commande…" autocomplete="off"
+             oninput="renderGlobalSearch()" onkeydown="if(event.key==='Enter'){const f=document.querySelector('#gs-results .gs-item'); if(f) f.click();}">
+    </div>
+    <div id="gs-results"><div class="small muted">Tapez au moins deux lettres.</div></div>
+  `);
+  const el = document.getElementById('gs-input');
+  if(el) el.focus();
+}
+function renderGlobalSearch(){
+  const box = document.getElementById('gs-results');
+  const input = document.getElementById('gs-input');
+  if(!box || !input) return;
+  const q = input.value;
+  if(normSearch(q).length < 2){
+    box.innerHTML = `<div class="small muted">Tapez au moins deux lettres.</div>`;
+    return;
+  }
+  const groups = globalSearchResults(q);
+  if(!groups.length){
+    box.innerHTML = `<div class="small muted">Aucun résultat pour « ${escapeHtml(q)} ».</div>`;
+    return;
+  }
+  box.innerHTML = groups.map(g=>`
+    <div style="margin-top:14px;">
+      <div class="card-title" style="margin-bottom:6px;">${g.label}${g.total > g.items.length ? ` <span class="small muted" style="font-weight:400;">(${g.items.length} sur ${g.total})</span>` : ''}</div>
+      ${g.items.map(it=>`
+        <button class="gs-item" onclick="${it.action}">
+          <span style="font-weight:600;">${escapeHtml(it.title)}</span>
+          ${it.sub ? `<span class="small muted">${escapeHtml(it.sub)}</span>` : ''}
+        </button>`).join('')}
+    </div>`).join('');
+}
 function orderVendorLabel(o){
   if(o.supplier){ const s = SUPPLIERS.find(x=>x.id===o.supplier); if(s) return s.name; }
   if(o.vendorName) return o.vendorName;
@@ -5708,7 +6149,16 @@ let SUPPLIER_MAP_SEARCHING_AREA = false;
 // mettre en avant auprès des clients.
 // Recherche insensible aux accents et à la casse : "metro" doit trouver "Métro", "legume"
 // doit trouver "Légume". Personne ne tape les accents dans un champ de recherche.
-function normSearch(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+function normSearch(s){
+  return String(s||'')
+    .toLowerCase()
+    // Les ligatures ne sont pas des accents : « bœuf » ne se décompose pas en « boeuf ». Or
+    // personne ne tape œ au clavier — sans cette conversion, chercher « boeuf » ne trouvait
+    // rien. Même chose pour æ (« ex æquo »).
+    .replace(/œ/g,'oe').replace(/æ/g,'ae')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .trim();
+}
 const LOCAL_SOURCING_KM = 50;
 let SUPPLIER_MAP_MARKERS = {};
 // Distance à vol d'oiseau (formule de haversine). La distance par la route est plus longue,
@@ -6734,6 +7184,30 @@ async function syncRestaurantInfoFromServer(localId){
     applyAppearance(resto);
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRestaurantInfoFromServer —', err); }
 }
+async function syncOrderTemplatesFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/order-templates`);
+    const mapped = (data.orderTemplates || []).map(t=>{
+      const supplier = SUPPLIERS.find(s=>s.remoteId===t.supplier_id);
+      const raw = Array.isArray(t.items) ? t.items : (t.items ? JSON.parse(t.items) : []);
+      return {
+        id:'tpl'+t.id, remoteId:t.id, name:t.name,
+        supplier: supplier ? supplier.id : null,
+        // Les produits sont stockés par leur identifiant serveur : on les relie au catalogue
+        // chargé. Un produit supprimé depuis est simplement ignoré, plutôt que de faire échouer
+        // tout le panier type.
+        items: raw.map(it=>{
+          const p = PRODUCTS.find(x=>x.remoteId===it.productId);
+          return p ? { productId:p.id, qty:Number(it.qty)||1 } : null;
+        }).filter(Boolean),
+      };
+    });
+    if(state.resto === localId) ORDER_TEMPLATES = mapped;
+    ensureRestoData(localId).orderTemplates = mapped;
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncOrderTemplatesFromServer —', err); }
+}
 async function syncNotificationSettingsFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
   if(!resto || !resto.remoteId) return;
@@ -6748,6 +7222,12 @@ async function syncNotificationSettingsFromServer(localId){
     if(Number.isFinite(Number(h))) HACCP_REMINDER.hour = Number(h);
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncNotificationSettingsFromServer —', err); }
 }
+// Tant que les données d'un établissement ne sont pas revenues du serveur, les listes du site
+// sont vides — et tout ce qui se base dessus raconte n'importe quoi. C'est ce qui faisait
+// réapparaître la liste « Bien démarrer » quelques secondes à chaque connexion, alors que tout
+// était déjà configuré : le site croyait le catalogue vide parce qu'il n'était pas encore reçu.
+let RESTO_DATA_LOADED_FOR = null;
+function restoDataReady(){ return RESTO_DATA_LOADED_FOR === state.resto; }
 async function syncRestoOperationalData(localId){
   // Les fournisseurs et les lieux/zones doivent être rechargés AVANT les produits, puisque
   // chaque produit s'y relie. Idem pour les commandes et les paniers, qui se relient eux aussi
@@ -6756,7 +7236,7 @@ async function syncRestoOperationalData(localId){
   // suivantes s'exécutent quand même, plutôt que de laisser le reste des données périmées.
   const steps = [
     syncRestaurantInfoFromServer, syncHaccpFromServer, syncNotificationSettingsFromServer, syncCategoriesFromServer,
-    syncZonesFromServer, syncSuppliersFromServer, syncProductsFromServer, syncRecipesFromServer, syncStockCountsFromServer, syncOrdersFromServer,
+    syncZonesFromServer, syncSuppliersFromServer, syncProductsFromServer, syncOrderTemplatesFromServer, syncRecipesFromServer, syncStockCountsFromServer, syncOrdersFromServer,
     syncBasketsFromServer, syncRequestsFromServer, syncCustomRequestsFromServer, syncTeamFromServer,
   ];
   for(const step of steps){
@@ -6774,6 +7254,7 @@ async function syncRestoOperationalData(localId){
   // prévenir les quantités déjà tapées par quelqu'un en train de compter sa réserve. Les
   // données fraîches sont quand même chargées en mémoire — elles s'afficheront au prochain
   // rendu naturel, une fois la saisie terminée et enregistrée.
+  RESTO_DATA_LOADED_FOR = localId;
   if(hasPendingInventoryInput()) return;
   render();
 }
@@ -6784,6 +7265,9 @@ function hasPendingInventoryInput(){
 }
 function switchResto(id){
   state.resto = id;
+  // Les données du nouvel établissement ne sont pas encore chargées : on repart d'un état
+  // « pas prêt », sinon on afficherait brièvement celles du précédent.
+  RESTO_DATA_LOADED_FOR = null;
   loadRestoData(id);
   state.stockFilter = 'tous';
   state.orderFilter = {dept:'tous', supplier:'tous', month:'tous', year:'tous'};
