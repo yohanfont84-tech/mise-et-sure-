@@ -8689,6 +8689,10 @@ const FAQ_CATEGORIES = [
         img: '02-creer-produit',
       },
       {
+        q: "Pourquoi la catégorie, l'unité et la TVA se remplissent-elles toutes seules ?",
+        a: "Dès que vous tapez le nom d'un produit, le site devine sa catégorie, son unité, son taux de TVA, son département et son fournisseur. Il s'appuie d'abord sur votre propre catalogue (« Tomates cerises » reprend les réglages de « Tomates grappe » si vous l'avez déjà), puis sur un dictionnaire de plusieurs centaines de produits courants de la restauration (viandes, poissons, légumes, crèmerie, épicerie, boissons, alcools à 20 %, produits d'entretien et emballages à 20 %...). Une petite ligne sous le nom indique ce qui a été rempli. Tout reste modifiable : un champ que vous changez vous-même n'est plus jamais réécrit. Le même remplissage complète aussi les colonnes absentes lors d'un import Excel ou CSV.",
+      },
+      {
         q: "Comment créer plusieurs produits à la suite, plus vite ?",
         a: "Dans la fenêtre « Nouveau produit », cliquez sur « Créer et ajouter un autre » (ou appuyez simplement sur Entrée dans le nom ou le prix). Le produit est créé et la fenêtre se rouvre aussitôt en gardant le fournisseur, la catégorie, l'unité, la TVA, le département et les lieux : il ne reste qu'à taper le nom et le prix du suivant. Idéal pour saisir tous les produits d'un même fournisseur d'affilée.",
       },
@@ -10335,6 +10339,209 @@ async function refuseCustomRequest(id){
 /* ============================================================
    PRODUITS — création / édition
 ============================================================ */
+// ============================================================
+// REMPLISSAGE AUTOMATIQUE D'UN PRODUIT — dès qu'on tape le nom (« Entrecôte », « Coca 33cl »,
+// « Liquide vaisselle »), le site devine la catégorie, l'unité, la TVA, le département et même
+// le fournisseur. 100 % dans le navigateur, sans IA ni service externe : rien à payer, rien qui
+// puisse tomber en panne. Deux sources, dans cet ordre :
+//   1. Le catalogue du restaurant lui-même : si « Tomates grappe » existe déjà, « Tomates
+//      cerises » reprend sa catégorie, son unité, sa TVA et son fournisseur — c'est ce qui
+//      colle le mieux aux habitudes de chacun.
+//   2. Un dictionnaire de mots-clés (ci-dessous) pour tout le reste.
+// On ne touche JAMAIS à un champ que la personne a déjà modifié elle-même.
+// ============================================================
+// `cats` : noms de catégorie acceptés chez le restaurateur, par ordre de préférence (comparés
+// sans accents ni majuscules) — le premier trouvé dans SES catégories est utilisé ; sinon on
+// propose de créer la première de la liste. `words` : mots-clés (singulier, sans accents ; le
+// pluriel en s/x est reconnu tout seul).
+const PRODUCT_AUTOFILL_RULES = [
+  { cats:['Alcools','Vins','Cave','Bar','Boissons'], unit:'Bouteille', tva:20, dept:'salle',
+    words:['vin','vin rouge','vin blanc','rose','biere','champagne','cremant','prosecco','whisky','whiskey','vodka','rhum','rum','gin','tequila','pastis','ricard','liqueur','cidre','cognac','armagnac','calvados','porto','martini','aperol','spritz','campari','get 27','cointreau','baileys','limoncello','muscat','sangria','kir','creme de cassis','jagermeister','absinthe','mezcal','eau de vie','saint emilion','bordeaux','bourgogne','chablis','sancerre','cotes du rhone','beaujolais','heineken','leffe','kronenbourg','grimbergen','desperados','corona','1664','affligem','chouffe'] },
+  { cats:['Boissons chaudes','Café','Boissons'], unit:'Kg', tva:5.5, dept:'salle',
+    words:['cafe','expresso','espresso','the','the vert','infusion','tisane','chocolat chaud','cacao','capsule','dosette','chicoree'] },
+  { cats:['Boissons','Softs','Boissons sans alcool'], unit:'Bouteille', tva:5.5, dept:'salle',
+    words:['eau','eau minerale','eau gazeuse','coca','coca cola','pepsi','soda','limonade','jus','nectar','sirop','orangina','schweppes','perrier','badoit','evian','vittel','san pellegrino','ice tea','fuze tea','lipton','oasis','red bull','energy drink','tonic','ginger beer','ginger ale','diabolo','smoothie','sprite','fanta','seven up','7up'] },
+  { cats:['Volaille','Viande','Viandes','Boucherie'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['poulet','volaille','dinde','canard','magret','confit de canard','pintade','caille','chapon','aiguillette','supreme de volaille','cuisse de poulet','foie gras'] },
+  { cats:['Charcuterie','Viande','Viandes','Boucherie'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['jambon','saucisson','chorizo','lardon','bacon','coppa','pancetta','rillette','pate de campagne','pate en croute','terrine','saucisse','merguez','chipolata','andouillette','boudin','mortadelle','bresaola','speck','prosciutto','serrano','rosette'] },
+  { cats:['Viande','Viandes','Boucherie'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['viande','boeuf','bœuf','veau','agneau','porc','entrecote','faux filet','filet de boeuf','bavette','onglet','hampe','rumsteck','cote de boeuf','steak','steak hache','hache','tartare','joue','paleron','macreuse','tournedos','carpaccio','souris d agneau','gigot','carre d agneau','cotelette','echine','filet mignon','travers','ribs','roti','blanquette','osso buco','cheval','lapin','gibier','sanglier','chevreuil','burger'] },
+  { cats:['Poisson','Poissons','Marée','Produits de la mer','Poissonnerie','Fruits de mer'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['poisson','saumon','cabillaud','bar','loup','dorade','daurade','thon','truite','sole','turbot','lieu','colin','merlu','merlan','sardine','maquereau','anchois','lotte','raie','espadon','haddock','crevette','gambas','langoustine','homard','langouste','moule','huitre','saint jacques','noix de saint jacques','coquille saint jacques','calamar','encornet','poulpe','seiche','crabe','tourteau','bulot','palourde','couteau','bigorneau','surimi','oeufs de saumon','caviar','tarama','poutargue'] },
+  { cats:['Crèmerie','Produits laitiers','Frais','BOF','Fromages','Épicerie'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['fromage','beurre','creme','creme fraiche','creme liquide','lait','yaourt','yogourt','oeuf','œuf','mozzarella','burrata','parmesan','comte','emmental','gruyere','cheddar','chevre','roquefort','camembert','brie','reblochon','raclette','feta','ricotta','mascarpone','gorgonzola','mimolette','tomme','fromage blanc','petit suisse','faisselle','creme epaisse'] },
+  { cats:['Herbes','Aromates','Légumes','Fruits et légumes','Fruits & légumes','Primeur'], unit:'Botte', tva:5.5, dept:'cuisine',
+    words:['basilic','persil','ciboulette','coriandre','menthe','aneth','estragon','cerfeuil','thym','romarin','laurier','sauge','origan','herbes','marjolaine','verveine','citronnelle'] },
+  { cats:['Fruits','Fruits et légumes','Fruits & légumes','Primeur','Légumes'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['fruit','pomme','poire','banane','orange','citron','citron vert','pamplemousse','clementine','mandarine','fraise','framboise','myrtille','mure','cassis','groseille','cerise','abricot','peche','nectarine','prune','mirabelle','raisin','kiwi','ananas','mangue','papaye','fruit de la passion','litchi','melon','pastèque','pasteque','figue','grenade','noix de coco','avocat','rhubarbe','kaki','coing'] },
+  { cats:['Légumes','Fruits et légumes','Fruits & légumes','Primeur'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['legume','tomate','tomate cerise','pomme de terre','patate','patate douce','carotte','oignon','oignon rouge','echalote','ail','poireau','courgette','aubergine','poivron','piment','concombre','salade','laitue','batavia','roquette','mache','epinard','chou','chou fleur','brocoli','chou de bruxelles','haricot vert','petit pois','feve','asperge','artichaut','celeri','celeri rave','fenouil','radis','betterave','navet','panais','potiron','potimarron','butternut','courge','champignon','champignon de paris','cepe','girolle','morille','truffe','endive','cresson','mesclun','pousse','gingembre','mais','edamame','pois chiche','lentille','shiitake','pleurote','topinambour','blette','chou rouge','chou kale','kale'] },
+  { cats:['Boulangerie','Pain','Viennoiserie','Épicerie'], unit:'Pièce', tva:5.5, dept:'cuisine',
+    words:['pain','baguette','pain de mie','pain burger','bun','brioche','croissant','pain au chocolat','viennoiserie','ciabatta','focaccia','fougasse','pain complet','pain de campagne','tortilla','wrap','pita','naan','bagel','muffin','pate a pizza','pate feuilletee','pate brisee','pate sablee'] },
+  { cats:['Surgelés'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['surgele','congele','frite','frites','glace','sorbet','nugget','cordon bleu','poisson pane','legumes surgeles','potatoes','crème glacee'] },
+  { cats:['Épicerie','Épicerie sèche','Sec','Épicerie salée'], unit:'Kg', tva:5.5, dept:'cuisine',
+    words:['farine','sucre','sucre glace','cassonade','sel','fleur de sel','poivre','huile','huile d olive','huile de tournesol','huile de friture','vinaigre','vinaigre balsamique','riz','pates','spaghetti','penne','tagliatelle','lasagne','linguine','fusilli','gnocchi','semoule','couscous','quinoa','boulgour','polenta','conserve','sauce','sauce tomate','coulis','concentre de tomate','moutarde','ketchup','mayonnaise','sauce soja','tabasco','worcestershire','epice','curry','paprika','cumin','cannelle','muscade','piment d espelette','curcuma','safran','herbes de provence','bouillon','fond de veau','fumet','levure','chocolat','cacao en poudre','vanille','miel','confiture','pate a tartiner','nutella','amande','noisette','noix','pistache','cacahuete','pignon','raisin sec','olive','cornichon','capre','cereales','biscuit','chips','gelatine','agar agar','maizena','fecule','chapelure','panko','sirop d erable','caramel','praline','nappage','tahini','harissa','lait de coco','pesto','thon en boite','sardine en boite'] },
+  { cats:['Entretien','Hygiène','Produits d\'entretien','Nettoyage','Divers'], unit:'Pièce', tva:20, dept:'both',
+    words:['liquide vaisselle','produit vaisselle','tablette lave vaisselle','pastille lave vaisselle','rincage','javel','eau de javel','degraissant','desinfectant','detergent','nettoyant','lessive','savon','savon main','gel hydroalcoolique','eponge','serpillere','lavette','microfibre','balai','raclette sol','sac poubelle','gant','gants','charlotte','tablier','papier toilette','essuie main','bobine','anticalcaire','detartrant','dosette lave vaisselle','sel regenerant','chiffon','sopalin','insecticide'] },
+  { cats:['Emballages','Consommables','Jetables','Divers'], unit:'Carton', tva:20, dept:'both',
+    words:['emballage','barquette','boite','boite pizza','boite burger','sac kraft','sac papier','sachet','film alimentaire','papier aluminium','aluminium','papier cuisson','papier sulfurise','serviette','serviette papier','nappe','set de table','gobelet','paille','couvert jetable','fourchette','couteau jetable','cuillere','pot a sauce','ramequin','couvercle','etiquette','ticket','rouleau caisse','bobine caisse','cure dent','pique','sac sous vide','poche a douille','charbon','gaz','bouteille de gaz'] },
+];
+// Mots trop génériques pour rapprocher deux produits du catalogue (« Filet de bar » et « Filet
+// de poulet » ne se ressemblent PAS) : ignorés dans la comparaison.
+const AUTOFILL_GENERIC_WORDS = new Set(['de','du','des','la','le','les','l','d','au','aux','a','en','et','ou','pour','avec','sans','sur','filet','pave','cuisse','blanc','aile','morceau','tranche','dos','cote','bio','frais','fraiche','extra','premium','maison','kg','g','l','cl','ml','litre','piece','pieces','sac','sachet','boite','pot','bouteille','carton','caisse','pack','lot','x','n','nature','entier','entiere','petit','petite','gros','grosse','grand','grande','classique','original','rouge','blanc','vert','jaune','noir']);
+function autofillNormalize(str){
+  return (str||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/œ/g,'oe').replace(/[^a-z0-9]+/g,' ').trim();
+}
+function autofillSingular(word){ return word.length>3 ? word.replace(/(s|x)$/,'') : word; }
+function autofillSignificantWords(name){
+  return autofillNormalize(name).split(' ').filter(w=>w && !AUTOFILL_GENERIC_WORDS.has(w) && !/^\d/.test(w)).map(autofillSingular);
+}
+// Unité précisée par le nom lui-même : un contenant écrit en toutes lettres (« Fût Leffe »,
+// « Caisse Coca ») l'emporte sur l'unité habituelle de la famille de produits ; puis quelques
+// produits qui ne suivent pas l'unité de leur famille (l'huile se commande au litre, les œufs à
+// la pièce...). Premier trouvé, premier servi.
+const AUTOFILL_UNIT_HINTS = [
+  ['fut','Fût'], ['futs','Fût'], ['caisse','Caisse'], ['carton','Carton'], ['pack','Pack'], ['bidon','Bidon'], ['bag in box','Bag-in-box'],
+  ['huile','Litre'], ['lait','Litre'], ['creme liquide','Litre'], ['vinaigre','Litre'], ['sauce soja','Litre'], ['oeuf','Pièce'],
+  ['salade','Pièce'], ['laitue','Pièce'], ['batavia','Pièce'], ['avocat','Pièce'], ['ananas','Pièce'], ['melon','Pièce'], ['pasteque','Pièce'], ['chou fleur','Pièce'],
+];
+function autofillWordRegex(norm){
+  return new RegExp('(?:^| )'+norm.split(' ').map(part=>part.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:s|x)?').join(' ')+'(?= |$)');
+}
+function autofillUnitHint(name){
+  const norm = autofillNormalize(name);
+  const hit = AUTOFILL_UNIT_HINTS.find(([w])=>autofillWordRegex(w).test(norm));
+  return hit ? hit[1] : null;
+}
+// Index des mots-clés, construit une seule fois : [{ re, len, rule }], chaque mot-clé devenant
+// une expression « mot entier, pluriel accepté » (« tomate » trouve « Tomates », mais « vin » ne
+// trouve PAS « vinaigre »).
+let AUTOFILL_KEYWORD_INDEX = null;
+function autofillKeywordIndex(){
+  if(AUTOFILL_KEYWORD_INDEX) return AUTOFILL_KEYWORD_INDEX;
+  AUTOFILL_KEYWORD_INDEX = [];
+  PRODUCT_AUTOFILL_RULES.forEach(rule=>{
+    rule.words.forEach(w=>{
+      const norm = autofillNormalize(w);
+      if(!norm) return;
+      AUTOFILL_KEYWORD_INDEX.push({ re: autofillWordRegex(norm), len: norm.length, rule });
+    });
+  });
+  return AUTOFILL_KEYWORD_INDEX;
+}
+// En français, le mot principal vient en premier (« JUS de pomme », « SAUCE tomate », « filet de
+// SAUMON » où « filet » n'est pas un mot-clé) : on retient le mot-clé trouvé le plus tôt dans le
+// nom, et à égalité le plus long (« pomme de terre » plutôt que « pomme »).
+function autofillMatchRule(name){
+  const norm = autofillNormalize(name);
+  if(!norm) return null;
+  let best = null;
+  autofillKeywordIndex().forEach(k=>{
+    const m = k.re.exec(norm);
+    if(!m) return;
+    const pos = m.index + (m[0].startsWith(' ') ? 1 : 0);
+    if(!best || pos < best.pos || (pos===best.pos && k.len > best.len)) best = { pos, len:k.len, rule:k.rule };
+  });
+  return best ? best.rule : null;
+}
+// Le produit du catalogue qui partage le plus de mots significatifs avec le nom tapé.
+// Le mot principal du nom tapé (le premier mot significatif) doit se retrouver dans le produit
+// existant : « Sauce tomate » ne doit pas copier « Tomates grappe » (une sauce n'est pas un
+// légume), alors que « Tomates cerises » le peut.
+function autofillSimilarProduct(name){
+  const words = autofillSignificantWords(name);
+  if(!words.length) return null;
+  const head = words[0];
+  const wordSet = new Set(words);
+  let best = null, bestScore = 0;
+  PRODUCTS.forEach(p=>{
+    const other = autofillSignificantWords(p.name);
+    if(!other.includes(head)) return;
+    const score = other.filter(w=>wordSet.has(w)).length + (other[0]===head ? 0.5 : 0);
+    if(score > bestScore){ best = p; bestScore = score; }
+  });
+  return best;
+}
+function autofillResolveCategory(candidates){
+  for(const c of candidates){
+    const found = CATEGORIES.find(cat=>autofillNormalize(cat.name)===autofillNormalize(c));
+    if(found) return { name: found.name, isNew: false };
+  }
+  return { name: candidates[0], isNew: true };
+}
+// Le fournisseur le plus utilisé pour cette catégorie dans le catalogue (ou null).
+function autofillSupplierForCategory(catName){
+  const counts = {};
+  PRODUCTS.forEach(p=>{ if(p.cat===catName && p.supplier) counts[p.supplier] = (counts[p.supplier]||0)+1; });
+  const best = Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0];
+  return best && SUPPLIERS.some(s=>s.id===best) ? best : null;
+}
+// Point d'entrée : renvoie { cat, catIsNew, unit, tvaRate, department, supplier, source } ou null.
+function guessProductDefaults(name, excludeId){
+  if(autofillNormalize(name).length < 3) return null;
+  const rule = autofillMatchRule(name);
+  const similar = autofillSimilarProduct(name);
+  // Un produit du catalogue n'est copié que s'il est de la même famille (ou si le dictionnaire
+  // ne reconnaît pas le nom) : « Pomme Golden » ne doit pas copier « Pommes de terre ».
+  if(similar && similar.id !== excludeId && (!rule || autofillMatchRule(similar.name)===rule)){
+    return { cat: similar.cat, catIsNew: !CATEGORIES.some(c=>c.name===similar.cat), unit: similar.unit, tvaRate: similar.tvaRate??5.5,
+      department: similar.department||'both', supplier: similar.supplier||null, source: `d'après « ${similar.name} » de votre catalogue` };
+  }
+  if(!rule) return null;
+  const cat = autofillResolveCategory(rule.cats);
+  return { cat: cat.name, catIsNew: cat.isNew, unit: autofillUnitHint(name) || rule.unit, tvaRate: rule.tva, department: rule.dept,
+    supplier: cat.isNew ? null : autofillSupplierForCategory(cat.name), source: 'selon le type de produit' };
+}
+// Branche le remplissage automatique sur le formulaire « Nouveau produit » (préfixe np-). Un
+// champ modifié à la main est marqué « touché » et n'est plus jamais réécrit.
+function attachProductAutofill(){
+  const nameEl = document.getElementById('np-name');
+  if(!nameEl) return;
+  const touched = new Set();
+  const ids = { cat:'np-cat', unit:'np-unit', tva:'np-tva', department:'np-department', supplier:'np-supplier' };
+  Object.entries(ids).forEach(([key,id])=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    // `isTrusted` : seules les vraies actions de la personne comptent, pas nos propres changements.
+    ['input','change'].forEach(evt=>el.addEventListener(evt, e=>{ if(e.isTrusted) touched.add(key); }));
+  });
+  let timer = null;
+  nameEl.addEventListener('input', ()=>{
+    clearTimeout(timer);
+    timer = setTimeout(()=>applyProductAutofill(nameEl.value, touched), 200);
+  });
+}
+function applyProductAutofill(name, touched){
+  const hint = document.getElementById('np-autofill-hint');
+  const guess = guessProductDefaults(name);
+  if(!guess){ if(hint) hint.innerHTML = ''; return; }
+  const applied = [];
+  const catEl = document.getElementById('np-cat');
+  if(catEl && !touched.has('cat') && guess.cat){
+    const newOpt = catEl.querySelector('option[value="__new__"]');
+    if(guess.catIsNew){
+      catEl.value = '__new__';
+      catEl.dataset.pendingNew = guess.cat;
+      if(newOpt) newOpt.textContent = `+ Nouvelle catégorie : ${guess.cat}`;
+    } else {
+      catEl.value = guess.cat;
+      delete catEl.dataset.pendingNew;
+      if(newOpt) newOpt.textContent = '+ Nouvelle catégorie…';
+    }
+    applied.push(guess.catIsNew ? `${escapeHtml(guess.cat)} (nouvelle catégorie)` : escapeHtml(guess.cat));
+  }
+  const unitEl = document.getElementById('np-unit');
+  if(unitEl && !touched.has('unit') && guess.unit){ unitEl.value = guess.unit; updatePriceLabel('np'); applied.push(escapeHtml(guess.unit)); }
+  const tvaEl = document.getElementById('np-tva');
+  if(tvaEl && !touched.has('tva') && guess.tvaRate!=null){ tvaEl.value = String(guess.tvaRate); applied.push(`TVA ${tvaRateLabel(guess.tvaRate)}`); }
+  const deptEl = document.getElementById('np-department');
+  if(deptEl && !touched.has('department') && guess.department){ deptEl.value = guess.department; applied.push(deptLabel(guess.department)); }
+  const supEl = document.getElementById('np-supplier');
+  if(supEl && !touched.has('supplier') && guess.supplier){ supEl.value = guess.supplier; applied.push(supplierName(guess.supplier)); }
+  if(hint) hint.innerHTML = applied.length ? `✨ Rempli automatiquement ${escapeHtml(guess.source)} : ${applied.join(' · ')} — modifiable à tout moment.` : '';
+}
 // « Créer et ajouter un autre » : quand on saisit plusieurs produits d'affilée, la fenêtre se
 // rouvre aussitôt en gardant ce qui ne change presque jamais d'un produit à l'autre
 // (fournisseur, catégorie, unité, TVA, département, lieux) — seuls le nom et le prix sont vidés.
@@ -10361,7 +10568,7 @@ function openNewProductModal(prefill, sticky){
   } : st ? {
     cat:st.cat, unit:st.unit, price:'', tvaRate:st.tvaRate, supplier:st.supplier, department:st.department,
     zoneIds:st.zoneIds, packaging:'', reference:'', netQty:null, netUnit:null,
-  } : { cat:null, unit:'Kg', price:'5.00', tvaRate:5.5, supplier:null, department:'both', zoneIds:[], packaging:'', reference:'', netQty:null, netUnit:null };
+  } : { cat:null, unit:'Kg', price:'', tvaRate:5.5, supplier:null, department:'both', zoneIds:[], packaging:'', reference:'', netQty:null, netUnit:null };
   const prefillZoneIds = init.zoneIds;
   const initialUnit = init.unit;
   // Les champs secondaires sont repliés sous « Plus d'options » — sauf s'ils contiennent déjà
@@ -10374,7 +10581,7 @@ function openNewProductModal(prefill, sticky){
     <h3>${p ? 'Dupliquer le produit' : 'Nouveau produit'}</h3>
     ${p ? `<div class="modal-sub">Pré-rempli à partir de « ${escapeHtml(p.name)} » — ajustez ce qui change puis créez le nouveau produit.</div>` : ''}
     ${st ? `<div class="modal-sub">${iconXs(I.check)} ${st.count} produit${st.count>1?'s':''} créé${st.count>1?'s':''} à la suite — fournisseur, catégorie et unité sont conservés.</div>` : ''}
-    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${escapeHtml(p ? p.name+' (copie)' : '')}" onkeydown="if(event.key==='Enter'){event.preventDefault();addProduct(true);}"></div>
+    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${escapeHtml(p ? p.name+' (copie)' : '')}" onkeydown="if(event.key==='Enter'){event.preventDefault();addProduct(true);}"><div id="np-autofill-hint" class="small muted" style="margin-top:5px;line-height:1.45;"></div></div>
     <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${init.cat===c.name?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field">
       <label>Unité de commande</label>
@@ -10428,6 +10635,9 @@ function openNewProductModal(prefill, sticky){
   `);
   const nameInput = document.getElementById('np-name');
   if(nameInput && !p) setTimeout(()=>nameInput.focus(), 30);
+  // Remplissage automatique seulement pour un produit « vierge » : une duplication ou une série
+  // part déjà de valeurs choisies par la personne, qu'on ne veut pas voir changer sous ses yeux.
+  if(!p && !st) attachProductAutofill();
 }
 function duplicateProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
@@ -10720,6 +10930,19 @@ function mapCSVRowsToProducts(rows){
       supplierReference: colIndex.reference!=null ? (r[colIndex.reference]||'').trim() : '',
       department: colIndex.department!=null ? parseImportDepartment(r[colIndex.department]) : 'both',
     });
+    // Colonnes absentes ou cellules vides : complétées par le remplissage automatique (même
+    // logique que le formulaire « Nouveau produit »). Une valeur présente dans le fichier n'est
+    // jamais remplacée.
+    const item = items[items.length-1];
+    const guess = guessProductDefaults(name);
+    if(guess){
+      let used = false;
+      if(!item.category && guess.cat){ item.category = guess.cat; used = true; }
+      if((colIndex.unit==null || !item.unit) && guess.unit){ item.unit = guess.unit; used = true; }
+      if((colIndex.tva==null || !String(r[colIndex.tva]||'').trim()) && guess.tvaRate!=null){ item.tvaRate = guess.tvaRate; used = true; }
+      if(colIndex.department==null && guess.department){ item.department = guess.department; used = true; }
+      item.autofilled = used;
+    }
   }
   return { items, skipped, hasNameColumn: colIndex.name!=null };
 }
@@ -10798,6 +11021,7 @@ function handleProductsCSVFileSelected(input){
       preview.innerHTML = `
         <div class="small muted" style="margin-bottom:10px;">
           <b>${items.length}</b> produit${items.length>1?'s':''} prêt${items.length>1?'s':''} à importer${skipped?` · ${skipped} ligne${skipped>1?'s':''} ignorée${skipped>1?'s':''} (sans nom)`:''}.
+          ${items.some(i=>i.autofilled) ? `<br>✨ ${items.filter(i=>i.autofilled).length} complété${items.filter(i=>i.autofilled).length>1?'s':''} automatiquement (catégorie, unité, TVA ou département absents du fichier) — vérifiez l'aperçu ci-dessous.` : ''}
         </div>
         ${items.length ? `<div class="small" style="margin-bottom:10px;max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;line-height:1.7;">
           ${items.slice(0,30).map(i=>`<div><b>${escapeHtml(i.name)}</b> <span class="muted">— ${escapeHtml(i.category||'sans catégorie')} · ${escapeHtml(i.unit||'unité')}${i.price?` · ${fmtEUR(i.price)} HT`:''}${i.supplierName?` · ${escapeHtml(i.supplierName)}`:''}</span></div>`).join('')}
