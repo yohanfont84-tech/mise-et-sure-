@@ -171,6 +171,19 @@ a{text-decoration:none;color:inherit;}
   margin-left:auto;background:#fff;color:var(--black);font-size:10.5px;font-weight:700;
   padding:1px 7px;border-radius:20px;font-family:'IBM Plex Mono',monospace;
 }
+/* Le menu latéral a son propre fond sombre et sa propre palette : un bouton standard y
+   arrivait avec la couleur de texte des pages claires (var(--text)), soit un texte sombre sur
+   fond sombre — invisible. Ce bouton reprend donc les codes des entrées de menu voisines. */
+.sidebar-link-btn{
+  display:flex;align-items:center;gap:8px;width:100%;
+  padding:8px 10px;margin-bottom:10px;
+  background:transparent;border:1px solid rgba(255,255,255,0.14);border-radius:8px;
+  color:#C7C7C0;font-family:inherit;font-size:12.5px;font-weight:500;
+  cursor:pointer;transition:background .15s ease, color .15s ease;
+}
+.sidebar-link-btn:hover{background:rgba(255,255,255,0.09);color:#fff;}
+.sidebar-link-btn:focus-visible{outline:2px solid rgba(255,255,255,0.5);outline-offset:1px;}
+.sidebar-link-btn svg{flex-shrink:0;opacity:.85;}
 .sidebar-foot{
   padding:14px 22px 20px 22px;border-top:1px solid rgba(255,255,255,0.1);
   font-size:12px;color:#8E8E88;
@@ -3626,7 +3639,7 @@ function renderShell(){
       <div class="sidebar-foot">
         <!-- Consulter le site public sans se déconnecter : on revenait auparavant à l'accueil
              uniquement en se déconnectant, ce qui obligeait à ressaisir ses identifiants. -->
-        <button class="btn btn-ghost btn-sm btn-block" style="margin-bottom:10px;" onclick="goToSite('marketing')">${iconXs(I.globe)} Voir le site public</button>
+        <button class="sidebar-link-btn" onclick="goToSite('marketing')">${iconXs(I.globe)} Voir le site public</button>
         Mise&nbsp;&amp;&nbsp;Sûre
       </div>
     </div>
