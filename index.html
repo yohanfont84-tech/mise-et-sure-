@@ -13278,7 +13278,7 @@ function renderLoginScreen(){
               `).join('')}
             </div>
             <div class="login-hint">Chaque personne a son identifiant et son mot de passe.</div>
-            ${ACCOUNT ? `<div class="login-hint" style="margin-top:10px;">Connecté avec le compte ${escapeHtml(ACCOUNT.email)} · <a href="#" onclick="signOutAccount();return false;" style="text-decoration:underline;color:inherit;">se déconnecter du compte</a></div>` : ''}
+            ${ACCOUNT ? `<div class="login-hint" style="margin-top:10px;">Connecté avec le compte ${escapeHtml(ACCOUNT.email)} · <a href="#" onclick="signOutAccount();return false;" style="text-decoration:underline;color:inherit;white-space:nowrap;">se déconnecter du compte</a></div>` : ''}
             ${ACCOUNT && ACCOUNT.is_admin ? `<div class="login-hint" style="margin-top:6px;"><a href="#" onclick="goToAdminPage();return false;" style="text-decoration:underline;color:inherit;">Panneau administrateur</a></div>` : ''}
           ` : `
             <button class="back-link" onclick="backToChooseRole()">← Choisir un autre profil</button>
