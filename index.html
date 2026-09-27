@@ -535,6 +535,12 @@ tr.group-row:hover td{background:var(--gray-100);}
    qu'il sert à masquer. La chevronnette pivote pour indiquer l'état. */
 .section-toggle svg{transition:transform .2s ease;}
 .section-toggle.is-collapsed svg{transform:rotate(-90deg);}
+/* Fil de discussion du centre d'aide : les réponses de l'équipe et celles du client se
+   distinguent par leur alignement et leur fond, comme dans une messagerie. */
+.support-msg{font-size:13px;border-radius:8px;padding:10px 12px;white-space:pre-wrap;margin-top:8px;max-width:88%;}
+.support-msg-admin{background:var(--paper);border:1px solid var(--border);}
+.support-msg-client{background:var(--surface-subtle);border:1px solid var(--border);margin-left:auto;}
+.support-msg-author{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;}
 .map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted);}
 .map-legend span{display:flex;align-items:center;gap:7px;}
 .map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
@@ -3026,7 +3032,15 @@ async function submitAdminAnswer(questionId){
   const answer = textarea ? textarea.value.trim() : '';
   if(!answer){ toast('Merci de rédiger une réponse', 'alert'); return; }
   try{
-    await apiRequest(`/api/admin/support-questions/${questionId}/answer`, { method:'PATCH', body:{ answer } });
+    // Première réponse : la route /answer, qui fait passer la question en « répondue ».
+    // Réponses suivantes : /messages, pour continuer le fil sans écraser la première.
+    const q = (state.adminQuestions||[]).find(x=>x.id===questionId);
+    const alreadyAnswered = !!(q && q.answer);
+    if(alreadyAnswered){
+      await apiRequest(`/api/admin/support-questions/${questionId}/messages`, { method:'POST', body:{ body: answer } });
+    } else {
+      await apiRequest(`/api/admin/support-questions/${questionId}/answer`, { method:'PATCH', body:{ answer } });
+    }
     toast('Réponse envoyée');
     const data = await apiRequest('/api/admin/support-questions');
     state.adminQuestions = data.questions;
@@ -8804,7 +8818,20 @@ function viewSupportQuestionsWidget(){
                 ${q.status==='ouverte' ? `<span class="tag tag-neutral">${iconXs(I.clock)} En attente de réponse</span>` : `<span class="tag tag-subtle">${iconXs(I.check)} Répondu</span>`}
               </div>
               <div class="small" style="margin-bottom:${q.status==='repondue'?'8px':'0'};">${escapeHtml(q.question)}</div>
-              ${q.status==='repondue' ? `<div class="small" style="background:var(--paper);border-radius:8px;padding:10px 12px;white-space:pre-wrap;">${escapeHtml(q.answer)}</div>` : ''}
+              ${q.answer ? `<div class="support-msg support-msg-admin">${escapeHtml(q.answer)}</div>` : ''}
+              <!-- Les échanges qui ont suivi la première réponse : la discussion reste au même
+                   endroit au lieu d'obliger à rouvrir une demande pour chaque précision. -->
+              ${(q.messages||[]).map(m=>`
+                <div class="support-msg ${m.author_type==='admin' ? 'support-msg-admin' : 'support-msg-client'}">
+                  <div class="support-msg-author">${m.author_type==='admin' ? 'Mise &amp; Sûre' : escapeHtml(m.author_name||'Vous')}</div>
+                  ${escapeHtml(m.body)}
+                </div>`).join('')}
+              ${q.answer ? `
+                <div style="margin-top:10px;">
+                  <textarea id="support-reply-${q.id}" rows="2" placeholder="Répondre ou demander une précision…"
+                    style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13.5px;"></textarea>
+                  <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="sendSupportReply(${q.id})">Envoyer ma réponse</button>
+                </div>` : ''}
             </div>
           `).join('')}
         </div>
@@ -8837,6 +8864,27 @@ async function ensureMySupportQuestionsLoaded(){
   }
   mySupportQuestionsLoading = false;
   render();
+}
+// Réponse du client dans un fil existant : évite de rouvrir une demande pour une précision,
+// et garde tout l'échange lisible d'un bloc.
+async function sendSupportReply(questionId){
+  const el = document.getElementById('support-reply-'+questionId);
+  const body = (el && el.value || '').trim();
+  if(!body){ toast('Votre message est vide', 'alert'); return; }
+  try{
+    const data = await apiRequest(`/api/account/support-questions/${questionId}/messages`, {
+      method:'POST', body:{ body },
+    });
+    const q = (state.mySupportQuestions||[]).find(x=>x.id===questionId);
+    if(q){
+      q.messages = [...(q.messages||[]), data.message];
+      // La question repasse en attente côté serveur : on reflète le même état ici, sinon elle
+      // afficherait « Répondu » alors qu'elle attend de nouveau une réponse.
+      q.status = 'ouverte';
+    }
+    toast('Réponse envoyée');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
 }
 async function submitSupportQuestion(){
   const textarea = document.getElementById('support-question-text');
@@ -12946,13 +12994,21 @@ function renderAdminSupport(){
         ${q.status==='ouverte' ? `<span class="tag tag-red">En attente</span>` : `<span class="tag tag-subtle">Répondu</span>`}
       </div>
       <div class="small" style="background:var(--paper);border-radius:8px;padding:10px 12px;margin-bottom:12px;white-space:pre-wrap;">${escapeHtml(q.question)}</div>
-      ${q.status==='repondue' ? `
+      ${q.answer ? `
         <div class="small muted" style="margin-bottom:4px;">Votre réponse, le ${fmtDateLong(new Date(q.answered_at))} :</div>
         <div class="small" style="background:var(--surface-subtle);border-radius:8px;padding:10px 12px;white-space:pre-wrap;">${escapeHtml(q.answer)}</div>
-      ` : `
+      ` : ''}
+      <!-- Le fil qui a suivi : sans lui, une relance du client serait invisible ici et il
+           attendrait une réponse qui ne viendrait jamais. -->
+      ${(q.messages||[]).map(m=>`
+        <div class="support-msg ${m.author_type==='admin' ? 'support-msg-client' : 'support-msg-admin'}">
+          <div class="support-msg-author">${m.author_type==='admin' ? 'Vous' : escapeHtml(m.author_name||'Client')}</div>
+          ${escapeHtml(m.body)}
+        </div>`).join('')}
+      ${q.status==='ouverte' ? `
         <textarea id="admin-answer-${q.id}" rows="3" placeholder="Votre réponse…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:8px;"></textarea>
         <button class="btn btn-primary btn-sm" onclick="submitAdminAnswer(${q.id})">Répondre</button>
-      `}
+      ` : ''}
     </div>
   `).join('');
 }
