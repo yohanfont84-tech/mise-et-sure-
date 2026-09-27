@@ -5427,7 +5427,7 @@ function viewHaccpTemperatures(role){
       const completion = haccpCompletionRate(allLogs, 'createdAt');
       return `
       <div class="card" style="margin-bottom:16px;">
-        <div class="flex between center" style="margin-bottom:12px;">
+        <div class="flex between center" style="margin-bottom:10px;">
           <div>
             <div style="font-weight:600;">${escapeHtml(e.name)}</div>
             <div class="small muted">Seuils ${e.minTemp}° à ${e.maxTemp}° · ${logs.length} relevé${logs.length>1?'s':''}${anomalyCount ? ` · ${anomalyCount} hors seuils` : ''}</div>
@@ -5435,7 +5435,15 @@ function viewHaccpTemperatures(role){
           </div>
           ${canConfigure ? `<button class="btn btn-ghost btn-sm" onclick="deleteHaccpEquipment('${e.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.trash)}</button>` : ''}
         </div>
-        ${logs.length ? `<table class="stack-mobile">
+        ${logs.length ? `
+          <!-- Historique replié par défaut, comme pour les tâches de nettoyage : avec plusieurs
+               frigos affichant chacun jusqu'à 30 relevés, la page devenait un long mur de
+               tableaux. Le dernier relevé reste toujours visible dans la ligne de résumé. -->
+          <div class="flex between center" style="border-top:1px solid var(--border);padding-top:8px;gap:10px;">
+            <span class="small muted">Dernier relevé : <span class="mono" style="color:var(--text);">${logs[0].temperature}°C</span> ${logs[0].inRange ? '' : `<span class="tag tag-red" style="margin:0 2px;">${iconXs(I.alertTriangle)} Hors seuils</span>`} — ${fmtDateLong(logs[0].createdAt)} à ${fmtTime(logs[0].createdAt)}</span>
+            ${collapseToggleHTML('haccp-equipement-'+e.id, logs.length, true)}
+          </div>
+          ${isSectionCollapsed('haccp-equipement-'+e.id, true) ? '' : `<table class="stack-mobile" style="margin-top:8px;">
           <tr><th>Température</th><th>Statut</th><th>Relevé par</th><th>Quand</th></tr>
           ${logs.map(l=>`<tr class="tr-hover">
             <td data-label="Température" class="mono">${l.temperature}°C</td>
@@ -5443,7 +5451,7 @@ function viewHaccpTemperatures(role){
             <td data-label="Relevé par" class="muted small">${escapeHtml(l.loggedByName||'—')}</td>
             <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
           </tr>`).join('')}
-        </table>` : `<div class="small muted">Aucun relevé pour cet équipement pour le moment.</div>`}
+        </table>`}` : `<div class="small muted">Aucun relevé pour cet équipement pour le moment.</div>`}
       </div>`;
     }).join('') : `<div class="card"><div class="small muted">Aucun équipement pour le moment.</div></div>`}
   `;
