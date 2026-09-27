@@ -1807,6 +1807,18 @@ const RECIPE_UNIT_GROUPS = {
   weight: { g:1, Kg:1000 },
   volume: { mL:1, cl:10, Litre:1000, L:1000 },
 };
+// Rendements « à l'unité » d'une fiche technique : une garniture (salade d'accompagnement,
+// frites, purée...) se compte à la portion, pas au gramme. Aucune conversion n'est nécessaire :
+// convertToProductUnit traite déjà « même unité » comme une quantité directe (1 Portion d'une
+// fiche qui rend 1 Portion = tout son coût ; 1 Portion d'un bac qui rend 10 Portions = 1/10).
+const RECIPE_YIELD_COUNT_UNITS = ['Portion','Pièce'];
+function recipeYieldUnitOptions(selected){
+  const opt = (u)=>`<option value="${u}" ${selected===u?'selected':''}>${u}</option>`;
+  return `<option value="">—</option>
+    <optgroup label="Poids">${['g','Kg'].map(opt).join('')}</optgroup>
+    <optgroup label="Volume">${['mL','cl','Litre'].map(opt).join('')}</optgroup>
+    <optgroup label="À l'unité">${RECIPE_YIELD_COUNT_UNITS.map(opt).join('')}</optgroup>`;
+}
 function recipeUnitGroup(unit){
   const u = (unit||'').trim();
   if(RECIPE_UNIT_GROUPS.weight[u] !== undefined) return 'weight';
@@ -4952,10 +4964,10 @@ function openNewRecipeModal(){
     </div>
     <div class="field">
       <label>Rendement (facultatif)</label>
-      <div class="small muted" style="margin:-2px 0 8px 0;">Ce que produit cette recette au total — à renseigner seulement si c'est une préparation de base (sauce, fond...) que vous voulez pouvoir utiliser au grammage voulu dans une autre fiche technique.</div>
+      <div class="small muted" style="margin:-2px 0 8px 0;">Ce que produit cette recette au total — à renseigner seulement si vous voulez l'utiliser dans une autre fiche technique : une préparation de base (sauce, fond...) au grammage voulu, ou une garniture (salade d'accompagnement, frites...) comptée <b>à la portion</b> — choisissez alors « Portion » (ex. « 1 Portion », ou « 10 Portions » pour un bac entier).</div>
       <div class="field-row">
         <div class="field"><input id="rc-yield-qty" type="number" step="0.001" min="0" placeholder="Ex : 500"></div>
-        <div class="field"><select id="rc-yield-unit"><option value="">—</option><option value="g">g</option><option value="Kg">Kg</option><option value="mL">mL</option><option value="cl">cl</option><option value="Litre">Litre</option></select></div>
+        <div class="field"><select id="rc-yield-unit">${recipeYieldUnitOptions(null)}</select></div>
       </div>
     </div>
     <div class="small muted" style="margin-bottom:14px;">Vous pourrez ajouter les ingrédients juste après avoir créé la fiche.</div>
@@ -4970,8 +4982,9 @@ async function saveNewRecipe(){
   const category = document.getElementById('rc-category').value.trim();
   const yieldQtyEl = document.getElementById('rc-yield-qty');
   const yieldUnitEl = document.getElementById('rc-yield-unit');
-  const yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
+  let yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
   const yieldUnit = yieldUnitEl && yieldUnitEl.value !== '' ? yieldUnitEl.value : null;
+  if(yieldUnit && yieldQty==null && RECIPE_YIELD_COUNT_UNITS.includes(yieldUnit)) yieldQty = 1;
   // Un rendement négatif ou nul n'a aucun sens (on ne peut pas diviser un coût par une quantité
   // négative ou par zéro) — sans cette vérification, ça produirait un coût par gramme négatif
   // ou infini partout où cette fiche est utilisée comme sous-recette.
@@ -5001,10 +5014,10 @@ function openEditRecipeModal(id){
     </div>
     <div class="field">
       <label>Rendement (facultatif)</label>
-      <div class="small muted" style="margin:-2px 0 8px 0;">Ce que produit cette recette au total — à renseigner seulement si c'est une préparation de base (sauce, fond...) que vous voulez pouvoir utiliser au grammage voulu dans une autre fiche technique.</div>
+      <div class="small muted" style="margin:-2px 0 8px 0;">Ce que produit cette recette au total — à renseigner seulement si vous voulez l'utiliser dans une autre fiche technique : une préparation de base (sauce, fond...) au grammage voulu, ou une garniture (salade d'accompagnement, frites...) comptée <b>à la portion</b> — choisissez alors « Portion » (ex. « 1 Portion », ou « 10 Portions » pour un bac entier).</div>
       <div class="field-row">
         <div class="field"><input id="rc-edit-yield-qty" type="number" step="0.001" min="0" placeholder="Ex : 500" value="${r.yieldQty!=null?r.yieldQty:''}"></div>
-        <div class="field"><select id="rc-edit-yield-unit"><option value="">—</option><option value="g" ${r.yieldUnit==='g'?'selected':''}>g</option><option value="Kg" ${r.yieldUnit==='Kg'?'selected':''}>Kg</option><option value="mL" ${r.yieldUnit==='mL'?'selected':''}>mL</option><option value="cl" ${r.yieldUnit==='cl'?'selected':''}>cl</option><option value="Litre" ${r.yieldUnit==='Litre'?'selected':''}>Litre</option></select></div>
+        <div class="field"><select id="rc-edit-yield-unit">${recipeYieldUnitOptions(r.yieldUnit)}</select></div>
       </div>
     </div>
     <button class="btn btn-primary btn-block" onclick="saveRecipeEdit('${id}')">Enregistrer</button>
@@ -5019,8 +5032,9 @@ async function saveRecipeEdit(id){
   const category = document.getElementById('rc-edit-category').value.trim();
   const yieldQtyEl = document.getElementById('rc-edit-yield-qty');
   const yieldUnitEl = document.getElementById('rc-edit-yield-unit');
-  const yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
+  let yieldQty = yieldQtyEl && yieldQtyEl.value !== '' ? parseFloat(yieldQtyEl.value) : null;
   const yieldUnit = yieldUnitEl && yieldUnitEl.value !== '' ? yieldUnitEl.value : null;
+  if(yieldUnit && yieldQty==null && RECIPE_YIELD_COUNT_UNITS.includes(yieldUnit)) yieldQty = 1;
   if(yieldQty!=null && yieldQty<=0){ toast('Le rendement doit être supérieur à zéro', 'alert'); return; }
   const resto = RESTOS.find(rr=>rr.id===state.resto);
   try{
@@ -5112,12 +5126,16 @@ function selectIngredientProduct(el, prefix){
   const previousUnit = select.value;
   select.innerHTML = compatible.map(u=>`<option value="${escapeHtml(u)}" ${u===previousUnit?'selected':''}>${escapeHtml(u)}</option>`).join('');
   updateIngredientUnitHint(prefix);
+  // Une garniture comptée à la portion s'ajoute presque toujours en « 1 Portion » : on
+  // pré-remplit la quantité (sans jamais écraser une quantité déjà tapée).
+  const qtyInput = document.getElementById(prefix+'-quantity');
+  if(type==='recipe' && source && RECIPE_YIELD_COUNT_UNITS.includes(source.yieldUnit) && qtyInput && qtyInput.value==='') qtyInput.value = '1';
 }
 // Quand la seule unité proposée est celle de l'achat lui-même (ex. "Caisse"), c'est presque
 // toujours parce qu'aucun contenu net n'a été renseigné sur le produit — plutôt que de laisser
 // deviner pourquoi, on l'explique directement ici, avec le geste exact pour le corriger. Ne
-// s'applique qu'aux produits : une sous-recette propose toujours g/Kg ou mL/cl/Litre dès lors
-// qu'elle apparaît dans la liste (son rendement est alors forcément déjà renseigné).
+// s'applique qu'aux produits : une sous-recette propose toujours g/Kg, mL/cl/Litre ou Portion
+// dès lors qu'elle apparaît dans la liste (son rendement est alors forcément déjà renseigné).
 function updateIngredientUnitHint(prefix){
   prefix = prefix || 'ing';
   const type = document.getElementById(prefix+'-source-type').value;
@@ -8750,7 +8768,7 @@ const FAQ_CATEGORIES = [
       },
       {
         q: "J'ai une sauce ou une préparation maison que je ne vends pas telle quelle — puis-je l'utiliser dans d'autres plats ?",
-        a: "Oui : créez-la comme une fiche technique normale (sans forcément de prix de vente), puis renseignez son « rendement » (ex. « cette sauce donne 500g »). Elle devient alors sélectionnable comme ingrédient dans n'importe quelle autre fiche, au grammage voulu — le coût de la plat qui l'utilise recalcule automatiquement sa part de sauce.",
+        a: "Oui : créez-la comme une fiche technique normale (sans forcément de prix de vente), puis renseignez son « rendement » (ex. « cette sauce donne 500g »). Elle devient alors sélectionnable comme ingrédient dans n'importe quelle autre fiche, au grammage voulu — le coût du plat qui l'utilise recalcule automatiquement sa part de sauce. Pour une garniture servie dans plusieurs plats (salade d'accompagnement, frites, purée...), choisissez plutôt un rendement « à l'unité » : « 1 Portion ». Vous l'ajoutez ensuite dans chaque plat en quantité « 1 Portion », sans grammage à calculer — et si elle rend « 10 Portions » (un bac entier), chaque portion compte pour un dixième de son coût.",
       },
       {
         q: "Je me suis trompé de produit ou de quantité sur un ingrédient déjà ajouté, comment corriger ?",
