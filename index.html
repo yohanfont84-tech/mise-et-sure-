@@ -531,6 +531,10 @@ tr.group-row:hover td{background:var(--gray-100);}
 }
 .haccp-bulk-row:last-child{border-bottom:none;}
 #haccp-bulk-rows{max-height:min(46vh,380px);overflow-y:auto;}
+/* Bouton de repli : discret par nature — il ne doit pas concurrencer visuellement le contenu
+   qu'il sert à masquer. La chevronnette pivote pour indiquer l'état. */
+.section-toggle svg{transition:transform .2s ease;}
+.section-toggle.is-collapsed svg{transform:rotate(-90deg);}
 .map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--muted);}
 .map-legend span{display:flex;align-items:center;gap:7px;}
 .map-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;}
@@ -2409,6 +2413,13 @@ document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.
 /* ============================================================
    SITE PUBLIC — vitrine, tarifs, compte (au-dessus de l'espace équipe)
 ============================================================ */
+// Retour à l'espace de travail depuis la page publique, sans repasser par la connexion : la
+// session est toujours active, il n'y a aucune raison de redemander les identifiants.
+function backToWorkspace(){
+  state.site = 'app';
+  if(!state.view) state.view = 'dashboard';
+  render();
+}
 function goToSite(site){
   // Filet de sécurité universel : quitter la démo par n'importe quel chemin (bouton dédié,
   // déconnexion, bouton "précédent" du navigateur...) nettoie toujours l'état complètement.
@@ -3599,6 +3610,9 @@ function renderShell(){
         })()}
       </div>
       <div class="sidebar-foot">
+        <!-- Consulter le site public sans se déconnecter : on revenait auparavant à l'accueil
+             uniquement en se déconnectant, ce qui obligeait à ressaisir ses identifiants. -->
+        <button class="btn btn-ghost btn-sm btn-block" style="margin-bottom:10px;" onclick="goToSite('marketing')">${iconXs(I.globe)} Voir le site public</button>
         Mise&nbsp;&amp;&nbsp;Sûre
       </div>
     </div>
@@ -5311,13 +5325,22 @@ function viewHaccpNettoyage(role){
             <button class="btn btn-primary btn-sm" onclick="markHaccpCleaningDone('${t.id}')">${iconXs(I.check)} Marquer fait</button>
           `}
         </div>
-        ${logs.length ? `<table class="stack-mobile">
-          <tr><th>Fait par</th><th>Quand</th></tr>
-          ${logs.map(l=>`<tr class="tr-hover">
-            <td data-label="Fait par" class="muted small">${escapeHtml(l.doneByName||'—')}</td>
-            <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
-          </tr>`).join('')}
-        </table>` : `<div class="small muted">Aucun enregistrement pour cette tâche pour le moment.</div>`}
+        ${logs.length ? `
+          <!-- Historique replié par défaut : avec plusieurs tâches, chacune déroulant jusqu'à
+               30 lignes, la page devenait un mur de tableaux dans lequel l'action du jour
+               (« Marquer fait ») disparaissait. On l'ouvre quand on en a besoin. -->
+          <div class="flex between center" style="border-top:1px solid var(--border);padding-top:8px;">
+            <span class="small muted">Historique — ${logs.length} enregistrement${logs.length>1?'s':''}</span>
+            ${collapseToggleHTML('haccp-tache-'+t.id, logs.length, true)}
+          </div>
+          ${isSectionCollapsed('haccp-tache-'+t.id, true) ? '' : `<table class="stack-mobile" style="margin-top:8px;">
+            <tr><th>Fait par</th><th>Quand</th></tr>
+            ${logs.map(l=>`<tr class="tr-hover">
+              <td data-label="Fait par" class="muted small">${escapeHtml(l.doneByName||'—')}</td>
+              <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
+            </tr>`).join('')}
+          </table>`}
+        ` : `<div class="small muted">Aucun enregistrement pour cette tâche pour le moment.</div>`}
       </div>`;
     }).join('') : emptyState(canConfigure ? "Ajoutez une première tâche récurrente (ex : nettoyage de la plonge, désinfection des plans de travail...)" : "Aucune tâche de nettoyage définie pour le moment — demandez à votre patron ou manager d'en ajouter une")}
   `;
@@ -5708,6 +5731,63 @@ async function saveOrderTemplate(supplierId){
     render();
   } catch(err){ toast(err.message, 'alert'); }
 }
+// Modifier un panier type : renommer, ajuster les quantités, retirer une ligne. Sans cela, la
+// moindre correction obligeait à supprimer le modèle et à tout recréer.
+function openEditTemplateModal(templateId){
+  const tpl = ORDER_TEMPLATES.find(t=>t.id===templateId); if(!tpl) return;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Modifier le panier type</h3>
+    <div class="modal-sub">${escapeHtml(supplierName(tpl.supplier))} — ajustez les quantités ou retirez ce dont vous n'avez plus besoin.</div>
+    <div class="field"><label>Nom</label><input id="tpl-edit-name" value="${escapeHtml(tpl.name)}"></div>
+    <div id="tpl-edit-lines">
+      ${tpl.items.map(it=>{
+        const p = PRODUCTS.find(x=>x.id===it.productId);
+        return `
+        <div class="flex between center tpl-edit-line" data-pid="${it.productId}" style="padding:8px 0;border-top:1px solid var(--border);gap:10px;">
+          <div style="min-width:0;">
+            <div style="font-weight:600;">${escapeHtml(p ? p.name : 'Produit retiré du catalogue')}</div>
+            ${p ? `<div class="small muted">${escapeHtml(p.unit||'')}</div>` : `<div class="small" style="color:var(--urgent);">Ce produit n'existe plus</div>`}
+          </div>
+          <div class="flex center gap8">
+            <input class="tpl-edit-qty" type="number" min="0" step="0.01" value="${it.qty}" style="width:82px;text-align:right;" ${p?'':'disabled'}>
+            <button class="btn btn-ghost btn-sm" onclick="this.closest('.tpl-edit-line').remove()" title="Retirer cette ligne" aria-label="Retirer cette ligne">${iconXs(I.x)}</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="saveEditedTemplate('${templateId}')">Enregistrer les modifications</button>
+  `);
+}
+async function saveEditedTemplate(templateId){
+  const tpl = ORDER_TEMPLATES.find(t=>t.id===templateId); if(!tpl) return;
+  const name = (document.getElementById('tpl-edit-name').value || '').trim();
+  if(!name){ toast('Le nom ne peut pas être vide', 'alert'); return; }
+  const lines = [...document.querySelectorAll('.tpl-edit-line')].map(row=>{
+    const productId = row.dataset.pid;
+    const qty = parseFloat(String(row.querySelector('.tpl-edit-qty').value).replace(',','.')) || 0;
+    return { productId, qty };
+  }).filter(l=>l.qty > 0 && PRODUCTS.some(p=>p.id===l.productId));
+  if(!lines.length){ toast('Un panier type doit contenir au moins un produit', 'alert'); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  // Les produits repartent avec leur identifiant serveur, comme à la création : un panier type
+  // doit rester valable depuis n'importe quel appareil.
+  const items = lines.map(l=>{
+    const p = PRODUCTS.find(x=>x.id===l.productId);
+    return { productId: p.remoteId, qty: l.qty };
+  });
+  try{
+    await apiRequest(`/api/restaurants/${resto.remoteId}/order-templates/${tpl.remoteId}`, {
+      method:'PATCH', body:{ name, items },
+    });
+    tpl.name = name;
+    tpl.items = lines;
+    ensureRestoData(state.resto).orderTemplates = ORDER_TEMPLATES;
+    closeModal();
+    toast('Panier type mis à jour');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
 async function applyOrderTemplate(templateId){
   const tpl = ORDER_TEMPLATES.find(t=>t.id===templateId); if(!tpl) return;
   if(!tpl.supplier){ toast("Ce panier type n'a plus de fournisseur valide", 'alert'); return; }
@@ -5822,12 +5902,46 @@ function accountingReminderHTML(){
       </div>
     </div>`;
 }
+// ============================================================
+// SECTIONS REPLIABLES
+// Un même mécanisme pour toutes les listes qui prennent de la place quand on n'en a pas besoin
+// (paniers types, tâches de nettoyage...). Le choix est retenu d'une session à l'autre : c'est
+// une préférence de confort, pas un réglage à refaire à chaque visite.
+// ============================================================
+function collapseKey(id){ return `mise_et_sure_section_repliee_${state.resto}_${id}`; }
+function isSectionCollapsed(id, defaultCollapsed){
+  try{
+    const v = localStorage.getItem(collapseKey(id));
+    return v === null ? !!defaultCollapsed : v === '1';
+  }catch(e){ return !!defaultCollapsed; }
+}
+function toggleSection(id, defaultCollapsed){
+  // La valeur par défaut doit être transmise : sans elle, un premier clic sur une section
+  // repliée par défaut la considérait comme dépliée et la laissait donc repliée — le bouton
+  // semblait ne rien faire.
+  const next = !isSectionCollapsed(id, defaultCollapsed);
+  try{ localStorage.setItem(collapseKey(id), next ? '1' : '0'); }catch(e){}
+  render();
+}
+// Bouton discret : une chevronnette et un compteur, rien de plus. Il indique ce qui est replié
+// pour qu'on sache qu'il y a quelque chose dessous, sans occuper l'espace qu'on cherche à gagner.
+function collapseToggleHTML(id, count, defaultCollapsed){
+  const collapsed = isSectionCollapsed(id, defaultCollapsed);
+  return `<button class="btn btn-ghost btn-sm section-toggle ${collapsed?'is-collapsed':''}"
+    onclick="toggleSection('${id}', ${!!defaultCollapsed})" aria-expanded="${!collapsed}"
+    title="${collapsed?'Afficher':'Réduire'}">${iconXs(I.chevronDown)}${collapsed && count ? ` <span class="small muted">${count}</span>` : ''}</button>`;
+}
 function orderTemplatesHTML(){
   if(!ORDER_TEMPLATES.length) return '';
+  const collapsed = isSectionCollapsed('paniers-types');
   return `
     <div class="card" style="margin-bottom:18px;">
-      <div class="card-title" style="margin-bottom:4px;">${iconSm(I.copy)} Vos paniers types</div>
-      <div class="small muted" style="margin-bottom:12px;">Rechargez une commande habituelle, puis ajustez les quantités avant d'envoyer.</div>
+      <div class="flex between center" style="gap:10px;">
+        <div class="card-title" style="margin-bottom:0;">${iconSm(I.copy)} Vos paniers types <span class="small muted" style="font-weight:400;">(${ORDER_TEMPLATES.length})</span></div>
+        ${collapseToggleHTML('paniers-types', ORDER_TEMPLATES.length)}
+      </div>
+      ${collapsed ? '' : `
+      <div class="small muted" style="margin:6px 0 12px 0;">Rechargez une commande habituelle, puis ajustez les quantités avant d'envoyer.</div>
       ${ORDER_TEMPLATES.map(t=>`
         <div class="flex between center" style="padding:9px 0;border-top:1px solid var(--border);gap:10px;flex-wrap:wrap;">
           <div style="min-width:0;">
@@ -5835,10 +5949,11 @@ function orderTemplatesHTML(){
             <div class="small muted">${escapeHtml(supplierName(t.supplier))} · ${t.items.length} produit${t.items.length>1?'s':''}</div>
           </div>
           <div class="flex gap8" style="flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="openEditTemplateModal('${t.id}')" title="Modifier ce panier type">${iconXs(I.copy)} Modifier</button>
             <button class="btn btn-ghost btn-sm" onclick="deleteOrderTemplate('${t.id}')" title="Supprimer ce panier type" aria-label="Supprimer ce panier type">${iconXs(I.trash)}</button>
             <button class="btn btn-primary btn-sm" onclick="applyOrderTemplate('${t.id}')">Remplir le panier</button>
           </div>
-        </div>`).join('')}
+        </div>`).join('')}`}
     </div>`;
 }
 function renderBasketCard(supplierId, role){
@@ -12088,7 +12203,7 @@ function siteNav(active){
         <button class="btn btn-ghost btn-sm site-nav-demo-btn" onclick="startPublicDemo()">${iconSm(I.eye)} Essayer la démo</button>
         <button class="site-nav-link ${active==='pricing'?'active':''}" onclick="goToSite('pricing')">Tarifs</button>
         ${ACCOUNT
-          ? `<span class="tag tag-neutral" style="padding:7px 14px;">${iconXs(I.check)} Connecté</span><button class="btn btn-ghost btn-sm" onclick="signOutAccount()">Se déconnecter</button>`
+          ? `<button class="btn btn-primary btn-sm" onclick="backToWorkspace()">${iconXs(I.check)} Retour à mon espace</button><button class="btn btn-ghost btn-sm" onclick="signOutAccount()">Se déconnecter</button>`
           : `<button class="btn btn-primary btn-sm" onclick="goToLogin()">Se connecter</button>`}
       </nav>
     </header>
@@ -12898,7 +13013,11 @@ function renderAccountAuthPage(){
           <button class="btn btn-primary btn-block" onclick="${mode==='login'?'attemptAccountLogin()':'attemptAccountSignup()'}">${mode==='login'?'Se connecter':'Créer mon compte'}</button>
           <div class="divider"></div>
           <a href="${API_URL}/api/auth/google" class="btn btn-ghost btn-block">${iconSm(I.globe)} Continuer avec Google</a>
-          <a href="${API_URL}/api/auth/apple" class="btn btn-ghost btn-block" style="margin-top:8px;">${iconSm(I.device)} Continuer avec Apple</a>
+          <!-- Connexion Apple pas encore active : un bouton qui mène à une erreur est pire qu'un bouton
+             désactivé. On le laisse visible, mais inerte et annoncé comme tel, pour que personne ne
+             s'y casse les dents en croyant que le site est cassé. -->
+        <button class="btn btn-ghost btn-block" style="margin-top:8px;opacity:.55;cursor:not-allowed;" disabled aria-disabled="true">${iconSm(I.device)} Continuer avec Apple</button>
+        <div class="small muted" style="text-align:center;margin-top:5px;">La connexion avec Apple n'est pas encore disponible.</div>
           <div class="login-hint">Connexion et compte réels — vos informations sont enregistrées sur le serveur.</div>
         </div>
       </div>
