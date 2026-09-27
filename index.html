@@ -4348,19 +4348,234 @@ function groupProductsByCategory(products){
   });
   return order.map(cat=>({ category: cat, items: byCategory[cat] }));
 }
-function viewStocks(){
+// ============================================================
+// SÉLECTION MULTIPLE DE PRODUITS — cocher plusieurs produits puis changer d'un coup leur
+// fournisseur, catégorie, unité, TVA, département ou lieux (ou les supprimer). Cocher une case
+// ne relance PAS un rendu complet de la page : on met seulement à jour la barre d'actions et
+// l'état des cases, pour ne pas perdre la position de défilement dans un long catalogue.
+// ============================================================
+function bulkBarHtml(){
+  const n = state.selectedProductIds instanceof Set ? state.selectedProductIds.size : 0;
+  if(!n) return '';
+  return `<div class="card" style="position:sticky;top:74px;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;margin-bottom:12px;border:1.5px solid var(--text);">
+    <b>${n} produit${n>1?'s':''} sélectionné${n>1?'s':''}</b>
+    <div class="flex gap8" style="margin-left:auto;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="openBulkEditProductsModal()">Modifier la sélection</button>
+      <button class="btn btn-danger btn-sm" onclick="openBulkDeleteProductsModal()">${iconXs(I.trash)} Supprimer</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearProductSelection()">Désélectionner</button>
+    </div>
+  </div>`;
+}
+function refreshProductSelectionUI(){
+  const sel = ensureProductSelection();
+  const bar = document.getElementById('bulk-bar');
+  if(bar) bar.innerHTML = bulkBarHtml();
+  document.querySelectorAll('#products-table .prod-sel-chk').forEach(chk=>{ chk.checked = sel.has(chk.dataset.id); });
+  const visible = visibleProductsList();
+  document.querySelectorAll('#products-table .prod-sel-group').forEach(chk=>{
+    const items = visible.filter(p=>(p.cat||'Sans catégorie')===chk.dataset.cat);
+    const count = items.filter(p=>sel.has(p.id)).length;
+    chk.checked = items.length>0 && count===items.length;
+    chk.indeterminate = count>0 && count<items.length;
+  });
+  const all = document.getElementById('prod-sel-all');
+  if(all){
+    const count = visible.filter(p=>sel.has(p.id)).length;
+    all.checked = visible.length>0 && count===visible.length;
+    all.indeterminate = count>0 && count<visible.length;
+  }
+}
+function toggleProductSelection(id, checked){
+  const sel = ensureProductSelection();
+  if(checked) sel.add(id); else sel.delete(id);
+  refreshProductSelectionUI();
+}
+function toggleGroupSelection(cat, checked){
+  const sel = ensureProductSelection();
+  visibleProductsList().filter(p=>(p.cat||'Sans catégorie')===cat).forEach(p=>{ if(checked) sel.add(p.id); else sel.delete(p.id); });
+  refreshProductSelectionUI();
+}
+function toggleAllProductsSelection(checked){
+  const sel = ensureProductSelection();
+  visibleProductsList().forEach(p=>{ if(checked) sel.add(p.id); else sel.delete(p.id); });
+  refreshProductSelectionUI();
+}
+function clearProductSelection(){
+  ensureProductSelection().clear();
+  refreshProductSelectionUI();
+}
+function selectedProductsList(){
+  const sel = ensureProductSelection();
+  return PRODUCTS.filter(p=>sel.has(p.id));
+}
+// Exécute `fn` sur chaque élément avec au plus `limit` requêtes en parallèle : bien plus rapide
+// qu'une par une pour 50 produits, sans pour autant envoyer 50 requêtes d'un coup au serveur.
+async function runWithConcurrency(items, limit, fn){
+  let index = 0;
+  const results = new Array(items.length);
+  async function worker(){
+    while(index < items.length){
+      const i = index++;
+      try{ results[i] = { ok:true, value: await fn(items[i], i) }; }
+      catch(err){ results[i] = { ok:false, error: err }; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+function openBulkEditProductsModal(){
+  const list = selectedProductsList();
+  if(!list.length) return;
+  const keep = `<option value="">— Ne pas changer —</option>`;
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Modifier ${list.length} produit${list.length>1?'s':''}</h3>
+    <div class="modal-sub">Seuls les champs que vous changez sont appliqués — tout ce qui reste sur « Ne pas changer » est conservé tel quel sur chaque produit.</div>
+    <div class="field"><label>Fournisseur</label><select id="be-supplier">${keep}${SUPPLIERS.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Catégorie</label><select id="be-cat" onchange="onNewProductCategoryChange(this)">${keep}${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
+    <div class="field-row">
+      <div class="field"><label>Unité de commande</label><input id="be-unit" list="unit-suggestions" placeholder="Ne pas changer"></div>
+      ${financialsHidden() ? '' : `<div class="field"><label>Taux de TVA</label><select id="be-tva">${keep}${TVA_RATES.map(t=>`<option value="${t.value}">${escapeHtml(t.label)}</option>`).join('')}</select></div>`}
+    </div>
+    <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
+    <div class="field"><label>Utilisé en</label><select id="be-department">${keep}
+      <option value="both">Cuisine &amp; salle</option><option value="cuisine">Cuisine</option><option value="salle">Salle</option>
+    </select></div>
+    ${ZONES.length ? `
+    <div class="field">
+      <label>Lieux / zones</label>
+      <select id="be-zone-mode" style="margin-bottom:8px;">
+        <option value="">— Ne pas changer —</option>
+        <option value="add">Ajouter les lieux cochés</option>
+        <option value="remove">Retirer les lieux cochés</option>
+        <option value="replace">Remplacer par les lieux cochés</option>
+      </select>
+      <div class="zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="be-zone-chk"> ${escapeHtml(z.name)}</label>`).join('')}</div>
+    </div>` : ''}
+    <button class="btn btn-primary btn-block" id="be-apply-btn" onclick="applyBulkEditProducts()">Appliquer aux ${list.length} produit${list.length>1?'s':''}</button>
+  `);
+}
+async function applyBulkEditProducts(){
+  const list = selectedProductsList();
+  if(!list.length) return;
+  const supplierId = document.getElementById('be-supplier').value;
+  const catSelect = document.getElementById('be-cat');
+  let cat = catSelect.value;
+  if(cat==='__new__'){ cat = await createCategoryIfNeeded(catSelect); if(cat===null) return; }
+  const unit = document.getElementById('be-unit').value.trim();
+  const tvaEl = document.getElementById('be-tva');
+  const tva = tvaEl ? tvaEl.value : '';
+  const department = document.getElementById('be-department').value;
+  const zoneModeEl = document.getElementById('be-zone-mode');
+  const zoneMode = zoneModeEl ? zoneModeEl.value : '';
+  const checkedZones = Array.from(document.querySelectorAll('.be-zone-chk:checked')).map(el=>el.value);
+  if(!supplierId && !cat && !unit && !tva && !department && !zoneMode){ toast('Aucun changement choisi', 'alert'); return; }
+  if(zoneMode && zoneMode!=='replace' && !checkedZones.length){ toast('Cochez au moins un lieu à ajouter ou à retirer', 'alert'); return; }
+  const supplierObj = supplierId ? SUPPLIERS.find(s=>s.id===supplierId) : null;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const btn = document.getElementById('be-apply-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Mise à jour en cours…'; }
+  const results = await runWithConcurrency(list, 4, async (p)=>{
+    let zoneIds = null;
+    if(zoneMode==='add') zoneIds = Array.from(new Set([...(p.zoneIds||[]), ...checkedZones]));
+    else if(zoneMode==='remove') zoneIds = (p.zoneIds||[]).filter(z=>!checkedZones.includes(z));
+    else if(zoneMode==='replace') zoneIds = checkedZones.slice();
+    const body = {
+      // Le serveur écrase toujours le contenu net (pas de COALESCE, voir la route PATCH) : on
+      // renvoie donc la valeur actuelle de chaque produit, sinon une modification groupée du
+      // fournisseur effacerait au passage le contenu net saisi pour les fiches techniques.
+      netContentQty: p.netContentQty ?? null, netContentUnit: p.netContentUnit ?? null,
+    };
+    if(supplierObj) body.supplierId = supplierObj.remoteId;
+    if(cat) body.category = cat;
+    if(unit) body.unit = unit;
+    if(tva) body.tvaRate = parseFloat(tva);
+    if(department) body.department = department;
+    if(zoneIds) body.zoneIds = zoneIds.map(zid=>{ const z = ZONES.find(zz=>zz.id===zid); return z?z.remoteId:null; }).filter(Boolean);
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, { method:'PATCH', body });
+    if(supplierObj) p.supplier = supplierObj.id;
+    p.cat = data.product.category; p.unit = data.product.unit;
+    p.tvaRate = parseFloat(data.product.tva_rate); p.department = data.product.department;
+    if(zoneIds) p.zoneIds = zoneIds;
+  });
+  const failed = results.filter(r=>!r.ok);
+  const okCount = list.length - failed.length;
+  closeModal();
+  if(failed.length){
+    toast(`${okCount} produit${okCount>1?'s':''} mis à jour, ${failed.length} échec${failed.length>1?'s':''} — ${failed[0].error.message}`, 'alert');
+  } else {
+    toast(`${list.length} produit${list.length>1?'s':''} mis à jour`);
+    ensureProductSelection().clear();
+  }
+  render();
+}
+function openBulkDeleteProductsModal(){
+  const list = selectedProductsList();
+  if(!list.length) return;
+  const preview = list.slice(0,6).map(p=>escapeHtml(p.name)).join(', ') + (list.length>6 ? `… (+${list.length-6})` : '');
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Supprimer ${list.length} produit${list.length>1?'s':''} ?</h3>
+    <div class="modal-sub">${preview}<br>Cette action est irréversible.</div>
+    <div class="flex gap8">
+      <button class="btn btn-ghost btn-block" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-danger btn-block" id="bd-confirm-btn" onclick="confirmBulkDeleteProducts()">Supprimer</button>
+    </div>
+  `);
+}
+async function confirmBulkDeleteProducts(){
+  const list = selectedProductsList();
+  if(!list.length) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const btn = document.getElementById('bd-confirm-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Suppression…'; }
+  const results = await runWithConcurrency(list, 4, p=>apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, { method:'DELETE' }));
+  // Même nettoyage local que la suppression d'un seul produit (confirmDeleteProduct).
+  const deletedIds = new Set(list.filter((_,i)=>results[i].ok).map(p=>p.id));
+  for(let i=PRODUCTS.length-1;i>=0;i--){ if(deletedIds.has(PRODUCTS[i].id)) PRODUCTS.splice(i,1); }
+  Object.keys(BASKETS).forEach(sid=>{
+    BASKETS[sid] = BASKETS[sid].filter(li=>!deletedIds.has(li.productId));
+    if(BASKETS[sid].length===0) delete BASKETS[sid];
+  });
+  RECIPE_INGREDIENTS.forEach(ing => { if(deletedIds.has(ing.productId)) ing.productId = null; });
+  const failed = results.filter(r=>!r.ok);
+  closeModal();
+  if(failed.length) toast(`${deletedIds.size} supprimé${deletedIds.size>1?'s':''}, ${failed.length} échec${failed.length>1?'s':''} — ${failed[0].error.message}`, 'alert');
+  else toast(`${deletedIds.size} produit${deletedIds.size>1?'s':''} supprimé${deletedIds.size>1?'s':''}`);
+  render();
+}
+// La liste telle qu'elle est affichée sur la page Produits (onglet, recherche, filtres, tri) —
+// partagée avec la sélection multiple, pour que « tout sélectionner » coche exactement ce que
+// la personne voit, ni plus ni moins.
+function visibleProductsList(){
   const filter = state.stockFilter || 'tous';
   const f = ensureProductFilters();
   const byDept = PRODUCTS.filter(p=> filter==='tous' ? true : (filter==='cuisine' ? (p.department==='cuisine'||p.department==='both') : (p.department==='salle'||p.department==='both')));
-  const filtered = sortProductsList(filterProductsList(byDept, f), f.sort);
+  return sortProductsList(filterProductsList(byDept, f), f.sort);
+}
+function canBulkEditProducts(){ return state.role==='patron' || state.role==='manager'; }
+function ensureProductSelection(){
+  if(!(state.selectedProductIds instanceof Set)) state.selectedProductIds = new Set();
+  // Un produit supprimé entre-temps (ou un changement d'établissement) ne doit pas rester
+  // « sélectionné » de façon invisible.
+  const existing = new Set(PRODUCTS.map(p=>p.id));
+  state.selectedProductIds.forEach(id=>{ if(!existing.has(id)) state.selectedProductIds.delete(id); });
+  return state.selectedProductIds;
+}
+function viewStocks(){
+  const filter = state.stockFilter || 'tous';
+  const f = ensureProductFilters();
+  const filtered = visibleProductsList();
   const collapsed = ensureCollapsedCategories();
   const groups = groupProductsByCategory(filtered);
-  const colCount = financialsHidden() ? 8 : 9;
+  const bulk = canBulkEditProducts() && filtered.length > 0;
+  const selected = bulk ? ensureProductSelection() : new Set();
+  const colCount = (financialsHidden() ? 8 : 9) + (bulk ? 1 : 0);
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Produits</h2><div class="sub">${PRODUCTS.length} produit${PRODUCTS.length>1?'s':''} au catalogue · le site sert à commander, pas à suivre un stock en temps réel</div></div>
       <div class="flex gap8">
-        ${(state.role==='patron'||state.role==='manager') ? `<button class="btn btn-ghost" onclick="openImportProductsModal()">${iconSm(I.doc)} Importer un CSV</button>` : ''}
+        ${(state.role==='patron'||state.role==='manager') ? `<button class="btn btn-ghost" onclick="openImportProductsModal()">${iconSm(I.doc)} Importer (Excel / CSV)</button>` : ''}
         <button class="btn btn-primary" onclick="openNewProductModal()">${iconSm(I.plus)} Nouveau produit</button>
       </div>
     </div>
@@ -4374,9 +4589,10 @@ function viewStocks(){
       <button class="btn btn-ghost btn-sm" onclick="setAllCategoryGroups(true)">${iconXs(I.chevronDown)} Tout réduire</button>
       <button class="btn btn-ghost btn-sm" onclick="setAllCategoryGroups(false)">${iconXs(I.chevronDown)} Tout développer</button>
     </div>` : ''}
+    ${bulk ? `<div id="bulk-bar">${bulkBarHtml()}</div>` : ''}
     <div class="card">
-      ${filtered.length ? `<table class="stack-mobile compact-rows">
-        <tr><th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th>${financialsHidden()?'':`<th>Prix d'achat</th>`}<th></th></tr>
+      ${filtered.length ? `<table class="stack-mobile compact-rows" id="products-table">
+        <tr>${bulk ? `<th style="width:34px;"><input type="checkbox" id="prod-sel-all" aria-label="Tout sélectionner" title="Tout sélectionner" onchange="toggleAllProductsSelection(this.checked)" ${filtered.every(p=>selected.has(p.id))?'checked':''}></th>` : ''}<th>Produit</th><th>Catégorie</th><th>Lieux</th><th>Département</th><th>Fournisseur</th><th>Conditionnement</th><th>Qté de commande</th>${financialsHidden()?'':`<th>Prix d'achat</th>`}<th></th></tr>
         ${groups.map(g=>{
           const isCollapsed = groups.length>1 && !!collapsed[g.category];
           // La ligne d'en-tête de groupe ne s'affiche que s'il y a plus d'une catégorie dans la
@@ -4385,11 +4601,13 @@ function viewStocks(){
           const groupHeader = groups.length>1 ? `
             <tr class="group-row" onclick="toggleCategoryGroup('${escapeHtml(g.category).replace(/'/g,"\\'")}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCategoryGroup('${escapeHtml(g.category).replace(/'/g,"\\'")}');}" role="button" tabindex="0" aria-expanded="${!isCollapsed}" style="cursor:pointer;background:var(--paper);">
               <td colspan="${colCount}" style="font-weight:600;padding:9px 8px;">
+                ${bulk ? `<input type="checkbox" class="prod-sel-group" data-cat="${escapeHtml(g.category)}" aria-label="Sélectionner toute la catégorie" title="Sélectionner toute la catégorie" onclick="event.stopPropagation();" onkeydown="event.stopPropagation();" onchange="toggleGroupSelection(this.dataset.cat, this.checked)" ${g.items.every(p=>selected.has(p.id))?'checked':''} style="margin-right:10px;vertical-align:middle;">` : ''}
                 <span class="group-chevron ${isCollapsed?'':'open'}" style="display:inline-flex;margin-right:8px;vertical-align:middle;">${iconXs(I.chevronDown)}</span>
                 ${escapeHtml(g.category)} <span class="muted small" style="font-weight:400;">(${g.items.length} produit${g.items.length>1?'s':''})</span>
               </td>
             </tr>` : '';
           const itemRows = isCollapsed ? '' : g.items.map(p=>`<tr class="tr-hover">
+            ${bulk ? `<td data-label="Sélection"><input type="checkbox" class="prod-sel-chk" data-id="${p.id}" aria-label="Sélectionner ${escapeHtml(p.name)}" onchange="toggleProductSelection('${p.id}', this.checked)" ${selected.has(p.id)?'checked':''}></td>` : ''}
             <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}${p.supplierReference?`<div class="small muted mono">${escapeHtml(p.supplierReference)}</div>`:''}</td>
             <td data-label="Catégorie" class="muted small">${escapeHtml(p.cat||'—')}</td>
             <td data-label="Lieux">${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
@@ -8467,8 +8685,16 @@ const FAQ_CATEGORIES = [
     items: [
       {
         q: "Comment créer un produit ?",
-        a: "Allez dans « Produits » puis cliquez sur « Nouveau produit » en haut à droite. Renseignez le nom, la catégorie, l'unité de commande (kg, litre, pièce, carton, caisse...), le prix, et le fournisseur. Le conditionnement et la référence fournisseur sont facultatifs.",
+        a: "Allez dans « Produits » puis cliquez sur « Nouveau produit » en haut à droite. Renseignez le nom, la catégorie, l'unité de commande (kg, litre, pièce, carton, caisse...), le prix, et le fournisseur. Le conditionnement, la référence fournisseur, le département et les lieux sont facultatifs et rangés sous « Plus d'options ».",
         img: '02-creer-produit',
+      },
+      {
+        q: "Comment créer plusieurs produits à la suite, plus vite ?",
+        a: "Dans la fenêtre « Nouveau produit », cliquez sur « Créer et ajouter un autre » (ou appuyez simplement sur Entrée dans le nom ou le prix). Le produit est créé et la fenêtre se rouvre aussitôt en gardant le fournisseur, la catégorie, l'unité, la TVA, le département et les lieux : il ne reste qu'à taper le nom et le prix du suivant. Idéal pour saisir tous les produits d'un même fournisseur d'affilée.",
+      },
+      {
+        q: "Comment modifier plusieurs produits en même temps ?",
+        a: "Sur la page Produits, cochez les produits concernés (la case d'une catégorie coche toute la catégorie, celle de l'en-tête coche tout ce qui est affiché). Une barre apparaît : « Modifier la sélection » permet de changer d'un coup le fournisseur, la catégorie, l'unité, la TVA, le département ou les lieux — seuls les champs que vous changez sont appliqués. Vous pouvez aussi supprimer toute la sélection en une fois.",
       },
       {
         q: 'Que veut dire "unité de commande" et "prix par..." ?',
@@ -8493,7 +8719,7 @@ const FAQ_CATEGORIES = [
       },
       {
         q: "Comment importer plusieurs produits d'un coup depuis un fichier Excel ou Google Sheets ?",
-        a: "Depuis la page Produits, cliquez sur « Importer un CSV » puis choisissez votre fichier exporté en CSV. Une seule colonne est obligatoire : le nom du produit. Catégorie, unité, prix, quantité de commande, fournisseur (doit déjà exister dans vos fournisseurs), conditionnement et référence fournisseur sont reconnus automatiquement si présents — l'ordre des colonnes n'a pas d'importance.",
+        a: "Depuis la page Produits, cliquez sur « Importer (Excel / CSV) » puis choisissez votre fichier : un fichier Excel (.xlsx) fonctionne directement, sans conversion, tout comme un CSV exporté de Google Sheets. Un modèle prêt à remplir est téléchargeable dans la même fenêtre. Une seule colonne est obligatoire : le nom du produit. Catégorie, unité, prix, TVA, quantité de commande, fournisseur, département (cuisine / salle), conditionnement et référence fournisseur sont reconnus automatiquement si présents — l'ordre des colonnes n'a pas d'importance. Avant l'import, le site affiche un aperçu et propose de créer automatiquement les fournisseurs et catégories qui n'existent pas encore.",
         img: '08-import-csv',
       },
       {
@@ -10109,7 +10335,11 @@ async function refuseCustomRequest(id){
 /* ============================================================
    PRODUITS — création / édition
 ============================================================ */
-function openNewProductModal(prefill){
+// « Créer et ajouter un autre » : quand on saisit plusieurs produits d'affilée, la fenêtre se
+// rouvre aussitôt en gardant ce qui ne change presque jamais d'un produit à l'autre
+// (fournisseur, catégorie, unité, TVA, département, lieux) — seuls le nom et le prix sont vidés.
+// `sticky` porte ces valeurs, et `count` le nombre de produits déjà créés dans la série.
+function openNewProductModal(prefill, sticky){
   if(SUPPLIERS.length===0){
     openModal(`
       <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
@@ -10120,15 +10350,32 @@ function openNewProductModal(prefill){
     return;
   }
   const p = prefill || null;
-  const prefillZoneIds = p ? (p.zoneIds||[]) : [];
-  const initialUnit = p ? p.unit : 'Kg';
+  const st = (!p && sticky) ? sticky : null;
+  // Une nouvelle ouverture « normale » démarre une nouvelle série (le compteur repart de zéro).
+  if(!st) state.productSeries = null;
+  // Valeurs de départ communes aux trois cas (nouveau, duplication, série) : on lit tout ici une
+  // seule fois pour que le formulaire ci-dessous n'ait pas à se demander d'où vient chaque valeur.
+  const init = p ? {
+    cat:p.cat, unit:p.unit, price:p.price, tvaRate:p.tvaRate??5.5, supplier:p.supplier, department:p.department||'both',
+    zoneIds:p.zoneIds||[], packaging:p.packaging||'', reference:p.supplierReference||'', netQty:p.netContentQty, netUnit:p.netContentUnit,
+  } : st ? {
+    cat:st.cat, unit:st.unit, price:'', tvaRate:st.tvaRate, supplier:st.supplier, department:st.department,
+    zoneIds:st.zoneIds, packaging:'', reference:'', netQty:null, netUnit:null,
+  } : { cat:null, unit:'Kg', price:'5.00', tvaRate:5.5, supplier:null, department:'both', zoneIds:[], packaging:'', reference:'', netQty:null, netUnit:null };
+  const prefillZoneIds = init.zoneIds;
+  const initialUnit = init.unit;
+  // Les champs secondaires sont repliés sous « Plus d'options » — sauf s'ils contiennent déjà
+  // quelque chose (duplication, série avec des lieux...) : on ne cache jamais une valeur qui
+  // sera enregistrée sans que la personne puisse la voir.
+  const advancedOpen = !!(init.packaging || init.reference || init.netQty!=null || init.department!=='both' || prefillZoneIds.length);
   const restoForNp = RESTOS.find(r=>r.id===state.resto);
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>${p ? 'Dupliquer le produit' : 'Nouveau produit'}</h3>
     ${p ? `<div class="modal-sub">Pré-rempli à partir de « ${escapeHtml(p.name)} » — ajustez ce qui change puis créez le nouveau produit.</div>` : ''}
-    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${escapeHtml(p ? p.name+' (copie)' : '')}"></div>
-    <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${p && p.cat===c.name?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
+    ${st ? `<div class="modal-sub">${iconXs(I.check)} ${st.count} produit${st.count>1?'s':''} créé${st.count>1?'s':''} à la suite — fournisseur, catégorie et unité sont conservés.</div>` : ''}
+    <div class="field"><label>Nom du produit</label><input id="np-name" placeholder="Ex : Huile d'olive" value="${escapeHtml(p ? p.name+' (copie)' : '')}" onkeydown="if(event.key==='Enter'){event.preventDefault();addProduct(true);}"></div>
+    <div class="field"><label>Catégorie</label><select id="np-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${init.cat===c.name?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field">
       <label>Unité de commande</label>
       <input id="np-unit" placeholder="Kg" list="unit-suggestions" oninput="updatePriceLabel('np')" value="${initialUnit}">
@@ -10137,13 +10384,17 @@ function openNewProductModal(prefill){
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
     ${financialsHidden() ? '' : `
     <div class="field-row">
-      <div class="field"><label id="np-price-label">Prix par ${initialUnit || 'unité'} — HT (€)</label><input id="np-price" type="number" step="0.01" value="${p ? p.price : '5.00'}"></div>
-      <div class="field"><label>Taux de TVA</label><select id="np-tva">${TVA_RATES.map(t=>`<option value="${t.value}" ${(p ? Math.abs((p.tvaRate??5.5)-t.value)<0.01 : t.value===5.5)?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>
+      <div class="field"><label id="np-price-label">Prix par ${initialUnit || 'unité'} — HT (€)</label><input id="np-price" type="number" step="0.01" placeholder="0.00" value="${init.price}" onkeydown="if(event.key==='Enter'){event.preventDefault();addProduct(true);}"></div>
+      <div class="field"><label>Taux de TVA</label><select id="np-tva">${TVA_RATES.map(t=>`<option value="${t.value}" ${Math.abs(init.tvaRate-t.value)<0.01?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>
     </div>
     `}
+    <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${init.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
+    <details class="np-more" ${advancedOpen?'open':''} style="margin:4px 0 14px 0;">
+    <summary style="cursor:pointer;font-weight:600;font-size:13.5px;padding:6px 0;">Plus d'options <span class="muted small" style="font-weight:400;">— conditionnement, référence, département, lieux…</span></summary>
+    <div style="padding-top:10px;">
     <div class="field">
       <label>Contenu du conditionnement (facultatif)</label>
-      <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${escapeHtml(p ? (p.packaging||'') : '')}">
+      <input id="np-packaging" placeholder="Ex : Carton de 6 bouteilles de 75cl, Caisse de 24 canettes 33cl, Sac de 25kg" value="${escapeHtml(init.packaging)}">
       <div class="small muted" style="margin-top:4px;">Pure information pour l'équipe — n'affecte pas le calcul du prix.</div>
     </div>
     ${restoForNp && restoForNp.recipesEnabled!==false ? `
@@ -10151,25 +10402,32 @@ function openNewProductModal(prefill){
       <label>Contenu net, pour le coût de revient des recettes (facultatif)</label>
       <div class="small muted" style="margin:-2px 0 8px 0;">Pour un produit acheté à la pièce, au carton ou à la caisse : combien pèse ou contient réellement une unité — c'est ce qui permet ensuite d'utiliser des grammes ou des cl dans une fiche technique, même si vous achetez par Caisse.</div>
       <div class="field-row">
-        <div class="field"><input id="np-net-content-qty" type="number" step="0.001" min="0" placeholder="Ex : 10" value="${p && p.netContentQty!=null ? p.netContentQty : ''}"></div>
-        <div class="field"><select id="np-net-content-unit"><option value="">—</option><option value="g" ${p && p.netContentUnit==='g'?'selected':''}>g</option><option value="Kg" ${p && p.netContentUnit==='Kg'?'selected':''}>Kg</option><option value="mL" ${p && p.netContentUnit==='mL'?'selected':''}>mL</option><option value="cl" ${p && p.netContentUnit==='cl'?'selected':''}>cl</option><option value="Litre" ${p && p.netContentUnit==='Litre'?'selected':''}>Litre</option></select></div>
+        <div class="field"><input id="np-net-content-qty" type="number" step="0.001" min="0" placeholder="Ex : 10" value="${init.netQty!=null ? init.netQty : ''}"></div>
+        <div class="field"><select id="np-net-content-unit"><option value="">—</option>${['g','Kg','mL','cl','Litre'].map(u=>`<option value="${u}" ${init.netUnit===u?'selected':''}>${u}</option>`).join('')}</select></div>
       </div>
     </div>
     ` : ''}
-    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${escapeHtml(p ? (p.supplierReference||'') : '')}"></div>
-    <div class="field"><label>Fournisseur</label><select id="np-supplier">${SUPPLIERS.map(s=>`<option value="${s.id}" ${p && p.supplier===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Référence fournisseur (facultatif)</label><input id="np-reference" placeholder="REF-1234" value="${escapeHtml(init.reference)}"></div>
     <div class="field"><label>Utilisé en</label><select id="np-department">
-      <option value="both" ${!p || p.department==='both'?'selected':''}>Cuisine &amp; salle</option>
-      <option value="cuisine" ${p && p.department==='cuisine'?'selected':''}>Cuisine</option>
-      <option value="salle" ${p && p.department==='salle'?'selected':''}>Salle</option>
+      <option value="both" ${init.department==='both'?'selected':''}>Cuisine &amp; salle</option>
+      <option value="cuisine" ${init.department==='cuisine'?'selected':''}>Cuisine</option>
+      <option value="salle" ${init.department==='salle'?'selected':''}>Salle</option>
     </select></div>
     <div class="field">
       <label>Lieux / zones (facultatif — un produit peut être dans plusieurs à la fois)</label>
       <div class="zone-checklist" id="np-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk" ${prefillZoneIds.includes(z.id)?'checked':''}> ${escapeHtml(z.name)}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
       <div class="flex gap8" style="margin-top:8px;"><input id="np-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('np')">Ajouter</button></div>
     </div>
-    <button class="btn btn-primary btn-block" onclick="addProduct()">Créer le produit</button>
+    </div>
+    </details>
+    <div class="flex gap8" style="flex-wrap:wrap;">
+      <button class="btn btn-ghost" style="flex:1;min-width:190px;justify-content:center;" onclick="addProduct(true)" title="Crée ce produit et rouvre aussitôt le formulaire, avec le même fournisseur, la même catégorie et la même unité (touche Entrée)">${iconSm(I.plus)} Créer et ajouter un autre</button>
+      <button class="btn btn-primary" style="flex:1;min-width:150px;justify-content:center;" onclick="addProduct()">Créer le produit</button>
+    </div>
+    <div class="small muted" style="margin-top:8px;text-align:center;">Astuce : appuyez sur <b>Entrée</b> dans le nom ou le prix pour enchaîner le produit suivant.</div>
   `);
+  const nameInput = document.getElementById('np-name');
+  if(nameInput && !p) setTimeout(()=>nameInput.focus(), 30);
 }
 function duplicateProduct(id){
   const p = PRODUCTS.find(x=>x.id===id); if(!p) return;
@@ -10320,7 +10578,10 @@ async function createCategoryIfNeeded(selectEl){
   }
   return selectEl.value || null;
 }
-async function addProduct(){
+async function addProduct(keepOpen){
+  // Anti double-clic / double Entrée : sans ce verrou, deux appuis rapprochés créaient le même
+  // produit deux fois, le premier appel n'ayant pas encore refermé la fenêtre.
+  if(state.addingProduct) return;
   const name = document.getElementById('np-name').value.trim();
   if(!name){ toast('Le nom du produit est requis','alert'); return; }
   const catSelect = document.getElementById('np-cat');
@@ -10344,6 +10605,9 @@ async function addProduct(){
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
   const zoneRemoteIds = zoneIds.map(zid=>{ const z = ZONES.find(zz=>zz.id===zid); return z?z.remoteId:null; }).filter(Boolean);
+  // Compteur de la série en cours (« 3 produits créés à la suite ») — lu avant la fermeture.
+  const previousCount = (state.productSeries && state.productSeries.count) || 0;
+  state.addingProduct = true;
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
@@ -10353,8 +10617,16 @@ async function addProduct(){
     closeModal();
     toast('Produit « '+escapeHtml(name)+' » créé');
     render();
+    if(keepOpen){
+      state.productSeries = { cat, unit, tvaRate, supplier, department, zoneIds, count: previousCount + 1 };
+      openNewProductModal(null, state.productSeries);
+    } else {
+      state.productSeries = null;
+    }
   } catch(err){
     toast(err.message, 'alert');
+  } finally {
+    state.addingProduct = false;
   }
 }
 // ============================================================
@@ -10373,7 +10645,18 @@ const CSV_COLUMN_ALIASES = {
   supplier: ['fournisseur','supplier'],
   packaging: ['conditionnement','packaging'],
   reference: ['referencefournisseur','reference','ref'],
+  department: ['departement','department','utiliseen','service'],
 };
+// « Cuisine », « salle », « bar », « les deux »... → la valeur attendue par le serveur.
+function parseImportDepartment(raw){
+  const v = normalizeCSVHeader(raw);
+  if(!v) return 'both';
+  const cuisine = v.includes('cuisine');
+  const salle = v.includes('salle') || v.includes('bar');
+  if(cuisine && !salle) return 'cuisine';
+  if(salle && !cuisine) return 'salle';
+  return 'both';
+}
 function normalizeCSVHeader(h){
   return (h||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
 }
@@ -10405,6 +10688,7 @@ function parseCSVText(text){
 // lignes invalides (sans nom) pour les signaler clairement plutôt que de les créer à moitié.
 function mapCSVRowsToProducts(rows){
   if(!rows.length) return { items: [], skipped: 0 };
+  rows = rows.map(r=>r.map(c=>c==null ? '' : String(c)));
   const header = rows[0].map(normalizeCSVHeader);
   const colIndex = {};
   Object.keys(CSV_COLUMN_ALIASES).forEach(field=>{
@@ -10434,87 +10718,188 @@ function mapCSVRowsToProducts(rows){
       supplierName: colIndex.supplier!=null ? (r[colIndex.supplier]||'').trim() : '',
       packaging: colIndex.packaging!=null ? (r[colIndex.packaging]||'').trim() : '',
       supplierReference: colIndex.reference!=null ? (r[colIndex.reference]||'').trim() : '',
+      department: colIndex.department!=null ? parseImportDepartment(r[colIndex.department]) : 'both',
     });
   }
   return { items, skipped, hasNameColumn: colIndex.name!=null };
 }
 function openImportProductsModal(){
   state.pendingCSVImport = null;
+  const canCreateSuppliers = state.role==='patron';
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
-    <h3>Importer des produits depuis un CSV</h3>
-    <div class="modal-sub">Pratique pour rentrer un catalogue déjà existant (export Excel ou Google Sheets) sans tout retaper.</div>
+    <h3>Importer des produits</h3>
+    <div class="modal-sub">Rentrez tout un catalogue d'un coup depuis un fichier Excel (.xlsx) ou CSV, sans rien retaper.</div>
     <div class="small muted" style="background:var(--paper);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.6;">
-      Colonnes reconnues (une seule est obligatoire) : <b>nom</b> (obligatoire), catégorie, unité, prix, quantité_commande, fournisseur (doit déjà exister dans vos fournisseurs, sinon laissé vide), conditionnement, référence_fournisseur.
+      Colonnes reconnues (une seule est obligatoire) : <b>nom</b> (obligatoire), catégorie, unité, prix, TVA, quantité_commande, fournisseur, département (cuisine / salle), conditionnement, référence_fournisseur.
       L'ordre des colonnes n'a pas d'importance, ni les accents ou majuscules dans les en-têtes.
+      ${canCreateSuppliers ? 'Les fournisseurs et catégories qui n’existent pas encore peuvent être créés automatiquement.' : 'Un fournisseur qui n’existe pas encore est laissé vide (seul le patron peut créer des fournisseurs).'}
+      <div style="margin-top:8px;"><a href="#" onclick="downloadProductsImportTemplate();return false;" style="color:inherit;text-decoration:underline;font-weight:600;">${iconXs(I.download)} Télécharger un modèle prêt à remplir</a></div>
     </div>
     <div class="field">
-      <label>Fichier CSV</label>
-      <input type="file" accept=".csv,text/csv" onchange="handleProductsCSVFileSelected(this)">
+      <label>Fichier Excel ou CSV</label>
+      <input type="file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onchange="handleProductsCSVFileSelected(this)">
     </div>
     <div id="csv-import-preview"></div>
     <button class="btn btn-primary btn-block" id="csv-import-confirm-btn" onclick="confirmImportProductsCSV()" disabled>Importer</button>
   `);
 }
+// Modèle CSV (séparateur « ; », comme Excel en France) avec deux lignes d'exemple : s'ouvre
+// directement dans Excel ou Google Sheets. Le BOM UTF-8 en tête évite qu'Excel n'affiche les
+// accents de travers (« CatÃ©gorie »).
+function downloadProductsImportTemplate(){
+  const lines = [
+    'nom;catégorie;unité;prix;tva;fournisseur;département;conditionnement;référence_fournisseur',
+    'Entrecôte de bœuf;Viande;Kg;28,00;5,5;Boucherie Centrale;cuisine;;',
+    'Coca-Cola 33cl;Boissons;Caisse;14,40;20;Boissons Générales;salle;Caisse de 24 canettes 33cl;COCA-33',
+  ];
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'modele-import-produits.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+function findSupplierByName(name){
+  const n = (name||'').toLowerCase().trim();
+  return n ? SUPPLIERS.find(s=>s.name.toLowerCase().trim()===n) || null : null;
+}
+function findCategoryByName(name){
+  const n = (name||'').toLowerCase().trim();
+  return n ? CATEGORIES.find(c=>c.name.toLowerCase().trim()===n) || null : null;
+}
+// Noms distincts (en gardant l'écriture de la première occurrence) absents de la liste existante.
+function uniqueMissingNames(values, exists){
+  const seen = new Map();
+  values.forEach(v=>{
+    const t = (v||'').trim();
+    if(t && !exists(t) && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+  });
+  return Array.from(seen.values());
+}
 function handleProductsCSVFileSelected(input){
   const file = input.files && input.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const rows = parseCSVText(String(reader.result));
+  const onRows = (rows) => {
     const { items, skipped, hasNameColumn } = mapCSVRowsToProducts(rows);
-    state.pendingCSVImport = { items };
+    const missingSuppliers = uniqueMissingNames(items.map(i=>i.supplierName), findSupplierByName);
+    const missingCategories = uniqueMissingNames(items.map(i=>i.category), findCategoryByName);
+    state.pendingCSVImport = { items, missingSuppliers, missingCategories };
     const preview = document.getElementById('csv-import-preview');
     const confirmBtn = document.getElementById('csv-import-confirm-btn');
     if(!hasNameColumn){
-      if(preview) preview.innerHTML = `<div class="small" style="color:var(--urgent);margin-bottom:10px;">Aucune colonne "nom" reconnue dans ce fichier — vérifiez l'en-tête de la première ligne.</div>`;
+      if(preview) preview.innerHTML = `<div class="small" style="color:var(--urgent);margin-bottom:10px;">Aucune colonne « nom » reconnue dans ce fichier — vérifiez l'en-tête de la première ligne (ou partez du modèle à télécharger ci-dessus).</div>`;
       if(confirmBtn) confirmBtn.disabled = true;
       return;
     }
+    const canCreateSuppliers = state.role==='patron';
+    const listNames = (names) => names.slice(0,8).map(n=>`« ${escapeHtml(n)} »`).join(', ') + (names.length>8 ? ` et ${names.length-8} autre${names.length-8>1?'s':''}` : '');
     if(preview){
-      preview.innerHTML = `<div class="small muted" style="margin-bottom:10px;">
-        <b>${items.length}</b> produit${items.length>1?'s':''} prêt${items.length>1?'s':''} à importer${skipped?` · ${skipped} ligne${skipped>1?'s':''} ignorée${skipped>1?'s':''} (sans nom)`:''}.
-      </div>`;
+      preview.innerHTML = `
+        <div class="small muted" style="margin-bottom:10px;">
+          <b>${items.length}</b> produit${items.length>1?'s':''} prêt${items.length>1?'s':''} à importer${skipped?` · ${skipped} ligne${skipped>1?'s':''} ignorée${skipped>1?'s':''} (sans nom)`:''}.
+        </div>
+        ${items.length ? `<div class="small" style="margin-bottom:10px;max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;line-height:1.7;">
+          ${items.slice(0,30).map(i=>`<div><b>${escapeHtml(i.name)}</b> <span class="muted">— ${escapeHtml(i.category||'sans catégorie')} · ${escapeHtml(i.unit||'unité')}${i.price?` · ${fmtEUR(i.price)} HT`:''}${i.supplierName?` · ${escapeHtml(i.supplierName)}`:''}</span></div>`).join('')}
+          ${items.length>30 ? `<div class="muted">… et ${items.length-30} autre${items.length-30>1?'s':''}</div>` : ''}
+        </div>` : ''}
+        ${missingSuppliers.length ? (canCreateSuppliers
+          ? `<label class="flex gap8 small" style="margin-bottom:8px;align-items:flex-start;"><input type="checkbox" id="csv-create-suppliers" checked style="margin-top:3px;"> <span>Créer ${missingSuppliers.length>1?`les ${missingSuppliers.length} fournisseurs`:'le fournisseur'} qui n'existe${missingSuppliers.length>1?'nt':''} pas encore : ${listNames(missingSuppliers)}</span></label>`
+          : `<div class="small muted" style="margin-bottom:8px;">Fournisseur${missingSuppliers.length>1?'s':''} inconnu${missingSuppliers.length>1?'s':''}, laissé${missingSuppliers.length>1?'s':''} vide${missingSuppliers.length>1?'s':''} : ${listNames(missingSuppliers)}</div>`) : ''}
+        ${missingCategories.length ? `<label class="flex gap8 small" style="margin-bottom:10px;align-items:flex-start;"><input type="checkbox" id="csv-create-categories" checked style="margin-top:3px;"> <span>Ajouter ${missingCategories.length>1?`les ${missingCategories.length} nouvelles catégories`:'la nouvelle catégorie'} à vos listes : ${listNames(missingCategories)}</span></label>` : ''}
+      `;
     }
-    if(confirmBtn) confirmBtn.disabled = items.length===0;
+    if(confirmBtn){
+      confirmBtn.disabled = items.length===0;
+      confirmBtn.textContent = items.length ? `Importer ${items.length} produit${items.length>1?'s':''}` : 'Importer';
+    }
   };
-  reader.readAsText(file, 'UTF-8');
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+  const reader = new FileReader();
+  if(isExcel){
+    // Excel : lu avec SheetJS (déjà présent sur le site, chargé seulement quand on en a besoin).
+    // On prend la première feuille ; `raw:false` renvoie les cellules telles qu'affichées dans
+    // Excel (« 12,50 »), que parseNum sait déjà lire.
+    reader.onload = () => ensureSheetJS(()=>{
+      try{
+        const wb = XLSX.read(new Uint8Array(reader.result), { type:'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, defval:'' })
+          .filter(r => r.some(c=>String(c||'').trim()!==''));
+        onRows(rows);
+      } catch(err){
+        const preview = document.getElementById('csv-import-preview');
+        if(preview) preview.innerHTML = `<div class="small" style="color:var(--urgent);margin-bottom:10px;">Impossible de lire ce fichier Excel — essayez de l'enregistrer à nouveau, ou exportez-le en CSV.</div>`;
+      }
+    });
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.onload = () => onRows(parseCSVText(String(reader.result)));
+    reader.readAsText(file, 'UTF-8');
+  }
 }
 async function confirmImportProductsCSV(){
   const pending = state.pendingCSVImport;
   if(!pending || !pending.items.length) return;
   const confirmBtn = document.getElementById('csv-import-confirm-btn');
-  if(confirmBtn){ confirmBtn.disabled = true; confirmBtn.textContent = 'Import en cours…'; }
+  const setStatus = (t) => { if(confirmBtn){ confirmBtn.disabled = true; confirmBtn.textContent = t; } };
+  setStatus('Import en cours…');
   const resto = RESTOS.find(r=>r.id===state.resto);
-  let created = 0, failed = 0;
-  // Un appel par produit, l'un après l'autre : plus lent qu'un import groupé côté serveur, mais
-  // réutilise telle quelle la validation déjà en place pour la création d'un produit, sans
-  // avoir à dupliquer cette logique dans une route dédiée pour ce cas d'usage plus rare.
-  for(const item of pending.items){
-    try{
-      const supplierObj = item.supplierName ? SUPPLIERS.find(s=>s.name.toLowerCase().trim()===item.supplierName.toLowerCase()) : null;
-      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
-        method:'POST',
-        body:{
-          name:item.name, category:item.category, unit:item.unit||'unité', price:item.price,
-          qtyCommande:item.qtyCommande||1, department:'both', tvaRate:item.tvaRate??5.5,
-          supplierId: supplierObj?supplierObj.remoteId:null, packaging:item.packaging, supplierReference:item.supplierReference,
-        },
-      });
-      PRODUCTS.push({
-        id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit,
-        qtyCommande:parseFloat(data.product.qty_commande), supplier: supplierObj?supplierObj.id:null,
-        cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department,
-        packaging:item.packaging, supplierReference:item.supplierReference, zoneIds:[], tvaRate:parseFloat(data.product.tva_rate),
-      });
-      created++;
-    } catch(err){
-      failed++;
-    }
+  const createSuppliersEl = document.getElementById('csv-create-suppliers');
+  const createCategoriesEl = document.getElementById('csv-create-categories');
+  let supplierFailures = 0;
+  // 1) Fournisseurs manquants — créés une seule fois chacun, AVANT les produits, pour que chaque
+  //    produit soit directement rattaché au bon fournisseur.
+  if(createSuppliersEl && createSuppliersEl.checked && pending.missingSuppliers.length){
+    setStatus('Création des fournisseurs…');
+    const res = await runWithConcurrency(pending.missingSuppliers, 3, async (name)=>{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/suppliers`, { method:'POST', body:{ name, category:'Divers', delay:'48h' } });
+      SUPPLIERS.push({id:'f'+data.supplier.id, remoteId:data.supplier.id, name:data.supplier.name, cat:data.supplier.category, delay:data.supplier.delay, address:data.supplier.address, email:data.supplier.email, reliability:90, spend:0,
+        contactFirstName:data.supplier.contact_first_name, contactLastName:data.supplier.contact_last_name, contactEmail:data.supplier.contact_email, contactPhone:data.supplier.contact_phone,
+        latitude:data.supplier.latitude, longitude:data.supplier.longitude, isApproximate:data.supplier.is_approximate});
+    });
+    supplierFailures = res.filter(r=>!r.ok).length;
   }
+  // 2) Catégories manquantes — pour qu'elles apparaissent ensuite dans les listes déroulantes.
+  if(createCategoriesEl && createCategoriesEl.checked && pending.missingCategories.length){
+    setStatus('Création des catégories…');
+    await runWithConcurrency(pending.missingCategories, 3, async (name)=>{
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}/categories`, { method:'POST', body:{ name } });
+      CATEGORIES.push({id:'cat'+data.category.id, remoteId:data.category.id, name:data.category.name});
+    });
+  }
+  // 3) Les produits — plusieurs requêtes en parallèle (au plus 4) plutôt qu'une par une :
+  //    même validation serveur que la création manuelle, mais nettement plus rapide.
+  let done = 0;
+  const results = await runWithConcurrency(pending.items, 4, async (item)=>{
+    const supplierObj = findSupplierByName(item.supplierName);
+    const existingCat = findCategoryByName(item.category);
+    const category = existingCat ? existingCat.name : item.category;
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
+      method:'POST',
+      body:{
+        name:item.name, category, unit:item.unit||'unité', price:item.price,
+        qtyCommande:item.qtyCommande||1, department:item.department||'both', tvaRate:item.tvaRate??5.5,
+        supplierId: supplierObj?supplierObj.remoteId:null, packaging:item.packaging, supplierReference:item.supplierReference,
+      },
+    });
+    PRODUCTS.push({
+      id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit,
+      qtyCommande:parseFloat(data.product.qty_commande), supplier: supplierObj?supplierObj.id:null,
+      cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department,
+      packaging:item.packaging, supplierReference:item.supplierReference, zoneIds:[], tvaRate:parseFloat(data.product.tva_rate),
+    });
+    done++;
+    setStatus(`Import en cours… ${done}/${pending.items.length}`);
+  });
+  const created = results.filter(r=>r.ok).length;
+  const failed = results.length - created;
   state.pendingCSVImport = null;
   closeModal();
-  toast(failed>0 ? `${created} produit${created>1?'s':''} importé${created>1?'s':''}, ${failed} échec${failed>1?'s':''}` : `${created} produit${created>1?'s':''} importé${created>1?'s':''}`);
+  let msg = `${created} produit${created>1?'s':''} importé${created>1?'s':''}`;
+  if(failed) msg += `, ${failed} échec${failed>1?'s':''} — ${results.find(r=>!r.ok).error.message}`;
+  if(supplierFailures) msg += ` · ${supplierFailures} fournisseur${supplierFailures>1?'s':''} n'a pas pu être créé`;
+  toast(msg, (failed||supplierFailures) ? 'alert' : undefined);
   render();
 }
 function editProduct(id){
