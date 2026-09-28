@@ -2,18 +2,21 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Mise&Sûre — plateforme de gestion pour restaurants</title>
+<title>Mise & Sûre — plateforme de gestion pour restaurants</title>
+<link rel="canonical" href="https://misesure.fr/">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="description" content="Mise & Sûre, la plateforme de gestion pour restaurants : commandes fournisseurs, coût de revient par plat, suivi HACCP, inventaire et statistiques, sans friction.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://misesure.fr/">
+<meta property="og:site_name" content="Mise & Sûre">
 <meta property="og:title" content="Mise & Sûre — la gestion de restaurant, sans friction">
 <meta property="og:description" content="Commandes fournisseurs, coût de revient par plat, suivi HACCP, inventaire : tout ce qu'il faut pour gérer un restaurant, au même endroit.">
-<meta property="og:image" content="https://yohanfont84-tech.github.io/mise-et-sure-/icon-512.png">
+<meta property="og:image" content="https://misesure.fr/icon-512.png">
 <meta property="og:locale" content="fr_FR">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Mise & Sûre — la gestion de restaurant, sans friction">
 <meta name="twitter:description" content="Commandes fournisseurs, coût de revient par plat, suivi HACCP, inventaire, au même endroit.">
-<meta name="twitter:image" content="https://yohanfont84-tech.github.io/mise-et-sure-/icon-512.png">
+<meta name="twitter:image" content="https://misesure.fr/icon-512.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#141414">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
@@ -62,7 +65,7 @@
   --border:#E1E1DA;
   --text:#141414;
   --muted:#6B6B65;
-  --muted-2:#A2A29B;
+  --muted-2:#717169; /* assez foncé pour rester lisible (contraste AA) */
   --surface-subtle:#F1F1EC;
   --radius:10px;
   --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
@@ -88,7 +91,7 @@ html.theme-dark{
   --border:#333330;
   --text:#EDEDE6;
   --muted:#A3A399;
-  --muted-2:#6C6C63;
+  --muted-2:#8A8A80;
   --surface-subtle:#26261F;
   --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
 }
@@ -209,10 +212,10 @@ a{text-decoration:none;color:inherit;}
        orientations. */
     height:100vh;height:100dvh;min-height:0;
     transform:translateX(-100%);
-    transition:transform .22s ease;
-    box-shadow:0 0 40px rgba(0,0,0,0.3);
+    transition:transform .22s ease, box-shadow .22s ease;
   }
-  .sidebar.open{transform:translateX(0);}
+  /* L'ombre seulement quand le menu est ouvert : fermé, elle débordait sur le bord gauche. */
+  .sidebar.open{transform:translateX(0);box-shadow:0 0 40px rgba(0,0,0,0.3);}
   .sidebar-backdrop{
     display:block;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1999;
     opacity:0;pointer-events:none;transition:opacity .2s ease;
@@ -2492,8 +2495,30 @@ async function notifyByEmail(roleKey, message, eventKey){
     toast(`Email non envoyé — ${err.message}`, 'alert');
   }
 }
+// Accessibilité, appliquée après chaque affichage : relie chaque intitulé de champ à son champ
+// (les lecteurs d'écran annoncent alors « Email, zone de saisie »), et donne un nom aux listes
+// déroulantes et boutons-icônes qui n'en ont pas. Aucun effet visuel.
+function enhanceAccessibility(root){
+  if(!root) return;
+  let n = 0;
+  root.querySelectorAll('.field > label:not([for])').forEach(label => {
+    const ctrl = label.parentElement.querySelector('input:not([type=hidden]), select, textarea');
+    if(!ctrl) return;
+    if(!ctrl.id) ctrl.id = 'fld-auto-' + (++n) + '-' + Math.random().toString(36).slice(2,7);
+    label.setAttribute('for', ctrl.id);
+  });
+  root.querySelectorAll('select:not([aria-label]):not([id])').forEach(sel => {
+    const first = sel.options[0];
+    if(first) sel.setAttribute('aria-label', first.textContent.trim());
+  });
+  root.querySelectorAll('.pw-toggle:not([aria-label])').forEach(b => b.setAttribute('aria-label', 'Afficher ou masquer le mot de passe'));
+  root.querySelectorAll('button:not([aria-label])').forEach(b => {
+    if(!b.textContent.trim() && b.title) b.setAttribute('aria-label', b.title);
+  });
+}
 function openModal(html){
   document.getElementById('modalContent').innerHTML = html;
+  enhanceAccessibility(document.getElementById('modalContent'));
   document.getElementById('modalBg').classList.add('open');
   // Empêche de faire défiler la page derrière la modale — sans ça, sur mobile, un geste de
   // défilement démarré sur l'arrière-plan (même visuellement masqué par la modale) pouvait
@@ -2505,6 +2530,8 @@ function closeModal(){
   document.body.style.overflow = '';
 }
 document.getElementById('modalBg').addEventListener('click', (e)=>{ if(e.target.id==='modalBg') closeModal(); });
+// Touche Échap : ferme la fenêtre ouverte, comme un clic à côté (réflexe attendu sur ordinateur).
+document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && document.getElementById('modalBg').classList.contains('open')) closeModal(); });
 
 /* ============================================================
    SITE PUBLIC — vitrine, tarifs, compte (au-dessus de l'espace équipe)
@@ -3669,8 +3696,8 @@ function togglePasswordVisibility(inputId, iconId){
 // Génère un champ mot de passe avec un bouton "afficher / masquer" — à utiliser partout où un
 // mot de passe est saisi ou défini, pour que la personne puisse toujours vérifier ce qu'elle tape.
 function passwordFieldWithToggle(id, value, placeholder){
-  const valueAttr = value ? ` value="${value}"` : '';
-  const placeholderAttr = placeholder ? ` placeholder="${placeholder}"` : '';
+  const valueAttr = value ? ` value="${escapeHtml(value)}"` : '';
+  const placeholderAttr = placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : '';
   return `<div class="login-password-wrap">
     <input id="${id}" type="password"${valueAttr}${placeholderAttr}>
     <button type="button" class="pw-toggle" onclick="togglePasswordVisibility('${id}','${id}-toggle-icon')"><span id="${id}-toggle-icon">${iconSm(I.eye)}</span></button>
@@ -5769,7 +5796,7 @@ function viewEcarts(){
             <div><span class="mono" style="font-weight:600;">${o.id}</span> · <span class="muted">${orderVendorLabel(o)}</span> · <span class="muted small">${o.date}</span>
               ${o.discrepancyResolved ? `<span class="tag tag-subtle" style="margin-left:8px;">${iconXs(I.check)} Réglé</span>` : ''}
             </div>
-            <div class="flex gap8 center">
+            <div class="flex gap8 center" style="flex-wrap:wrap;">
               ${hideFin ? '' : `<span class="mono" style="font-weight:600;">${fmtEUR(o.amount)}</span>`}
               <button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir la réception et le bon de livraison">${iconXs(I.doc)} Détail</button>
               ${canResolveDiscrepancy() && !o.discrepancyResolved ? `<button class="btn btn-ghost btn-sm" onclick="openReceiveOrderModal('${o.id}', true)" title="La saisie était fausse ? Rectifiez les quantités ou les prix : l'écart disparaîtra de lui-même s'il n'y en a plus">${iconXs(I.copy)} Corriger</button>` : ''}
@@ -5782,7 +5809,7 @@ function viewEcarts(){
             <div class="small muted" style="margin:-2px 0 8px 0;">
               Réglé : ${escapeHtml(o.discrepancyResolution.reason || '')}${o.discrepancyResolution.note ? ' — ' + escapeHtml(o.discrepancyResolution.note) : ''}${o.discrepancyResolution.by ? ' · par ' + escapeHtml(o.discrepancyResolution.by) : ''}
             </div>` : ''}
-          <table style="width:100%;">
+          <div style="overflow-x:auto;"><table style="width:100%;">
             <tr><th class="small muted">Article</th><th class="small muted">Qté commandée</th><th class="small muted">Qté reçue</th>${hideFin?'':'<th class="small muted">Prix attendu</th><th class="small muted">Prix facturé</th>'}</tr>
             ${(o.lineItems||[]).filter(li=>li.discrepancy).map(li=>`
               <tr>
@@ -5794,7 +5821,7 @@ function viewEcarts(){
                 <td class="mono ${Number(li.priceReceived)!==Number(li.price)?'text-alert':''}">${li.priceReceived!=null?fmtEUR(li.priceReceived):'—'}</td>`}
               </tr>
             `).join('')}
-          </table>
+          </table></div>
         </div>
       `).join('') : emptyState(withDiscrepancy.length ? 'Aucun écart sur cette période/ce fournisseur' : 'Aucun écart détecté — tout correspond aux commandes')}
     </div>
@@ -13303,6 +13330,9 @@ function hexToRgba(hex, alpha){
   return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${alpha})`;
 }
 function drawChartsNow(){
+  // Deux rendus rapprochés peuvent programmer deux dessins de suite : on repart toujours de zéro
+  // pour ne jamais recréer un graphique sur une zone déjà occupée (« Canvas is already in use »).
+  destroyCharts();
   const isDark = document.documentElement.classList.contains('theme-dark');
   // Les graphiques lisent la couleur d'accent réellement appliquée (thème de couleurs ou
   // couleur personnalisée de l'établissement) plutôt qu'un noir figé : sans ça, un restaurant
@@ -15066,6 +15096,7 @@ function render(){
     const appRoot = document.getElementById('app');
     if(appRoot) appRoot.className = '';
     renderInner();
+    enhanceAccessibility(document.getElementById('app'));
   } catch(err){
     // Filet de sécurité : si un affichage plante pour une raison imprévue, on montre un message
     // clair avec un bouton pour recharger, plutôt qu'une page blanche silencieuse qui donne
