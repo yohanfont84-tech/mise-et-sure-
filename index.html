@@ -669,6 +669,36 @@ select{ max-width:100%; text-overflow:ellipsis; }
 .admin-kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
 .admin-kpi .val{font-size:26px;font-weight:700;margin-top:4px;font-family:var(--heading-font);}
 .admin-account-row{border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface);}
+.admin-account-row.expanded{border-color:var(--text);}
+.admin-topbar-sub{font-weight:400;opacity:.7;}
+/* La classe .brand est partagée avec le menu latéral, qui lui ajoute une bordure et des marges :
+   inutiles (et visibles comme un trait parasite) dans le bandeau noir de l'administration. */
+.admin-topbar .brand{border:none!important;padding:0!important;margin:0!important;}
+.admin-topbar-btn{color:#fff!important;border-color:rgba(255,255,255,0.3)!important;background:transparent!important;}
+.admin-topbar-btn svg{stroke:#fff;}
+.admin-show-mobile{display:none;}
+.admin-kpi-link{cursor:pointer;transition:border-color .15s ease, transform .15s ease;}
+.admin-kpi-link:hover{border-color:var(--text);}
+.admin-kpi-alert{border-color:var(--urgent);}
+.admin-kpi-alert .val{color:var(--urgent);}
+.admin-bars{display:flex;align-items:flex-end;gap:3px;height:120px;padding-top:8px;}
+.admin-bar{flex:1;background:var(--text);border-radius:3px 3px 0 0;min-width:3px;}
+.admin-meter{height:6px;background:var(--paper);border-radius:4px;margin-top:6px;overflow:hidden;}
+.admin-meter>div{height:100%;background:var(--text);border-radius:4px;}
+.admin-attention{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 0;border:none;border-bottom:1px solid var(--border);background:none;color:var(--text);cursor:pointer;font:inherit;font-size:13.5px;}
+.admin-attention:last-child{border-bottom:none;}
+.admin-attention:hover b{text-decoration:underline;}
+.admin-detail-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 18px;font-size:13.5px;}
+.admin-support-card.is-open{border:1.5px solid var(--urgent);}
+.admin-support-card.is-closed{opacity:.75;}
+@media(max-width:600px){
+  .admin-topbar{padding:12px 16px;}
+  .admin-topbar-sub,.admin-hide-mobile{display:none;}
+  .admin-show-mobile{display:inline;}
+  .admin-body{padding:18px 14px 50px 14px;}
+  .admin-tabs{overflow-x:auto;flex-wrap:nowrap;}
+  .admin-tabs button{white-space:nowrap;}
+}
 .admin-filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
 /* Une ligne par fonctionnalité activable, toutes dans une seule carte plutôt qu'éparpillées en
    cartes séparées — même langage visuel que la liste d'événements de la page Notifications
@@ -2880,7 +2910,7 @@ async function goToAdminPage(){
   state.adminTab = 'dashboard';
   state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null;
   state.adminExpandedUserId = null; state.adminUserDetail = null; state.adminUserFilters = {};
-  state.adminError = null;
+  state.adminError = null; state.adminSupportFilter = 'a_traiter'; state.adminSupportSearch = ''; state.adminActivityType = '';
   goToSite('admin');
   await loadAdminTabData('dashboard');
 }
@@ -2903,7 +2933,8 @@ async function loadAdminTabData(tab){
       state.adminQuestions = data.questions;
     }
     if(tab==='journal' && !state.adminActivity){
-      const data = await apiRequest('/api/admin/activity-log');
+      const t = state.adminActivityType;
+      const data = await apiRequest('/api/admin/activity-log' + (t ? `?type=${encodeURIComponent(t)}` : ''));
       state.adminActivity = data.activity;
     }
     // Le nombre de questions en attente (affiché en badge sur l'onglet) a besoin des stats,
@@ -2919,17 +2950,23 @@ async function loadAdminTabData(tab){
   }
 }
 let adminFilterDebounce = null;
-async function adminFilterUsers(skipDebounce){
+async function adminFilterUsers(skipDebounce, fromState){
   const doFilter = async () => {
-    const search = (document.getElementById('admin-search')||{}).value || '';
-    const plan = (document.getElementById('admin-filter-plan')||{}).value || '';
-    const status = (document.getElementById('admin-filter-status')||{}).value || '';
-    state.adminUserFilters = { search, plan, status };
+    // fromState : filtres posés par un raccourci (tableau de bord, lien depuis une question)
+    // plutôt que lus dans les champs, qui ne sont pas forcément encore affichés.
+    const f = state.adminUserFilters || {};
+    const field = (id, key) => fromState ? (f[key]||'') : ((document.getElementById(id)||{}).value || '');
+    const search = field('admin-search','search');
+    const plan = field('admin-filter-plan','plan');
+    const status = field('admin-filter-status','status');
+    const sort = field('admin-filter-sort','sort') || 'recent';
+    state.adminUserFilters = { search, plan, status, sort };
     try{
       const params = new URLSearchParams();
       if(search) params.set('search', search);
       if(plan) params.set('plan', plan);
       if(status) params.set('status', status);
+      if(sort) params.set('sort', sort);
       const data = await apiRequest(`/api/admin/users?${params.toString()}`);
       state.adminUsers = data.users;
       render();
@@ -2943,6 +2980,150 @@ async function adminFilterUsers(skipDebounce){
   // chaque lettre tapée — seulement une fois que la personne s'arrête un instant.
   clearTimeout(adminFilterDebounce);
   adminFilterDebounce = setTimeout(doFilter, 300);
+}
+// Recharge tout (statistiques, liste des comptes, centre d'aide, journal) sans quitter l'onglet.
+async function adminRefresh(){
+  state.adminStats = null; state.adminQuestions = null; state.adminActivity = null;
+  if(state.adminTab==='comptes') state.adminUsers = null;
+  state.adminError = null;
+  render();
+  if(state.adminTab==='comptes') await adminFilterUsers(true, true);
+  await loadAdminTabData(state.adminTab || 'dashboard');
+  toast('Données actualisées');
+}
+// Depuis une question d'aide ou le journal : ouvre la fiche du compte correspondant.
+async function adminOpenAccountByEmail(email){
+  state.adminUserFilters = { search: email, plan:'', status:'', sort:'recent' };
+  state.adminUsers = null;
+  state.adminTab = 'comptes';
+  render();
+  await adminFilterUsers(true, true);
+  const u = (state.adminUsers||[]).find(x=>String(x.email).toLowerCase()===String(email).toLowerCase());
+  if(u) await toggleAdminAccountDetail(u.id);
+}
+async function saveAdminNote(userId){
+  const el = document.getElementById('admin-note-'+userId);
+  if(!el) return;
+  try{
+    const data = await apiRequest(`/api/admin/users/${userId}/note`, { method:'PATCH', body:{ note: el.value } });
+    const u = (state.adminUsers||[]).find(x=>x.id===userId);
+    if(u) u.admin_note = data.note;
+    toast('Note enregistrée');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+function adminUsersForExport(){
+  return (state.adminUsers||[]);
+}
+function copyAdminEmails(){
+  const emails = adminUsersForExport().map(u=>u.email).join(', ');
+  if(!emails) return;
+  const done = () => toast(`${adminUsersForExport().length} adresse${adminUsersForExport().length>1?'s':''} copiée${adminUsersForExport().length>1?'s':''}`);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(emails).then(done).catch(()=>{ window.prompt('Copiez les adresses :', emails); });
+  } else {
+    window.prompt('Copiez les adresses :', emails);
+  }
+}
+// Export de la liste affichée (filtres compris) — séparateur « ; » et BOM UTF-8 pour qu'Excel
+// l'ouvre directement avec les bons accents.
+function exportAdminUsersCsv(){
+  const rows = adminUsersForExport();
+  if(!rows.length) return;
+  const esc = v => {
+    const s = v==null ? '' : String(v);
+    return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const dateFr = v => v ? new Date(v).toLocaleDateString('fr-FR') : '';
+  const header = ['Prénom','Nom','Email','Téléphone','Forfait','Facturation','Statut Stripe','Accès gratuit','Suspendu','Email vérifié','Établissements','Inscrit le','Dernière activité','Suppression demandée','Note interne'];
+  const lines = rows.map(u=>[
+    u.first_name, u.last_name, u.email, u.phone, u.plan, u.billing_cycle==='annual'?'annuelle':'mensuelle',
+    u.stripe_subscription_status||'', u.free_access_granted?'oui':'non', u.suspended?'oui':'non', u.email_verified?'oui':'non',
+    u.restaurant_count, dateFr(u.created_at), dateFr(u.last_seen_at), dateFr(u.pending_deletion_at), u.admin_note||'',
+  ].map(esc).join(';'));
+  const blob = new Blob(['﻿' + [header.join(';'), ...lines].join('\r\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `comptes-mise-et-sure-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+// ---- Centre d'aide ----
+function setAdminSupportFilter(filter){
+  state.adminSupportFilter = filter;
+  render();
+}
+let adminSupportSearchTimer = null;
+function setAdminSupportSearch(value){
+  state.adminSupportSearch = value;
+  clearTimeout(adminSupportSearchTimer);
+  adminSupportSearchTimer = setTimeout(()=>{
+    render();
+    const input = document.getElementById('admin-support-search');
+    if(input){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  }, 250);
+}
+async function reloadAdminSupport(){
+  const data = await apiRequest('/api/admin/support-questions');
+  state.adminQuestions = data.questions;
+  const statsData = await apiRequest('/api/admin/stats');
+  state.adminStats = statsData;
+  render();
+}
+async function setSupportQuestionClosed(questionId, closed){
+  try{
+    await apiRequest(`/api/admin/support-questions/${questionId}/close`, { method:'PATCH', body:{ closed } });
+    toast(closed ? 'Discussion close' : 'Discussion rouverte');
+    await reloadAdminSupport();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+const ADMIN_TEMPLATES_KEY = 'mise_et_sure_admin_reply_templates';
+function adminReplyTemplates(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(ADMIN_TEMPLATES_KEY) || 'null');
+    if(Array.isArray(saved)) return saved;
+  } catch(e){}
+  return [
+    "Bonjour,\n\nMerci pour votre message. ",
+    "N'hésitez pas à revenir vers nous si vous avez la moindre autre question.\n\nBonne journée,\nL'équipe Mise & Sûre",
+  ];
+}
+function saveAdminReplyTemplates(list){
+  try{ localStorage.setItem(ADMIN_TEMPLATES_KEY, JSON.stringify(list)); } catch(e){}
+}
+function addAdminReplyTemplate(){
+  const el = document.getElementById('admin-new-template');
+  const text = el ? el.value.trim() : '';
+  if(!text){ toast('La réponse type est vide', 'alert'); return; }
+  saveAdminReplyTemplates([...adminReplyTemplates(), text]);
+  toast('Réponse type ajoutée');
+  render();
+}
+function deleteAdminReplyTemplate(index){
+  const list = adminReplyTemplates();
+  list.splice(index, 1);
+  saveAdminReplyTemplates(list);
+  render();
+}
+function insertAdminReplyTemplate(questionId, select){
+  const t = adminReplyTemplates()[Number(select.value)];
+  select.value = '';
+  const area = document.getElementById('admin-answer-'+questionId);
+  if(!t || !area) return;
+  area.value = area.value ? area.value.replace(/\s*$/, '') + '\n\n' + t : t;
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+}
+// ---- Journal ----
+async function setAdminActivityType(type){
+  state.adminActivityType = type;
+  state.adminActivity = null;
+  render();
+  try{
+    const data = await apiRequest('/api/admin/activity-log' + (type ? `?type=${encodeURIComponent(type)}` : ''));
+    state.adminActivity = data.activity;
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
 }
 async function toggleAdminAccountDetail(userId){
   if(state.adminExpandedUserId === userId){ state.adminExpandedUserId = null; render(); return; }
@@ -3076,7 +3257,7 @@ function exitImpersonation(){
   toast('Retour à votre session administrateur');
   goToAdminPage();
 }
-async function submitAdminAnswer(questionId){
+async function submitAdminAnswer(questionId, closeAfter){
   const textarea = document.getElementById('admin-answer-'+questionId);
   const answer = textarea ? textarea.value.trim() : '';
   if(!answer){ toast('Merci de rédiger une réponse', 'alert'); return; }
@@ -3090,12 +3271,9 @@ async function submitAdminAnswer(questionId){
     } else {
       await apiRequest(`/api/admin/support-questions/${questionId}/answer`, { method:'PATCH', body:{ answer } });
     }
-    toast('Réponse envoyée');
-    const data = await apiRequest('/api/admin/support-questions');
-    state.adminQuestions = data.questions;
-    const statsData = await apiRequest('/api/admin/stats');
-    state.adminStats = statsData;
-    render();
+    if(closeAfter) await apiRequest(`/api/admin/support-questions/${questionId}/close`, { method:'PATCH', body:{ closed:true } });
+    toast(closeAfter ? 'Réponse envoyée — discussion close' : 'Réponse envoyée');
+    await reloadAdminSupport();
   } catch(err){
     toast(err.message, 'alert');
   }
@@ -9160,7 +9338,7 @@ function viewSupportQuestionsWidget(){
             <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);">
               <div class="flex between center" style="margin-bottom:6px;flex-wrap:wrap;gap:8px;">
                 <div class="small muted">${fmtDateLong(new Date(q.created_at))}</div>
-                ${q.status==='ouverte' ? `<span class="tag tag-neutral">${iconXs(I.clock)} En attente de réponse</span>` : `<span class="tag tag-subtle">${iconXs(I.check)} Répondu</span>`}
+                ${q.status==='ouverte' ? `<span class="tag tag-neutral">${iconXs(I.clock)} En attente de réponse</span>` : q.status==='fermee' ? `<span class="tag tag-neutral">${iconXs(I.check)} Discussion close</span>` : `<span class="tag tag-subtle">${iconXs(I.check)} Répondu</span>`}
               </div>
               <div class="small" style="margin-bottom:${q.status==='repondue'?'8px':'0'};">${escapeHtml(q.question)}</div>
               ${q.answer ? `<div class="support-msg support-msg-admin">${escapeHtml(q.answer)}</div>` : ''}
@@ -9173,7 +9351,7 @@ function viewSupportQuestionsWidget(){
                 </div>`).join('')}
               ${q.answer ? `
                 <div style="margin-top:10px;">
-                  <textarea id="support-reply-${q.id}" rows="2" placeholder="Répondre ou demander une précision…"
+                  <textarea id="support-reply-${q.id}" rows="2" placeholder="${q.status==='fermee' ? 'Discussion close — écrivez ici pour la rouvrir si besoin…' : 'Répondre ou demander une précision…'}"
                     style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13.5px;"></textarea>
                   <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="sendSupportReply(${q.id})">Envoyer ma réponse</button>
                 </div>` : ''}
@@ -13590,20 +13768,26 @@ function togglePricingFaq(idx){
 }
 function renderAdminPage(){
   const tab = state.adminTab || 'dashboard';
+  const s = state.adminStats;
+  const openQ = s ? Number(s.open_questions)||0 : 0;
+  const pastDue = s ? Number(s.past_due_count)||0 : 0;
   return `
     <div class="admin-shell">
       <div class="admin-topbar">
         <div class="brand">
           <div class="brand-mark" style="width:28px;height:28px;font-size:13px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
-          Mise &amp; Sûre — Panneau administrateur
+          <span>Mise &amp; Sûre <span class="admin-topbar-sub">— Panneau administrateur</span></span>
         </div>
-        <button class="btn btn-ghost btn-sm" style="color:#fff;border-color:rgba(255,255,255,0.3);" onclick="goToSite('team-login')">← Retour au site</button>
+        <div class="flex gap8 center">
+          <button class="btn btn-ghost btn-sm admin-topbar-btn" onclick="adminRefresh()" title="Recharger toutes les données" aria-label="Actualiser">${iconSm(I.refresh)}<span class="admin-hide-mobile"> Actualiser</span></button>
+          <button class="btn btn-ghost btn-sm admin-topbar-btn" onclick="goToSite('team-login')">← <span class="admin-hide-mobile">Retour au site</span><span class="admin-show-mobile">Site</span></button>
+        </div>
       </div>
       <div class="admin-body">
-        <div class="pill-nav">
+        <div class="pill-nav admin-tabs">
           <button class="${tab==='dashboard'?'active':''}" onclick="setAdminTab('dashboard')">Tableau de bord</button>
-          <button class="${tab==='comptes'?'active':''}" onclick="setAdminTab('comptes')">Comptes</button>
-          <button class="${tab==='aide'?'active':''}" onclick="setAdminTab('aide')">Centre d'aide${state.adminStats && state.adminStats.open_questions>0 ? ` <span class="tag tag-red" style="margin-left:4px;">${state.adminStats.open_questions}</span>` : ''}</button>
+          <button class="${tab==='comptes'?'active':''}" onclick="setAdminTab('comptes')">Comptes${pastDue>0 ? ` <span class="tag tag-red" style="margin-left:4px;" title="Paiements en retard">${pastDue}</span>` : ''}</button>
+          <button class="${tab==='aide'?'active':''}" onclick="setAdminTab('aide')">Centre d'aide${openQ>0 ? ` <span class="tag tag-red" style="margin-left:4px;">${openQ}</span>` : ''}</button>
           <button class="${tab==='journal'?'active':''}" onclick="setAdminTab('journal')">Journal d'activité</button>
         </div>
         ${state.adminError ? `<div class="login-error" style="margin-bottom:16px;">${escapeHtml(state.adminError)}</div>` : ''}
@@ -13615,39 +13799,96 @@ function renderAdminPage(){
     </div>
   `;
 }
+// « il y a 3 jours », « il y a 2 h » — pour la dernière activité et l'âge des demandes d'aide.
+function adminTimeAgo(value){
+  if(!value) return 'jamais';
+  const d = new Date(value);
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if(mins < 2) return "à l'instant";
+  if(mins < 60) return `il y a ${mins} min`;
+  const hours = Math.round(mins / 60);
+  if(hours < 24) return `il y a ${hours} h`;
+  const days = Math.round(hours / 24);
+  if(days < 31) return `il y a ${days} jour${days>1?'s':''}`;
+  const months = Math.round(days / 30);
+  if(months < 12) return `il y a ${months} mois`;
+  const years = Math.round(days / 365);
+  return `il y a ${years} an${years>1?'s':''}`;
+}
+function adminKpi(label, value, hint, onclick, tone){
+  return `<div class="admin-kpi ${onclick?'admin-kpi-link':''} ${tone==='alert'?'admin-kpi-alert':''}" ${onclick?`onclick="${onclick}" role="button" tabindex="0" onkeydown="if(event.key==='Enter'){${onclick}}"`:''}>
+    <div class="small muted">${label}</div>
+    <div class="val">${value}</div>
+    ${hint ? `<div class="small muted">${hint}</div>` : ''}
+  </div>`;
+}
 function renderAdminDashboard(){
   const s = state.adminStats;
   if(!s) return `<div class="small muted">Chargement…</div>`;
-  const mrr = s.plan_solo*19 + s.plan_essentiel*39 + s.plan_pro*79;
+  const n = v => Number(v)||0;
+  const series = Array.isArray(s.signups_series) ? s.signups_series : [];
+  const maxSignups = Math.max(1, ...series.map(d=>d.n));
+  const attention = [
+    n(s.past_due_count) ? { label:`${n(s.past_due_count)} paiement${n(s.past_due_count)>1?'s':''} en retard`, sub:'Stripe relance la carte — un petit mot peut éviter la résiliation', action:"adminShowAccounts('retard')" } : null,
+    n(s.open_questions) ? { label:`${n(s.open_questions)} question${n(s.open_questions)>1?'s':''} d'aide en attente`, sub:'Un client attend votre réponse', action:"setAdminTab('aide')" } : null,
+    n(s.pending_deletion_count) ? { label:`${n(s.pending_deletion_count)} compte${n(s.pending_deletion_count)>1?'s':''} en cours de suppression`, sub:'Délai de grâce de 30 jours — encore possible de les retenir', action:"adminShowAccounts('')" } : null,
+    n(s.unverified_count) ? { label:`${n(s.unverified_count)} inscription${n(s.unverified_count)>1?'s':''} jamais confirmée${n(s.unverified_count)>1?'s':''}`, sub:"Email de vérification jamais validé", action:"adminShowAccounts('non_verifie')" } : null,
+    n(s.suspended_count) ? { label:`${n(s.suspended_count)} compte${n(s.suspended_count)>1?'s':''} suspendu${n(s.suspended_count)>1?'s':''}`, sub:'', action:"adminShowAccounts('suspendu')" } : null,
+  ].filter(Boolean);
   return `
     <div class="admin-kpi-grid">
-      <div class="admin-kpi"><div class="small muted">Comptes vérifiés</div><div class="val">${s.total_accounts}</div></div>
-      <div class="admin-kpi"><div class="small muted">Abonnements Stripe actifs</div><div class="val">${s.active_subscriptions}</div></div>
-      <div class="admin-kpi"><div class="small muted">MRR estimé</div><div class="val">${mrr.toLocaleString('fr-FR')} €</div><div class="small muted">à partir des forfaits assignés</div></div>
-      <div class="admin-kpi"><div class="small muted">Accès gratuits accordés</div><div class="val">${s.free_access_count}</div></div>
-      <div class="admin-kpi"><div class="small muted">Inscriptions — 7 derniers jours</div><div class="val">${s.signups_7d}</div></div>
-      <div class="admin-kpi"><div class="small muted">Inscriptions — 30 derniers jours</div><div class="val">${s.signups_30d}</div></div>
-      <div class="admin-kpi"><div class="small muted">Établissements créés</div><div class="val">${s.restaurant_count}</div></div>
-      <div class="admin-kpi"><div class="small muted">Commandes passées (toute la plateforme)</div><div class="val">${s.order_count}</div></div>
+      ${adminKpi('Revenu mensuel (MRR)', `${n(s.mrr).toLocaleString('fr-FR')} €`, `${n(s.paying_count)} abonnement${n(s.paying_count)>1?'s':''} payant${n(s.paying_count)>1?'s':''}`, "adminShowAccounts('actif')")}
+      ${adminKpi('Comptes vérifiés', n(s.total_accounts), `${n(s.active_7d)} actif${n(s.active_7d)>1?'s':''} ces 7 derniers jours`, "adminShowAccounts('')")}
+      ${adminKpi('Inscriptions', n(s.signups_7d), `7 jours · ${n(s.signups_30d)} sur 30 jours`)}
+      ${adminKpi('Paiements en retard', n(s.past_due_count), n(s.trialing_count) ? `${n(s.trialing_count)} en période d'essai` : 'Stripe relance automatiquement', n(s.past_due_count) ? "adminShowAccounts('retard')" : '', n(s.past_due_count)?'alert':'')}
+      ${adminKpi('Accès gratuits accordés', n(s.free_access_count), 'non comptés dans le MRR', "adminShowAccounts('gratuit')")}
+      ${adminKpi('Établissements', n(s.restaurant_count))}
+      ${adminKpi('Commandes passées', n(s.order_count).toLocaleString('fr-FR'), 'toute la plateforme')}
+      ${adminKpi("Centre d'aide", n(s.open_questions), `en attente · ${n(s.closed_questions)} close${n(s.closed_questions)>1?'s':''}`, "setAdminTab('aide')", n(s.open_questions)?'alert':'')}
     </div>
     <div class="grid grid-2b">
       <div class="card">
-        <div class="card-title">Répartition par forfait</div>
-        <div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span class="small">Solo — 19€/mois</span><span style="font-weight:600;">${s.plan_solo}</span></div>
-        <div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span class="small">Essentiel — 39€/mois</span><span style="font-weight:600;">${s.plan_essentiel}</span></div>
-        <div class="flex between" style="padding:8px 0;"><span class="small">Pro — 79€/mois</span><span style="font-weight:600;">${s.plan_pro}</span></div>
+        <div class="card-title">Inscriptions — 30 derniers jours</div>
+        ${series.length ? `
+        <div class="admin-bars" role="img" aria-label="Inscriptions par jour sur 30 jours">
+          ${series.map(d=>`<div class="admin-bar" style="height:${Math.max(3, Math.round(d.n/maxSignups*100))}%;${d.n?'':'opacity:.25;'}" title="${d.day.split('-').reverse().join('/')} : ${d.n} inscription${d.n>1?'s':''}"></div>`).join('')}
+        </div>
+        <div class="flex between small muted" style="margin-top:6px;"><span>il y a 30 jours</span><span>aujourd'hui</span></div>` : `<div class="small muted">Pas encore de données.</div>`}
       </div>
       <div class="card">
-        <div class="card-title">À surveiller</div>
-        <div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span class="small">Comptes suspendus</span><span style="font-weight:600;color:${s.suspended_count>0?'var(--urgent)':'inherit'};">${s.suspended_count}</span></div>
-        <div class="flex between" style="padding:8px 0;"><span class="small">Questions du centre d'aide en attente</span><span style="font-weight:600;color:${s.open_questions>0?'var(--urgent)':'inherit'};">${s.open_questions}</span></div>
+        <div class="card-title">À traiter</div>
+        ${attention.length ? attention.map(a=>`
+          <button class="admin-attention" onclick="${a.action}">
+            <span><b>${a.label}</b>${a.sub?`<br><span class="small muted">${a.sub}</span>`:''}</span>
+            <span class="muted">›</span>
+          </button>`).join('') : `<div class="small muted" style="padding:8px 0;">${iconXs(I.check)} Rien d'urgent — tout est à jour.</div>`}
       </div>
     </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">Répartition par forfait (comptes vérifiés)</div>
+      ${[['solo','Solo',19],['essentiel','Essentiel',39],['pro','Pro',79]].map(([id,label,price])=>{
+        const count = n(s['plan_'+id]); const total = Math.max(1, n(s.plan_solo)+n(s.plan_essentiel)+n(s.plan_pro));
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+          <div class="flex between"><span class="small">${label} — ${price} €/mois</span><span style="font-weight:600;">${count}</span></div>
+          <div class="admin-meter"><div style="width:${Math.round(count/total*100)}%;"></div></div>
+        </div>`;
+      }).join('')}
+    </div>
   `;
+}
+// Raccourci depuis le tableau de bord : ouvre l'onglet Comptes déjà filtré.
+async function adminShowAccounts(status){
+  state.adminUserFilters = { ...(state.adminUserFilters||{}), status, search:'' };
+  state.adminUsers = null;
+  state.adminTab = 'comptes';
+  render();
+  await adminFilterUsers(true, true);
 }
 function renderAdminAccounts(){
   const rows = state.adminUsers;
   const f = state.adminUserFilters || {};
+  const statusOptions = [['','Tous les statuts'],['actif','Accès actif (payant, essai ou gratuit)'],['retard','Paiement en retard'],['essai',"En période d'essai"],['gratuit','Accès gratuit'],['sans_acces','Sans accès payant'],['inactif','Inactifs depuis 30 jours'],['non_verifie','Email jamais vérifié'],['suspendu','Suspendus'],['admin','Administrateurs']];
+  const sortOptions = [['recent','Plus récents'],['ancien','Plus anciens'],['nom','Nom (A → Z)'],['activite','Actifs récemment'],['inactivite','Inactifs depuis longtemps']];
   return `
     <div class="admin-filter-bar">
       <input type="text" id="admin-search" placeholder="🔎 Nom ou email…" value="${escapeHtml(f.search||'')}" oninput="adminFilterUsers()" style="flex:1;min-width:200px;">
@@ -13658,33 +13899,63 @@ function renderAdminAccounts(){
         <option value="pro" ${f.plan==='pro'?'selected':''}>Pro</option>
       </select>
       <select id="admin-filter-status" onchange="adminFilterUsers()">
-        <option value="">Tous les statuts</option>
-        <option value="actif" ${f.status==='actif'?'selected':''}>Accès actif</option>
-        <option value="sans_acces" ${f.status==='sans_acces'?'selected':''}>Sans accès payant</option>
-        <option value="suspendu" ${f.status==='suspendu'?'selected':''}>Suspendu</option>
+        ${statusOptions.map(([v,l])=>`<option value="${v}" ${(f.status||'')===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select id="admin-filter-sort" onchange="adminFilterUsers()">
+        ${sortOptions.map(([v,l])=>`<option value="${v}" ${(f.sort||'recent')===v?'selected':''}>${l}</option>`).join('')}
       </select>
     </div>
+    ${rows && rows.length ? `
+    <div class="flex between center" style="margin:-6px 0 12px 0;flex-wrap:wrap;gap:8px;">
+      <span class="small muted">${rows.length} compte${rows.length>1?'s':''}</span>
+      <div class="flex gap8">
+        <button class="btn btn-ghost btn-sm" onclick="copyAdminEmails()" title="Copier les adresses de la liste affichée, séparées par des virgules">${iconXs(I.mail)} Copier les emails</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportAdminUsersCsv()">${iconXs(I.download)} Exporter (CSV)</button>
+      </div>
+    </div>` : ''}
     ${!rows ? `<div class="small muted">Chargement…</div>` : rows.length===0 ? `<div class="small muted">Aucun compte ne correspond à ces critères.</div>` : rows.map(u => renderAdminAccountRow(u)).join('')}
   `;
+}
+function adminStatusTag(u){
+  if(u.suspended) return `<span class="tag tag-red">Suspendu</span>`;
+  if(u.pending_deletion_at) return `<span class="tag tag-red">Suppression demandée</span>`;
+  if(!u.email_verified) return `<span class="tag tag-neutral">Email non vérifié</span>`;
+  if(u.stripe_subscription_status==='past_due') return `<span class="tag tag-red">Paiement en retard</span>`;
+  if(u.stripe_subscription_status==='trialing') return `<span class="tag tag-subtle">Période d'essai</span>`;
+  if(u.stripe_subscription_status==='active') return `<span class="tag tag-subtle">Abonnement actif</span>`;
+  if(u.free_access_granted) return `<span class="tag tag-neutral">Accès gratuit</span>`;
+  return `<span class="tag tag-neutral">Sans accès</span>`;
 }
 function renderAdminAccountRow(u){
   const expanded = state.adminExpandedUserId === u.id;
   const detail = state.adminUserDetail && state.adminUserDetail.id===u.id ? state.adminUserDetail : null;
+  const fullName = `${u.first_name||''} ${u.last_name||''}`.trim();
+  const jsName = escapeHtml(fullName).replace(/'/g,"\\'");
+  const jsEmail = escapeHtml(u.email).replace(/'/g,"\\'");
   return `
-    <div class="admin-account-row">
-      <div class="flex between center" style="flex-wrap:wrap;gap:10px;cursor:pointer;" onclick="toggleAdminAccountDetail(${u.id})">
+    <div class="admin-account-row ${expanded?'expanded':''}">
+      <div class="flex between center" style="flex-wrap:wrap;gap:10px;cursor:pointer;" onclick="toggleAdminAccountDetail(${u.id})" role="button" tabindex="0" onkeydown="if(event.key==='Enter')toggleAdminAccountDetail(${u.id})" aria-expanded="${expanded}">
         <div style="min-width:0;">
-          <div style="font-weight:700;font-size:14px;">${escapeHtml(u.first_name||'')} ${escapeHtml(u.last_name||'')} ${u.is_admin?'· <span class="small muted">(admin)</span>':''}</div>
+          <div style="font-weight:700;font-size:14px;">${escapeHtml(fullName)} ${u.is_admin?'· <span class="small muted">(admin)</span>':''} ${u.admin_note ? `<span class="small muted" title="${escapeHtml(u.admin_note)}">📝</span>` : ''}</div>
           <div class="small muted">${escapeHtml(u.email)} · ${u.restaurant_count} établissement${u.restaurant_count>1?'s':''}</div>
+          <div class="small muted">Inscrit le ${fmtDateLong(new Date(u.created_at))} · actif ${adminTimeAgo(u.last_seen_at)}</div>
         </div>
         <div class="flex gap8 center" style="flex-wrap:wrap;">
-          ${u.suspended ? `<span class="tag tag-red">Suspendu</span>` : u.stripe_subscription_status==='past_due' ? `<span class="tag tag-red">Paiement en retard</span>` : u.stripe_subscription_status==='trialing' ? `<span class="tag tag-subtle">Période d'essai</span>` : u.stripe_subscription_status==='active' ? `<span class="tag tag-subtle">Abonnement actif</span>` : u.free_access_granted ? `<span class="tag tag-neutral">Accès gratuit</span>` : `<span class="tag tag-neutral">Sans accès</span>`}
-          <span class="small muted mono">${escapeHtml(u.plan||'—')}</span>
+          ${adminStatusTag(u)}
+          <span class="small muted mono">${escapeHtml(u.plan||'—')}${u.billing_cycle==='annual'?' · annuel':''}</span>
+          <span class="group-chevron ${expanded?'open':''}" style="display:inline-flex;">${iconXs(I.chevronDown)}</span>
         </div>
       </div>
       ${expanded ? `
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-          <div class="flex gap8" style="flex-wrap:wrap;margin-bottom:14px;">
+          <div class="admin-detail-grid">
+            <div><span class="small muted">Téléphone</span><div>${u.phone ? `<a href="tel:${escapeHtml(u.phone)}" style="color:inherit;">${escapeHtml(u.phone)}</a>` : '—'}</div></div>
+            <div><span class="small muted">Email</span><div><a href="mailto:${escapeHtml(u.email)}" style="color:inherit;">${escapeHtml(u.email)}</a></div></div>
+            <div><span class="small muted">Connexion</span><div>${u.oauth_provider ? escapeHtml(u.oauth_provider==='google'?'Google':u.oauth_provider==='apple'?'Apple':u.oauth_provider) : 'Email et mot de passe'}</div></div>
+            <div><span class="small muted">Abonnement Stripe</span><div>${escapeHtml(u.stripe_subscription_status||'aucun')}</div></div>
+            ${u.pending_deletion_at ? `<div><span class="small muted">Suppression prévue le</span><div style="color:var(--urgent);">${fmtDateLong(new Date(u.pending_deletion_at))}</div></div>` : ''}
+          </div>
+          <div class="flex gap8" style="flex-wrap:wrap;margin:14px 0;">
             <select id="plan-select-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
               <option value="solo" ${u.plan==='solo'?'selected':''}>Solo</option>
               <option value="essentiel" ${u.plan==='essentiel'?'selected':''}>Essentiel</option>
@@ -13692,21 +13963,26 @@ function renderAdminAccountRow(u){
             </select>
             <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();changeUserPlan(${u.id}, document.getElementById('plan-select-${u.id}').value)">Changer le forfait</button>
             ${!u.is_admin ? `
-            <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="event.stopPropagation();toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l\u2019accès gratuit' : 'Accorder un accès gratuit'}</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();adminImpersonateUser(${u.id}, '${escapeHtml((u.first_name||'')+' '+(u.last_name||''))}')">${iconXs(I.mobile)} Voir en tant que</button>
+            <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="event.stopPropagation();toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l’accès gratuit' : 'Accorder un accès gratuit'}</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();adminImpersonateUser(${u.id}, '${jsName}')">${iconXs(I.eye)} Voir en tant que</button>
             <button class="btn ${u.suspended?'btn-primary':'btn-ghost'} btn-sm" onclick="event.stopPropagation();toggleUserSuspension(${u.id}, ${u.suspended})">${u.suspended ? 'Réactiver' : 'Suspendre'}</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPromoteAdminModal(${u.id}, '${escapeHtml(u.email)}')">${iconXs(I.lock)} Promouvoir administrateur</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openAdminDeleteUserModal(${u.id}, '${escapeHtml(u.email)}')">${iconXs(I.trash)} Supprimer</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPromoteAdminModal(${u.id}, '${jsEmail}')">${iconXs(I.lock)} Promouvoir administrateur</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openAdminDeleteUserModal(${u.id}, '${jsEmail}')">${iconXs(I.trash)} Supprimer</button>
             ` : `
-            <span class="small muted" style="align-self:center;">Compte administrateur — suspension, suppression et impersonation volontairement indisponibles ici, pour ne jamais les déclencher par erreur sur ce type de compte.</span>
-            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openDemoteAdminModal(${u.id}, '${escapeHtml(u.email)}')">Retirer le statut administrateur</button>
+            <span class="small muted" style="align-self:center;">Compte administrateur — suspension, suppression et « voir en tant que » volontairement indisponibles ici.</span>
+            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openDemoteAdminModal(${u.id}, '${jsEmail}')">Retirer le statut administrateur</button>
             `}
+          </div>
+          <div class="field" style="margin-bottom:14px;">
+            <label>Note interne <span class="muted" style="font-weight:400;">— visible uniquement par les administrateurs</span></label>
+            <textarea id="admin-note-${u.id}" rows="2" placeholder="Ex : a demandé un geste commercial en mars, rappeler en fin de mois…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;">${escapeHtml(u.admin_note||'')}</textarea>
+            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="saveAdminNote(${u.id})">Enregistrer la note</button>
           </div>
           ${!detail ? `<div class="small muted">Chargement du détail…</div>` : !detail.restaurants || detail.restaurants.length===0 ? `<div class="small muted">Aucun établissement créé pour l'instant.</div>` : `
             <table class="stack-mobile">
               <tr><th>Établissement</th><th>Ville</th><th>Commandes</th><th>Produits</th><th>Équipe</th><th>Total achats</th></tr>
               ${detail.restaurants.map(r=>`<tr>
-                <td data-label="Établissement" style="font-weight:600;">${escapeHtml(r.name)}</td>
+                <td data-label="Établissement" style="font-weight:600;">${escapeHtml(r.name)}<div class="small muted">créé le ${fmtDateLong(new Date(r.created_at))}</div></td>
                 <td data-label="Ville">${escapeHtml(r.city||'—')}</td>
                 <td data-label="Commandes">${r.order_count}</td>
                 <td data-label="Produits">${r.product_count}</td>
@@ -13720,53 +13996,127 @@ function renderAdminAccountRow(u){
     </div>
   `;
 }
+// ---- Centre d'aide ----
+const ADMIN_SUPPORT_FILTERS = [['a_traiter','À traiter'],['repondue','Répondues'],['fermee','Closes'],['toutes','Toutes']];
+function adminSupportMatches(q, filter, search){
+  if(filter==='a_traiter' && q.status!=='ouverte') return false;
+  if(filter==='repondue' && q.status!=='repondue') return false;
+  if(filter==='fermee' && q.status!=='fermee') return false;
+  if(search){
+    const hay = [q.question, q.answer, q.asked_by_name, q.user_email, q.restaurant_name, ...(q.messages||[]).map(m=>m.body)].join(' ').toLowerCase();
+    if(!hay.includes(search)) return false;
+  }
+  return true;
+}
 function renderAdminSupport(){
   const questions = state.adminQuestions;
   if(!questions) return `<div class="small muted">Chargement…</div>`;
-  if(questions.length===0) return emptyState('Aucune question posée pour le moment.');
-  return questions.map(q => `
-    <div class="card" style="margin-bottom:14px;${q.status==='ouverte'?'border:1.5px solid var(--urgent);':''}">
+  const filter = state.adminSupportFilter || 'a_traiter';
+  const search = (state.adminSupportSearch||'').toLowerCase().trim();
+  const counts = {
+    a_traiter: questions.filter(q=>q.status==='ouverte').length,
+    repondue: questions.filter(q=>q.status==='repondue').length,
+    fermee: questions.filter(q=>q.status==='fermee').length,
+    toutes: questions.length,
+  };
+  const list = questions.filter(q=>adminSupportMatches(q, filter, search));
+  const templates = adminReplyTemplates();
+  return `
+    <div class="admin-filter-bar">
+      <div class="pill-nav" style="margin:0;">
+        ${ADMIN_SUPPORT_FILTERS.map(([id,label])=>`<button class="${filter===id?'active':''}" onclick="setAdminSupportFilter('${id}')">${label} <span class="muted" style="font-weight:400;">${counts[id]}</span></button>`).join('')}
+      </div>
+      <input type="text" placeholder="🔎 Rechercher dans les échanges…" value="${escapeHtml(state.adminSupportSearch||'')}" oninput="setAdminSupportSearch(this.value)" id="admin-support-search" style="flex:1;min-width:200px;">
+    </div>
+    ${list.length===0 ? emptyState(filter==='a_traiter' && !search ? 'Aucune question en attente — tout est traité.' : 'Aucune discussion ne correspond.') : list.map(q => renderAdminSupportCard(q, templates)).join('')}
+    <details class="card" style="margin-top:18px;">
+      <summary style="cursor:pointer;font-weight:600;">Réponses types <span class="small muted" style="font-weight:400;">— ${templates.length} enregistrée${templates.length>1?'s':''}</span></summary>
+      <div class="small muted" style="margin:10px 0;">Des phrases que vous écrivez souvent (« Bonjour, merci pour votre message… »). Insérez-les en un clic dans n'importe quelle réponse. Enregistrées sur cet appareil.</div>
+      ${templates.map((t,i)=>`<div class="flex between center" style="padding:8px 0;border-bottom:1px solid var(--border);gap:10px;">
+        <span class="small" style="white-space:pre-wrap;flex:1;min-width:0;">${escapeHtml(t)}</span>
+        <button class="btn btn-ghost btn-sm" onclick="deleteAdminReplyTemplate(${i})" aria-label="Supprimer cette réponse type">${iconXs(I.trash)}</button>
+      </div>`).join('')}
+      <textarea id="admin-new-template" rows="2" placeholder="Nouvelle réponse type…" style="width:100%;margin-top:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;"></textarea>
+      <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="addAdminReplyTemplate()">${iconXs(I.plus)} Ajouter</button>
+    </details>
+  `;
+}
+function renderAdminSupportCard(q, templates){
+  const isClosed = q.status==='fermee';
+  const isOpen = q.status==='ouverte';
+  const jsEmail = escapeHtml(q.user_email||'').replace(/'/g,"\\'");
+  const lastActivity = [q.created_at, q.answered_at, ...(q.messages||[]).map(m=>m.created_at)].filter(Boolean).map(d=>new Date(d)).sort((a,b)=>b-a)[0];
+  return `
+    <div class="card admin-support-card ${isOpen?'is-open':''} ${isClosed?'is-closed':''}" style="margin-bottom:14px;">
       <div class="flex between center" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
-        <div>
+        <div style="min-width:0;">
           <div style="font-weight:700;font-size:13.5px;">${escapeHtml(q.asked_by_name||q.user_email)}</div>
-          <div class="small muted">${escapeHtml(q.user_email)}${q.restaurant_name?' · '+escapeHtml(q.restaurant_name):''} · ${fmtDateLong(new Date(q.created_at))}</div>
+          <div class="small muted">
+            <a href="#" onclick="adminOpenAccountByEmail('${jsEmail}');return false;" style="color:inherit;" title="Voir ce compte">${escapeHtml(q.user_email)}</a>${q.restaurant_name?' · '+escapeHtml(q.restaurant_name):''} · posée ${adminTimeAgo(q.created_at)}${lastActivity && q.messages && q.messages.length ? ` · dernier message ${adminTimeAgo(lastActivity)}` : ''}
+          </div>
         </div>
-        ${q.status==='ouverte' ? `<span class="tag tag-red">En attente</span>` : `<span class="tag tag-subtle">Répondu</span>`}
+        ${isOpen ? `<span class="tag tag-red">En attente</span>` : isClosed ? `<span class="tag tag-neutral">${iconXs(I.lock)} Close${q.closed_at?' '+adminTimeAgo(q.closed_at):''}</span>` : `<span class="tag tag-subtle">Répondu</span>`}
       </div>
       <div class="small" style="background:var(--paper);border-radius:8px;padding:10px 12px;margin-bottom:12px;white-space:pre-wrap;">${escapeHtml(q.question)}</div>
       ${q.answer ? `
         <div class="small muted" style="margin-bottom:4px;">Votre réponse, le ${fmtDateLong(new Date(q.answered_at))} :</div>
         <div class="small" style="background:var(--surface-subtle);border-radius:8px;padding:10px 12px;white-space:pre-wrap;">${escapeHtml(q.answer)}</div>
       ` : ''}
-      <!-- Le fil qui a suivi : sans lui, une relance du client serait invisible ici et il
-           attendrait une réponse qui ne viendrait jamais. -->
       ${(q.messages||[]).map(m=>`
         <div class="support-msg ${m.author_type==='admin' ? 'support-msg-client' : 'support-msg-admin'}">
-          <div class="support-msg-author">${m.author_type==='admin' ? 'Vous' : escapeHtml(m.author_name||'Client')}</div>
+          <div class="support-msg-author">${m.author_type==='admin' ? 'Vous' : escapeHtml(m.author_name||'Client')} · ${adminTimeAgo(m.created_at)}</div>
           ${escapeHtml(m.body)}
         </div>`).join('')}
-      ${q.status==='ouverte' ? `
-        <textarea id="admin-answer-${q.id}" rows="3" placeholder="Votre réponse…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:8px;"></textarea>
-        <button class="btn btn-primary btn-sm" onclick="submitAdminAnswer(${q.id})">Répondre</button>
-      ` : ''}
+      ${!isClosed ? `
+        <div style="margin-top:12px;">
+          ${templates.length ? `<select onchange="insertAdminReplyTemplate(${q.id}, this)" style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;max-width:100%;">
+            <option value="">Insérer une réponse type…</option>
+            ${templates.map((t,i)=>`<option value="${i}">${escapeHtml(t.length>70?t.slice(0,70)+'…':t)}</option>`).join('')}
+          </select>` : ''}
+          <textarea id="admin-answer-${q.id}" rows="3" placeholder="${q.answer ? 'Ajouter un message…' : 'Votre réponse…'}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:8px;font-family:inherit;"></textarea>
+          <div class="flex gap8" style="flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="submitAdminAnswer(${q.id})">${q.answer ? 'Envoyer' : 'Répondre'}</button>
+            <button class="btn btn-ghost btn-sm" onclick="submitAdminAnswer(${q.id}, true)" title="Envoie la réponse puis clôt la discussion">Répondre et clore</button>
+            <button class="btn btn-ghost btn-sm" onclick="setSupportQuestionClosed(${q.id}, true)">${iconXs(I.lock)} Clore la discussion</button>
+          </div>
+        </div>
+      ` : `
+        <div class="flex between center" style="margin-top:12px;flex-wrap:wrap;gap:8px;">
+          <span class="small muted">Discussion close. Si le client écrit de nouveau, elle se rouvre automatiquement.</span>
+          <button class="btn btn-ghost btn-sm" onclick="setSupportQuestionClosed(${q.id}, false)">Rouvrir</button>
+        </div>
+      `}
     </div>
-  `).join('');
+  `;
 }
+// ---- Journal ----
+const ADMIN_EVENT_LABELS = {
+  inscription:'Inscription', changement_forfait:'Changement de forfait', acces_gratuit:'Accès gratuit',
+  suspension:'Suspension', reactivation:'Réactivation', suppression:'Suppression', impersonation:'Vu en tant que',
+  promotion_admin:'Promotion administrateur', retrait_admin:'Retrait administrateur',
+  cloture_support:'Discussion close', reouverture_support:'Discussion rouverte',
+};
 function renderAdminActivityLog(){
   const activity = state.adminActivity;
-  if(!activity) return `<div class="small muted">Chargement…</div>`;
-  if(activity.length===0) return emptyState('Aucune activité enregistrée pour le moment.');
-  const eventLabels = { inscription:'Inscription', changement_forfait:'Changement de forfait', acces_gratuit:'Accès gratuit', suspension:'Suspension', reactivation:'Réactivation', suppression:'Suppression', impersonation:'Vu en tant que' };
+  const type = state.adminActivityType || '';
   return `
+    <div class="admin-filter-bar">
+      <select onchange="setAdminActivityType(this.value)">
+        <option value="">Tous les événements</option>
+        ${Object.entries(ADMIN_EVENT_LABELS).map(([k,l])=>`<option value="${k}" ${type===k?'selected':''}>${l}</option>`).join('')}
+      </select>
+      ${activity && activity.length ? `<span class="small muted" style="align-self:center;">${activity.length} événement${activity.length>1?'s':''}${activity.length>=300?' (300 plus récents)':''}</span>` : ''}
+    </div>
+    ${!activity ? `<div class="small muted">Chargement…</div>` : activity.length===0 ? emptyState('Aucune activité enregistrée pour ce filtre.') : `
     <table class="stack-mobile">
       <tr><th>Quand</th><th>Événement</th><th>Compte</th><th>Détail</th></tr>
       ${activity.map(a=>`<tr>
         <td data-label="Quand" class="small muted">${fmtDateLong(new Date(a.created_at))} à ${fmtTime(new Date(a.created_at))}</td>
-        <td data-label="Événement"><span class="tag tag-neutral">${eventLabels[a.event_type]||a.event_type}</span></td>
-        <td data-label="Compte" class="small">${escapeHtml(a.user_email||'—')}</td>
+        <td data-label="Événement"><span class="tag ${['suspension','suppression'].includes(a.event_type)?'tag-red':'tag-neutral'}">${escapeHtml(ADMIN_EVENT_LABELS[a.event_type]||a.event_type)}</span></td>
+        <td data-label="Compte" class="small">${a.user_email ? `<a href="#" onclick="adminOpenAccountByEmail('${escapeHtml(a.user_email).replace(/'/g,"\\'")}');return false;" style="color:inherit;">${escapeHtml(a.user_email)}</a>` : '—'}</td>
         <td data-label="Détail" class="small muted">${escapeHtml(a.details||'')}</td>
       </tr>`).join('')}
-    </table>
+    </table>`}
   `;
 }
 function renderAccountAuthPage(){
