@@ -692,6 +692,10 @@ select{ max-width:100%; text-overflow:ellipsis; }
 .admin-support-card.is-open{border:1.5px solid var(--urgent);}
 .admin-mode-banner{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1.5px dashed var(--border);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13.5px;line-height:1.5;}
 .admin-clients-table td{vertical-align:top;}
+.banking-lock{max-width:420px;margin:30px auto;text-align:center;}
+.banking-lock .field{text-align:left;}
+.admin-bar-col{flex:1;height:100%;display:flex;align-items:flex-end;}
+.admin-bar-col .admin-bar{width:100%;}
 .admin-support-card.is-closed{opacity:.75;}
 @media(max-width:600px){
   .admin-topbar{padding:12px 16px;}
@@ -2187,6 +2191,7 @@ async function apiRequest(path, options={}){
   const headers = { 'Content-Type': 'application/json' };
   if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
   if(TEAM_TOKEN) headers['X-Team-Token'] = TEAM_TOKEN;
+  if(options.headers) Object.assign(headers, options.headers);
   let res;
   try{
     res = await fetch(API_URL + path, {
@@ -2912,6 +2917,8 @@ async function goToAdminPage(){
   state.adminTab = 'dashboard';
   state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null;
   state.adminClientSearch = ''; state.adminClientSort = 'nom'; state.adminClientFilter = '';
+  // Retour dans le panneau : l'espace Banking est toujours reverrouillé.
+  state.bankingToken = null; state.bankingExpiresAt = null; state.bankingSummary = null; state.bankingReport = null; state.bankingError = null;
   state.adminExpandedUserId = null; state.adminUserDetail = null; state.adminUserFilters = {};
   state.adminError = null; state.adminSupportFilter = 'a_traiter'; state.adminSupportSearch = ''; state.adminActivityType = '';
   goToSite('admin');
@@ -2930,6 +2937,9 @@ async function loadAdminTabData(tab){
     }
     if(tab==='comptes' && !state.adminUsers){
       await adminFilterUsers(true);
+    }
+    if(tab==='banking' && bankingUnlocked() && !state.bankingSummary){
+      await loadBankingSummary();
     }
     if(tab==='clients' && !state.adminClients){
       const data = await apiRequest('/api/admin/clients');
@@ -2990,7 +3000,7 @@ async function adminFilterUsers(skipDebounce, fromState){
 }
 // Recharge tout (statistiques, liste des comptes, centre d'aide, journal) sans quitter l'onglet.
 async function adminRefresh(){
-  state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null;
+  state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null; state.bankingSummary = null;
   if(state.adminTab==='comptes') state.adminUsers = null;
   state.adminError = null;
   render();
@@ -3112,6 +3122,157 @@ function exportAdminClientsCsv(){
   a.download = `clients-mise-et-sure-${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+// ---- Banking ----
+function bankingHeaders(){ return { 'X-Banking-Token': state.bankingToken || '' }; }
+function handleBankingError(err){
+  if(err && err.code==='BANKING_LOCKED'){ lockBanking(true); state.bankingError = err.message; render(); return; }
+  toast(err.message, 'alert');
+}
+async function unlockBanking(){
+  const user = (document.getElementById('banking-user')||{}).value || '';
+  const pass = (document.getElementById('banking-pass')||{}).value || '';
+  if(!user || !pass){ state.bankingError = 'Saisissez l’identifiant et le mot de passe.'; render(); return; }
+  const btn = document.getElementById('banking-unlock-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Vérification…'; }
+  try{
+    const data = await apiRequest('/api/admin/banking/unlock', { method:'POST', body:{ username:user, password:pass } });
+    state.bankingToken = data.bankingToken;
+    state.bankingExpiresAt = Date.now() + (data.expiresInMinutes||120)*60000 - 30000;
+    state.bankingError = null; state.bankingUserDraft = '';
+    state.bankingSummary = null;
+    render();
+    await loadBankingSummary();
+  } catch(err){
+    state.bankingUserDraft = user; // l'identifiant reste saisi : seul le mot de passe est à retaper
+    state.bankingError = err.message;
+    render();
+    const passEl = document.getElementById('banking-pass'); if(passEl) passEl.focus();
+  }
+}
+function lockBanking(silent){
+  state.bankingToken = null; state.bankingExpiresAt = null;
+  state.bankingSummary = null; state.bankingReport = null;
+  if(!silent){ toast('Espace Banking verrouillé'); render(); }
+}
+async function loadBankingSummary(){
+  if(!bankingUnlocked()) return;
+  try{
+    state.bankingSummary = await apiRequest('/api/admin/banking/summary', { headers: bankingHeaders() });
+    render();
+  } catch(err){ handleBankingError(err); }
+}
+async function loadBankingReport(){
+  const year = Number((document.getElementById('banking-report-year')||{}).value);
+  const month = (document.getElementById('banking-report-month')||{}).value;
+  state.bankingReportParams = { year, month };
+  state.bankingReportLoading = true; render();
+  try{
+    const q = new URLSearchParams({ year:String(year) }); if(month) q.set('month', month);
+    state.bankingReport = await apiRequest(`/api/admin/banking/report?${q.toString()}`, { headers: bankingHeaders() });
+  } catch(err){ handleBankingError(err); }
+  state.bankingReportLoading = false; render();
+}
+function bankingFileBase(r){
+  return `rapport-economique-mise-et-sure-${r.month ? `${r.year}-${String(r.month).padStart(2,'0')}` : r.year}`;
+}
+function downloadBankingReportCsv(){
+  const r = state.bankingReport; if(!r || !r.available) return;
+  const esc = v => { const s = v==null ? '' : String(v); return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  const num = v => (Math.round((Number(v)||0)*100)/100).toFixed(2).replace('.', ',');
+  const lines = [];
+  lines.push(['Rapport économique Mise & Sûre', r.periodLabel].map(esc).join(';'));
+  lines.push(['Généré le', new Date(r.generatedAt).toLocaleString('fr-FR')].map(esc).join(';'));
+  if(r.mode==='test') lines.push(esc('ATTENTION : données de TEST Stripe (paiements fictifs)'));
+  lines.push('');
+  lines.push(['Chiffre d’affaires encaissé TTC', num(r.totals.gross)].join(';'));
+  lines.push(['dont TVA collectée', num(r.totals.tax)].join(';'));
+  lines.push(['Chiffre d’affaires HT', num(r.totals.gross - r.totals.tax)].join(';'));
+  lines.push(['Remboursements', num(r.totals.refunds)].join(';'));
+  lines.push(['Frais Stripe', num(r.totals.fees)].join(';'));
+  lines.push(['Net encaissé après frais', num(r.totals.net)].join(';'));
+  lines.push(['Versé sur le compte bancaire', num(r.totals.payouts)].join(';'));
+  if(r.monthly){
+    lines.push('');
+    lines.push(['Mois','Encaissé TTC','TVA','Remboursé','Frais Stripe','Net','Factures'].join(';'));
+    r.monthly.forEach(m=>lines.push([m.label, num(m.gross), num(m.tax), num(m.refunds), num(m.fees), num(m.net), m.invoices].map(esc).join(';')));
+  }
+  lines.push('');
+  lines.push(['Date','N° facture','Client','Email','Description','HT','TVA','TTC','Devise'].join(';'));
+  r.invoices.forEach(i=>lines.push([new Date(i.date).toLocaleDateString('fr-FR'), i.number, i.customerName, i.customerEmail, i.description, num(i.amountHT), num(i.tax), num(i.amountTTC), i.currency].map(esc).join(';')));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = bankingFileBase(r) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+function downloadBankingReportPdf(){
+  const r = state.bankingReport; if(!r || !r.available) return;
+  ensureJsPDF(()=>{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'pt', format:'a4' });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const M = 44; let y = M;
+    // jsPDF (police standard) ne connaît pas l'espace fine insécable qu'utilise le format
+    // français des montants : on la remplace par une espace normale pour un affichage propre.
+    const money = v => eur(v).replace(/[  ]/g, ' ');
+    const ensure = (h) => { if(y + h > H - M){ doc.addPage(); y = M; } };
+    doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Mise & Sûre — Rapport économique', M, y); y += 22;
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(90);
+    doc.text(`Période : ${r.periodLabel}   ·   Généré le ${new Date(r.generatedAt).toLocaleString('fr-FR')}`, M, y); y += 16;
+    if(r.mode==='test'){ doc.setTextColor(180,40,40); doc.text('Données de TEST Stripe — paiements fictifs, à ne pas déclarer.', M, y); y += 16; }
+    doc.setTextColor(0); y += 8;
+    const rows = [
+      ['Chiffre d’affaires encaissé (TTC)', money(r.totals.gross), true],
+      ['dont TVA collectée', money(r.totals.tax)],
+      ['Chiffre d’affaires HT', money(r.totals.gross - r.totals.tax)],
+      ['Remboursements', money(-r.totals.refunds)],
+      ['Frais Stripe', money(-r.totals.fees)],
+      ['Net encaissé après frais', money(r.totals.net), true],
+      ['Versé sur le compte bancaire', money(r.totals.payouts)],
+      ['Nombre de paiements / factures', `${r.totals.payments} / ${r.totals.invoiceCount}`],
+    ];
+    rows.forEach(([label, value, bold])=>{
+      doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(11.5);
+      doc.text(label, M, y); doc.text(value, W - M, y, { align:'right' });
+      y += 8; doc.setDrawColor(225); doc.line(M, y, W - M, y); y += 14;
+    });
+    // firstNumeric : à partir de cette colonne, montants alignés à droite (titres compris).
+    const table = (title, header, data, widths, firstNumeric) => {
+      ensure(60); y += 10;
+      doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(title, M, y); y += 18;
+      const drawRow = (cells, bold) => {
+        ensure(18);
+        doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(9.5);
+        let x = M;
+        cells.forEach((c, i) => {
+          const txt = String(c==null?'':c);
+          const clipped = doc.splitTextToSize(txt, widths[i] - 6)[0] || '';
+          if(i >= firstNumeric) doc.text(clipped, x + widths[i] - 4, y, { align:'right' });
+          else doc.text(clipped, x, y);
+          x += widths[i];
+        });
+        y += 14;
+      };
+      drawRow(header, true);
+      doc.setDrawColor(200); doc.line(M, y - 10, W - M, y - 10);
+      data.forEach(row => drawRow(row, false));
+    };
+    if(r.monthly){
+      const w = (W - 2*M);
+      table('Détail mois par mois', ['Mois','Encaissé TTC','TVA','Remboursé','Frais','Net'],
+        r.monthly.map(m=>[m.label.charAt(0).toUpperCase()+m.label.slice(1), money(m.gross), money(m.tax), money(m.refunds), money(m.fees), money(m.net)]),
+        [w*0.22, w*0.16, w*0.14, w*0.16, w*0.14, w*0.18], 1);
+    }
+    const w = (W - 2*M);
+    table(`Factures payées (${r.invoices.length})`, ['Date','N° facture','Client','HT','TVA','TTC'],
+      r.invoices.map(i=>[new Date(i.date).toLocaleDateString('fr-FR'), i.number, i.customerName || i.customerEmail, money(i.amountHT), money(i.tax), money(i.amountTTC)]),
+      [w*0.13, w*0.20, w*0.31, w*0.12, w*0.10, w*0.14], 3);
+    ensure(40); y += 16;
+    doc.setFont('helvetica','italic'); doc.setFontSize(8.5); doc.setTextColor(120);
+    doc.text(doc.splitTextToSize('Chiffres issus de Stripe. Le chiffre d’affaires encaissé correspond aux paiements reçus sur la période, avant frais. Document d’aide à la déclaration, qui ne remplace pas l’avis d’un comptable.', W - 2*M), M, y);
+    doc.save(bankingFileBase(r) + '.pdf');
+  });
 }
 // ---- Centre d'aide ----
 function setAdminSupportFilter(filter){
@@ -13855,6 +14016,7 @@ function renderAdminPage(){
           <button class="${tab==='clients'?'active':''}" onclick="setAdminTab('clients')">Clients</button>
           <button class="${tab==='aide'?'active':''}" onclick="setAdminTab('aide')">Centre d'aide${openQ>0 ? ` <span class="tag tag-red" style="margin-left:4px;">${openQ}</span>` : ''}</button>
           <button class="${tab==='journal'?'active':''}" onclick="setAdminTab('journal')">Journal d'activité</button>
+          <button class="${tab==='banking'?'active':''}" onclick="setAdminTab('banking')">${bankingUnlocked() ? '🔓' : '🔒'} Banking</button>
         </div>
         ${state.adminError ? `<div class="login-error" style="margin-bottom:16px;">${escapeHtml(state.adminError)}</div>` : ''}
         ${tab==='dashboard' ? renderAdminDashboard() : ''}
@@ -13862,6 +14024,7 @@ function renderAdminPage(){
         ${tab==='clients' ? renderAdminClients() : ''}
         ${tab==='aide' ? renderAdminSupport() : ''}
         ${tab==='journal' ? renderAdminActivityLog() : ''}
+        ${tab==='banking' ? renderAdminBanking() : ''}
       </div>
     </div>
   `;
@@ -14155,6 +14318,177 @@ function renderAdminClients(){
       </table>
     </div>`}
   `;
+}
+// ---- Banking (onglet verrouillé) ----
+// Le jeton de déverrouillage n'est gardé qu'en mémoire (jamais dans le navigateur de façon
+// durable) : recharger ou fermer la page reverrouille l'espace.
+function bankingUnlocked(){
+  return !!(state.bankingToken && state.bankingExpiresAt && Date.now() < state.bankingExpiresAt);
+}
+const eur = v => (Number(v)||0).toLocaleString('fr-FR', { style:'currency', currency:'EUR' });
+function renderAdminBanking(){
+  if(!bankingUnlocked()){
+    return `
+      <div class="card banking-lock">
+        <div style="font-size:30px;margin-bottom:6px;">🔒</div>
+        <div class="card-title" style="margin-bottom:4px;">Espace Banking protégé</div>
+        <div class="small muted" style="margin-bottom:18px;">Revenus, frais, versements et rapports économiques. Saisissez vos identifiants Banking pour continuer.</div>
+        <div class="field"><label>Identifiant</label><input id="banking-user" autocomplete="off" autocapitalize="off" spellcheck="false" value="${escapeHtml(state.bankingUserDraft||'')}" oninput="state.bankingUserDraft=this.value" onkeydown="if(event.key==='Enter')document.getElementById('banking-pass').focus()"></div>
+        <div class="field"><label>Mot de passe</label><input id="banking-pass" type="password" autocomplete="off" onkeydown="if(event.key==='Enter')unlockBanking()"></div>
+        ${state.bankingError ? `<div class="login-error" style="margin-bottom:12px;">${escapeHtml(state.bankingError)}</div>` : ''}
+        <button class="btn btn-primary btn-block" id="banking-unlock-btn" onclick="unlockBanking()">Déverrouiller</button>
+        <div class="small muted" style="margin-top:12px;">Déverrouillé pour 2 heures, sur cet onglet uniquement. Chaque accès est noté dans le journal d'activité.</div>
+      </div>`;
+  }
+  const s = state.bankingSummary;
+  const minutesLeft = Math.max(0, Math.round((state.bankingExpiresAt - Date.now())/60000));
+  const head = `
+    <div class="flex between center" style="margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <div class="small muted">🔓 Déverrouillé — encore ${minutesLeft} min</div>
+      <button class="btn btn-ghost btn-sm" onclick="lockBanking()">${iconXs(I.lock)} Verrouiller</button>
+    </div>`;
+  if(!s) return head + `<div class="small muted">Chargement des chiffres…</div>`;
+  const st = s.stripe || {};
+  const months = st.months || [];
+  const maxNet = Math.max(1, ...months.map(m=>Math.max(m.gross||0, 0)));
+  const growth = st.lastMonth && st.lastMonth.gross ? Math.round(((st.thisMonth.gross - st.lastMonth.gross) / st.lastMonth.gross) * 100) : null;
+  return head + `
+    ${s.mode==='test' ? `<div class="admin-mode-banner">🧪 <span><b>Stripe en mode TEST</b> — les encaissements affichés ici sont fictifs (cartes de test). Les vrais chiffres apparaîtront avec la clé réelle (sk_live_…).</span></div>` : ''}
+    ${!st.available ? `<div class="admin-mode-banner">⚠️ <span>${escapeHtml(st.reason || 'Données Stripe indisponibles.')} Les indicateurs d'abonnement ci-dessous restent calculés à partir de la base.</span></div>` : ''}
+    <div class="admin-kpi-grid">
+      ${adminKpi('Revenu mensuel récurrent (MRR)', eur(s.mrr), `${s.payingCount} abonné${s.payingCount>1?'s':''} payant${s.payingCount>1?'s':''}`)}
+      ${adminKpi('Revenu annuel récurrent (ARR)', eur(s.arr), 'MRR × 12')}
+      ${adminKpi('Revenu moyen par client', eur(s.arpu), 'par mois (ARPU)')}
+      ${adminKpi('Paiements en retard', eur(s.pastDueValue), `${s.pastDue} abonnement${s.pastDue>1?'s':''} à risque / mois`, '', s.pastDue?'alert':'')}
+      ${st.available ? adminKpi('Encaissé ce mois-ci', eur(st.thisMonth.gross), growth===null ? `${st.thisMonth.payments} paiement${st.thisMonth.payments>1?'s':''}` : `${growth>=0?'+':''}${growth} % vs mois dernier`) : ''}
+      ${st.available ? adminKpi(`Encaissé en ${new Date().getFullYear()}`, eur(st.thisYear.gross), `${st.thisYear.payments} paiement${st.thisYear.payments>1?'s':''}`) : ''}
+      ${st.available ? adminKpi('Frais Stripe (année)', eur(st.thisYear.fees), st.thisYear.gross ? `${(st.thisYear.fees/st.thisYear.gross*100).toFixed(1).replace('.',',')} % des encaissements` : '') : ''}
+      ${st.available ? adminKpi('Net après frais (année)', eur(st.thisYear.net), st.thisYear.refunds ? `dont ${eur(st.thisYear.refunds)} remboursés` : 'aucun remboursement') : ''}
+      ${st.available && st.balance ? adminKpi('Solde Stripe', eur(st.balance.available), `${eur(st.balance.pending)} en attente de versement`) : ''}
+    </div>
+    <div class="grid grid-2b">
+      <div class="card">
+        <div class="card-title">Encaissements — 12 derniers mois</div>
+        ${st.available && months.length ? `
+          <div class="admin-bars" style="height:150px;" role="img" aria-label="Encaissements par mois">
+            ${months.map(m=>`<div class="admin-bar-col" title="${escapeHtml(m.label)} : ${eur(m.gross)} encaissés, ${eur(m.net)} net">
+              <div class="admin-bar" style="height:${Math.max(2, Math.round((m.gross||0)/maxNet*100))}%;${m.gross?'':'opacity:.25;'}"></div>
+            </div>`).join('')}
+          </div>
+          <div class="flex between small muted" style="margin-top:6px;"><span>${escapeHtml(months[0].label)}</span><span>${escapeHtml(months[11].label)}</span></div>
+        ` : `<div class="small muted">Disponible dès que Stripe est joignable.</div>`}
+      </div>
+      <div class="card">
+        <div class="card-title">Revenu récurrent par forfait</div>
+        ${[['solo','Solo'],['essentiel','Essentiel'],['pro','Pro']].map(([id,label])=>{
+          const p = (s.byPlan||{})[id] || {count:0,mrr:0};
+          return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+            <div class="flex between"><span class="small">${label} — ${p.count} abonné${p.count>1?'s':''}</span><span style="font-weight:600;">${eur(p.mrr)} / mois</span></div>
+            <div class="admin-meter"><div style="width:${s.mrr ? Math.round(p.mrr/s.mrr*100) : 0}%;"></div></div>
+          </div>`;
+        }).join('')}
+        <div class="small muted" style="margin-top:10px;">${s.annualCount} abonnement${s.annualCount>1?'s':''} annuel${s.annualCount>1?'s':''} · ${s.freeAccess} accès gratuit${s.freeAccess>1?'s':''} · ${s.churned} résilié${s.churned>1?'s':''}${s.testSubscriptions ? ` · ${s.testSubscriptions} de test (non comptés)` : ''}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">Volume d'achats géré par la plateforme</div>
+      <div class="small muted" style="margin-bottom:8px;">Le total des commandes fournisseurs passées par vos clients avec Mise &amp; Sûre — ce n'est pas votre chiffre d'affaires, mais un bon argument commercial.</div>
+      <div class="flex gap8" style="flex-wrap:wrap;align-items:baseline;">
+        <span style="font-size:24px;font-weight:700;font-family:var(--heading-font);">${eur(s.platformVolume.total)}</span>
+        <span class="small muted">au total · ${eur(s.platformVolume.this_month)} ce mois-ci</span>
+      </div>
+    </div>
+    ${renderBankingReportSection()}
+  `;
+}
+function renderBankingReportSection(){
+  const now = new Date();
+  const p = state.bankingReportParams || { year: now.getFullYear(), month: '' };
+  const years = []; for(let y = now.getFullYear(); y >= Math.max(2024, now.getFullYear()-6); y--) years.push(y);
+  const r = state.bankingReport;
+  return `
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">📑 Rapport économique</div>
+      <div class="small muted" style="margin-bottom:14px;">Pour vos déclarations et votre comptable : encaissements, TVA, remboursements, frais et net, sur un mois ou une année entière, avec la liste des factures. Téléchargeable en PDF et en CSV.</div>
+      <div class="flex gap8" style="flex-wrap:wrap;align-items:flex-end;">
+        <div class="field" style="margin:0;"><label>Période</label>
+          <select id="banking-report-month">
+            <option value="" ${!p.month?'selected':''}>Année entière</option>
+            ${MONTHS_LONG.map((m,i)=>`<option value="${i+1}" ${Number(p.month)===i+1?'selected':''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" style="margin:0;"><label>Année</label>
+          <select id="banking-report-year">${years.map(y=>`<option value="${y}" ${Number(p.year)===y?'selected':''}>${y}</option>`).join('')}</select>
+        </div>
+        <button class="btn btn-primary" onclick="loadBankingReport()">Générer le rapport</button>
+      </div>
+      ${state.bankingReportLoading ? `<div class="small muted" style="margin-top:14px;">Calcul du rapport…</div>` : ''}
+      ${r && !state.bankingReportLoading ? renderBankingReport(r) : ''}
+    </div>`;
+}
+function renderBankingReport(r){
+  if(!r.available) return `<div class="admin-mode-banner" style="margin-top:14px;">⚠️ <span>${escapeHtml(r.reason||'Rapport indisponible.')}</span></div>`;
+  const t = r.totals;
+  const line = (label, value, strong, hint) => `<div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);${strong?'font-weight:700;':''}"><span>${label}${hint?` <span class="small muted" style="font-weight:400;">${hint}</span>`:''}</span><span class="mono">${value}</span></div>`;
+  return `
+    <div style="margin-top:18px;">
+      <div class="flex between center" style="flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:15px;">Rapport — ${escapeHtml(r.periodLabel)}${r.mode==='test'?' <span class="tag tag-neutral">🧪 données de test</span>':''}</div>
+        <div class="flex gap8">
+          <button class="btn btn-ghost btn-sm" onclick="downloadBankingReportPdf()">${iconXs(I.download)} PDF</button>
+          <button class="btn btn-ghost btn-sm" onclick="downloadBankingReportCsv()">${iconXs(I.download)} CSV (factures)</button>
+        </div>
+      </div>
+      <div class="grid grid-2b">
+        <div>
+          ${line('Chiffre d’affaires encaissé (TTC)', eur(t.gross), true, `${t.payments} paiement${t.payments>1?'s':''}`)}
+          ${line('dont TVA collectée', eur(t.tax), false, t.tax ? '' : '(aucune TVA facturée via Stripe)')}
+          ${line('Chiffre d’affaires HT', eur(t.gross - t.tax))}
+          ${line('Remboursements', eur(-t.refunds), false, t.refundCount ? `${t.refundCount}` : '')}
+          ${t.disputes ? line('Litiges (contestations)', eur(-t.disputes)) : ''}
+          ${line('Frais Stripe', eur(-t.fees))}
+          ${line('Net encaissé après frais', eur(t.net), true)}
+          ${line('Versé sur votre compte bancaire', eur(t.payouts), false, '(virements Stripe de la période)')}
+        </div>
+        <div class="small muted" style="line-height:1.6;background:var(--paper);border-radius:10px;padding:12px 14px;">
+          <b style="color:var(--text);">À savoir pour vos déclarations</b><br>
+          • Le <b>chiffre d'affaires encaissé</b> correspond aux paiements reçus sur la période (avant frais Stripe) — c'est en général le montant à déclarer pour une micro-entreprise.<br>
+          • Les <b>frais Stripe</b> sont une charge, déductible si vous êtes au régime réel.<br>
+          • ${r.invoices.length} facture${r.invoices.length>1?'s':''} payée${r.invoices.length>1?'s':''} sur la période, détaillée${r.invoices.length>1?'s':''} ci-dessous et dans le CSV.<br>
+          Ces chiffres proviennent directement de Stripe ; ils ne remplacent pas l'avis de votre comptable.
+        </div>
+      </div>
+      ${r.monthly ? `
+      <div style="margin-top:16px;overflow-x:auto;">
+        <table class="stack-mobile">
+          <tr><th>Mois</th><th>Encaissé TTC</th><th>TVA</th><th>Remboursé</th><th>Frais Stripe</th><th>Net</th><th>Factures</th></tr>
+          ${r.monthly.map(m=>`<tr ${m.gross?'':'style="opacity:.55;"'}>
+            <td data-label="Mois" style="font-weight:600;">${escapeHtml(m.label.charAt(0).toUpperCase()+m.label.slice(1))}</td>
+            <td data-label="Encaissé TTC" class="mono">${eur(m.gross)}</td>
+            <td data-label="TVA" class="mono">${eur(m.tax)}</td>
+            <td data-label="Remboursé" class="mono">${eur(m.refunds)}</td>
+            <td data-label="Frais Stripe" class="mono">${eur(m.fees)}</td>
+            <td data-label="Net" class="mono" style="font-weight:600;">${eur(m.net)}</td>
+            <td data-label="Factures">${m.invoices}</td>
+          </tr>`).join('')}
+        </table>
+      </div>` : ''}
+      <details style="margin-top:16px;" ${r.invoices.length && r.invoices.length<=15 ? 'open' : ''}>
+        <summary style="cursor:pointer;font-weight:600;">Factures payées (${r.invoices.length})</summary>
+        ${r.invoices.length ? `<table class="stack-mobile" style="margin-top:8px;">
+          <tr><th>Date</th><th>N° facture</th><th>Client</th><th>HT</th><th>TVA</th><th>TTC</th><th></th></tr>
+          ${r.invoices.map(i=>`<tr>
+            <td data-label="Date" class="small">${new Date(i.date).toLocaleDateString('fr-FR')}</td>
+            <td data-label="N° facture" class="mono small">${escapeHtml(i.number)}</td>
+            <td data-label="Client" class="small">${escapeHtml(i.customerName||'')}${i.customerEmail?`<div class="muted">${escapeHtml(i.customerEmail)}</div>`:''}</td>
+            <td data-label="HT" class="mono">${eur(i.amountHT)}</td>
+            <td data-label="TVA" class="mono">${eur(i.tax)}</td>
+            <td data-label="TTC" class="mono" style="font-weight:600;">${eur(i.amountTTC)}</td>
+            <td>${i.pdf && /^https:\/\//.test(i.pdf) ? `<a href="${escapeHtml(i.pdf)}" target="_blank" rel="noopener noreferrer" class="small" style="color:inherit;">Facture PDF</a>` : ''}</td>
+          </tr>`).join('')}
+        </table>` : `<div class="small muted" style="margin-top:8px;">Aucune facture payée sur cette période.</div>`}
+      </details>
+    </div>`;
 }
 // ---- Centre d'aide ----
 const ADMIN_SUPPORT_FILTERS = [['a_traiter','À traiter'],['repondue','Répondues'],['fermee','Closes'],['toutes','Toutes']];
