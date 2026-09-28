@@ -1505,7 +1505,20 @@ const FONT_STYLES = {
   elegant: { label: 'Élégant', heading: "'Cormorant Garamond',serif", preview: 'Aa' },
   contemporain: { label: 'Contemporain', heading: "'Space Grotesk',sans-serif", preview: 'Aa' },
 };
+// Pages du site qui n'appartiennent à aucun établissement (accueil, tarifs, pages légales,
+// connexion au compte, administration…) : elles gardent toujours le design d'origine de
+// Mise & Sûre. La personnalisation d'un restaurant ne s'applique qu'à son propre espace.
+const NEUTRAL_DESIGN_SITES = ['marketing','pricing','mentions-legales','confidentialite','cgu','account-auth','admin','verify-email','reset-password','setup-restaurant'];
+function isNeutralDesignView(){ return NEUTRAL_DESIGN_SITES.includes(state.site); }
+function resetAppearance(){
+  const root = document.documentElement.style;
+  ['--paper','--surface','--border','--text','--muted','--muted-2','--accent','--accent-text','--heading-font','--bg-image-url']
+    .forEach(v=>root.removeProperty(v));
+  document.body.classList.remove('has-bg-image');
+  updateFavicon(null);
+}
 function applyAppearance(resto){
+  if(isNeutralDesignView()){ resetAppearance(); return; }
   // Fonction centrale : applique couleur, police et favicon d'un établissement — appelée à
   // chaque chargement de ses données, pour que l'identité visuelle choisie soit toujours
   // respectée, immédiatement, sans attendre un enregistrement dans Paramètres.
@@ -3501,30 +3514,6 @@ async function confirmDemoteAdmin(userId){
   } catch(err){
     toast(err.message, 'alert');
   }
-}
-// Génère une session valide pour le compte ciblé et bascule dessus, pour voir le site
-// exactement comme cette personne — utile en support ou pour déboguer un problème signalé.
-// Le jeton administrateur d'origine est conservé de côté pour permettre de revenir ensuite.
-async function adminImpersonateUser(userId, label){
-  try{
-    const originalToken = AUTH_TOKEN;
-    const data = await apiRequest(`/api/admin/users/${userId}/impersonate`, { method:'POST', headers: bankingHeaders() });
-    ACCOUNT = data.user;
-    state.impersonating = { active:true, label, originalToken };
-    toast(`Vous visualisez maintenant le compte de ${label}`);
-    goToSite('team-login');
-  } catch(err){
-    toast(err.message, 'alert');
-  }
-}
-function exitImpersonation(){
-  if(!state.impersonating) return;
-  AUTH_TOKEN = state.impersonating.originalToken;
-  if(AUTH_TOKEN) localStorage.setItem(AUTH_TOKEN_KEY, AUTH_TOKEN); else localStorage.removeItem(AUTH_TOKEN_KEY);
-  ACCOUNT = null;
-  state.impersonating = null;
-  toast('Retour à votre session administrateur');
-  goToAdminPage();
 }
 async function submitAdminAnswer(questionId, closeAfter){
   const textarea = document.getElementById('admin-answer-'+questionId);
@@ -14557,7 +14546,6 @@ function renderOwnerTools(){
 }
 function renderOwnerToolRow(u){
   const fullName = `${u.first_name||''} ${u.last_name||''}`.trim();
-  const jsName = escapeHtml(fullName).replace(/'/g,"\\'");
   const jsEmail = escapeHtml(u.email).replace(/'/g,"\\'");
   const hasSub = !!(u.stripe_subscription_id || u.has_subscription);
   return `
@@ -14576,8 +14564,7 @@ function renderOwnerToolRow(u){
         </select>
         <button class="btn btn-ghost btn-sm" onclick="changeUserPlan(${u.id}, document.getElementById('owner-plan-${u.id}').value)">Changer le forfait</button>
         ${!u.is_admin ? `
-          <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l’accès gratuit' : 'Accorder un accès gratuit'}</button>
-          <button class="btn btn-ghost btn-sm" onclick="adminImpersonateUser(${u.id}, '${jsName}')">${iconXs(I.eye)} Voir en tant que</button>` : ''}
+          <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l’accès gratuit' : 'Accorder un accès gratuit'}</button>` : ''}
         ${hasSub ? `<button class="btn btn-ghost btn-sm" onclick="setAdminStripeMode(${u.id}, '${u.stripe_livemode===true?'test':'live'}')">Marquer l'abonnement comme ${u.stripe_livemode===true?'test':'réel'}</button>` : ''}
         <button class="btn ${u.suspended?'btn-primary':'btn-ghost'} btn-sm" onclick="toggleUserSuspension(${u.id}, ${u.suspended})">${u.suspended ? 'Réactiver' : 'Suspendre'}</button>
         ${u.is_admin
@@ -15023,15 +15010,6 @@ function renderBanner(){
       ${iconXs(I.eye)} <span><b>Vous explorez une démo publique</b> — les données sont fictives et rien de ce que vous faites ici n'est conservé. <a href="#" onclick="exitPublicDemo();return false;" style="color:inherit;text-decoration:underline;font-weight:700;">Quitter la démo</a></span>
     </div>`;
   }
-  // Imitation d'un compte par l'administrateur — priorité absolue d'affichage (avant même la
-  // suppression en attente) : jamais d'ambiguïté possible sur le fait qu'on ne regarde pas son
-  // propre compte, avec un chemin de sortie toujours visible.
-  if(state.impersonating && state.impersonating.active){
-    html += `<div class="demo-banner" style="background:var(--urgent);">
-      ${iconXs(I.alertTriangle)} <span><b>Vous visualisez le compte de ${escapeHtml(state.impersonating.label)}</b> en tant qu'administrateur. <a href="#" onclick="exitImpersonation();return false;" style="color:#fff;text-decoration:underline;font-weight:700;">Quitter cette vue</a></span>
-    </div>`;
-    return html; // rien d'autre ne doit se superposer à ce bandeau tant qu'on imite un compte
-  }
   // Compte en cours de suppression (délai de grâce) — visible partout dans le site, pas
   // seulement dans Paramètres, pour que personne ne découvre ça par accident en fin de délai.
   if(ACCOUNT && ACCOUNT.pending_deletion_at){
@@ -15111,6 +15089,7 @@ function render(){
 function renderInner(){
   renderCookieBanner();
   document.documentElement.classList.toggle('theme-dark', state.theme==='dark');
+  if(isNeutralDesignView()) resetAppearance();
   if(state.site==='marketing'){
     document.title = 'Mise & Sûre — la gestion de restaurant, sans friction';
     document.getElementById('app').innerHTML = renderMarketingPage();
@@ -15174,6 +15153,8 @@ function renderInner(){
       return;
     }
     document.title = 'Mise & Sûre — plateforme de gestion pour restaurants';
+    const loginResto = RESTOS.find(r=>r.id===state.resto);
+    if(loginResto) applyAppearance(loginResto); else resetAppearance();
     document.getElementById('app').innerHTML = renderLoginScreen();
     return;
   }
