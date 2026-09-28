@@ -690,6 +690,7 @@ select{ max-width:100%; text-overflow:ellipsis; }
 .admin-attention:hover b{text-decoration:underline;}
 .admin-detail-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 18px;font-size:13.5px;}
 .admin-support-card.is-open{border:1.5px solid var(--urgent);}
+.admin-mode-banner{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1.5px dashed var(--border);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13.5px;line-height:1.5;}
 .admin-clients-table td{vertical-align:top;}
 .admin-support-card.is-closed{opacity:.75;}
 @media(max-width:600px){
@@ -3007,6 +3008,16 @@ async function adminOpenAccountByEmail(email){
   const u = (state.adminUsers||[]).find(x=>String(x.email).toLowerCase()===String(email).toLowerCase());
   if(u) await toggleAdminAccountDetail(u.id);
 }
+async function setAdminStripeMode(userId, mode){
+  try{
+    const data = await apiRequest(`/api/admin/users/${userId}/stripe-mode`, { method:'PATCH', body:{ mode } });
+    const u = (state.adminUsers||[]).find(x=>x.id===userId);
+    if(u) Object.assign(u, { stripe_livemode: data.user.stripe_livemode });
+    state.adminStats = null; state.adminClients = null;
+    toast(mode==='live' ? 'Abonnement marqué comme réel' : 'Abonnement marqué comme test');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
 async function saveAdminNote(userId){
   const el = document.getElementById('admin-note-'+userId);
   if(!el) return;
@@ -3041,10 +3052,10 @@ function exportAdminUsersCsv(){
     return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
   };
   const dateFr = v => v ? new Date(v).toLocaleDateString('fr-FR') : '';
-  const header = ['Prénom','Nom','Email','Téléphone','Forfait','Facturation','Statut Stripe','Accès gratuit','Suspendu','Email vérifié','Établissements','Inscrit le','Dernière activité','Suppression demandée','Note interne'];
+  const header = ['Prénom','Nom','Email','Téléphone','Forfait','Facturation','Statut Stripe','Mode Stripe','Accès gratuit','Suspendu','Email vérifié','Établissements','Inscrit le','Dernière activité','Suppression demandée','Note interne'];
   const lines = rows.map(u=>[
     u.first_name, u.last_name, u.email, u.phone, u.plan, u.billing_cycle==='annual'?'annuelle':'mensuelle',
-    u.stripe_subscription_status||'', u.free_access_granted?'oui':'non', u.suspended?'oui':'non', u.email_verified?'oui':'non',
+    u.stripe_subscription_status||'', u.stripe_subscription_id ? (u.stripe_livemode===true?'réel':u.stripe_livemode===false?'test':'inconnu') : '', u.free_access_granted?'oui':'non', u.suspended?'oui':'non', u.email_verified?'oui':'non',
     u.restaurant_count, dateFr(u.created_at), dateFr(u.last_seen_at), dateFr(u.pending_deletion_at), u.admin_note||'',
   ].map(esc).join(';'));
   const blob = new Blob(['﻿' + [header.join(';'), ...lines].join('\r\n')], { type:'text/csv;charset=utf-8' });
@@ -3088,7 +3099,7 @@ function exportAdminClientsCsv(){
       lines.push([
         c.last_name, c.first_name, c.email, c.phone, r.name||'', r.address||'', r.postal_code||'', (r.city && r.city!=='—') ? r.city : '', r.siret||'',
         c.plan, c.billing_cycle==='annual'?'annuelle':'mensuelle',
-        c.suspended ? 'suspendu' : (c.stripe_subscription_status || (c.free_access_granted ? 'accès gratuit' : 'sans accès')),
+        c.suspended ? 'suspendu' : c.stripe_subscription_status ? c.stripe_subscription_status + (c.has_subscription && c.stripe_livemode!==true ? ' (test)' : '') : (c.free_access_granted ? 'accès gratuit' : 'sans accès'),
         c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '',
         c.last_seen_at ? new Date(c.last_seen_at).toLocaleDateString('fr-FR') : '',
         c.admin_note||'',
@@ -13892,8 +13903,9 @@ function renderAdminDashboard(){
     n(s.suspended_count) ? { label:`${n(s.suspended_count)} compte${n(s.suspended_count)>1?'s':''} suspendu${n(s.suspended_count)>1?'s':''}`, sub:'', action:"adminShowAccounts('suspendu')" } : null,
   ].filter(Boolean);
   return `
+    ${s.stripe_mode==='test' ? `<div class="admin-mode-banner">🧪 <span><b>Stripe est en mode TEST</b> — les paiements sont fictifs (cartes de test). Les abonnements de test ne sont jamais comptés dans le revenu : seuls les vrais paiements le sont, une fois la clé Stripe réelle (sk_live_…) installée.${n(s.test_subscriptions) ? ` ${n(s.test_subscriptions)} abonnement${n(s.test_subscriptions)>1?'s':''} de test en cours.` : ''}</span></div>` : s.stripe_mode==='live' && n(s.test_subscriptions) ? `<div class="admin-mode-banner">🧪 <span><b>${n(s.test_subscriptions)} ancien${n(s.test_subscriptions)>1?'s':''} abonnement${n(s.test_subscriptions)>1?'s':''} de test</b> — ${n(s.test_subscriptions)>1?'ils ne donnent':'il ne donne'} plus accès au site depuis le passage aux vrais paiements. <a href="#" onclick="adminShowAccounts('test');return false;" style="color:inherit;font-weight:700;">Voir la liste</a></span></div>` : ''}
     <div class="admin-kpi-grid">
-      ${adminKpi('Revenu mensuel (MRR)', `${n(s.mrr).toLocaleString('fr-FR')} €`, `${n(s.paying_count)} abonnement${n(s.paying_count)>1?'s':''} payant${n(s.paying_count)>1?'s':''}`, "adminShowAccounts('actif')")}
+      ${adminKpi('Revenu mensuel réel (MRR)', `${n(s.mrr).toLocaleString('fr-FR')} €`, `${n(s.paying_count)} abonnement${n(s.paying_count)>1?'s':''} payant${n(s.paying_count)>1?'s':''}${n(s.test_subscriptions) ? ` · ${n(s.test_subscriptions)} de test non comptés` : ''}`, "adminShowAccounts('payant_reel')")}
       ${adminKpi('Comptes vérifiés', n(s.total_accounts), `${n(s.active_7d)} actif${n(s.active_7d)>1?'s':''} ces 7 derniers jours`, "adminShowAccounts('')")}
       ${adminKpi('Inscriptions', n(s.signups_7d), `7 jours · ${n(s.signups_30d)} sur 30 jours`)}
       ${adminKpi('Paiements en retard', n(s.past_due_count), n(s.trialing_count) ? `${n(s.trialing_count)} en période d'essai` : 'Stripe relance automatiquement', n(s.past_due_count) ? "adminShowAccounts('retard')" : '', n(s.past_due_count)?'alert':'')}
@@ -13943,7 +13955,7 @@ async function adminShowAccounts(status){
 function renderAdminAccounts(){
   const rows = state.adminUsers;
   const f = state.adminUserFilters || {};
-  const statusOptions = [['','Tous les statuts'],['actif','Accès actif (payant, essai ou gratuit)'],['retard','Paiement en retard'],['essai',"En période d'essai"],['gratuit','Accès gratuit'],['sans_acces','Sans accès payant'],['inactif','Inactifs depuis 30 jours'],['non_verifie','Email jamais vérifié'],['suspendu','Suspendus'],['admin','Administrateurs']];
+  const statusOptions = [['','Tous les statuts'],['actif','Accès actif (payant, essai ou gratuit)'],['payant_reel','Abonnés payants réels'],['test','Abonnements de test'],['retard','Paiement en retard'],['essai',"En période d'essai"],['gratuit','Accès gratuit'],['sans_acces','Sans accès payant'],['inactif','Inactifs depuis 30 jours'],['non_verifie','Email jamais vérifié'],['suspendu','Suspendus'],['admin','Administrateurs']];
   const sortOptions = [['recent','Plus récents'],['ancien','Plus anciens'],['nom','Nom (A → Z)'],['activite','Actifs récemment'],['inactivite','Inactifs depuis longtemps']];
   return `
     <div class="admin-filter-bar">
@@ -13976,6 +13988,11 @@ function adminStatusTag(u){
   if(u.suspended) return `<span class="tag tag-red">Suspendu</span>`;
   if(u.pending_deletion_at) return `<span class="tag tag-red">Suppression demandée</span>`;
   if(!u.email_verified) return `<span class="tag tag-neutral">Email non vérifié</span>`;
+  // Abonnement payé avec une carte de TEST Stripe : clairement signalé, pour ne jamais le
+  // confondre avec un vrai client payant.
+  const hasSub = !!(u.stripe_subscription_id || u.has_subscription);
+  const testSub = hasSub && u.stripe_livemode !== true && ['active','trialing','past_due'].includes(u.stripe_subscription_status);
+  if(testSub) return `<span class="tag tag-neutral" title="Payé avec une carte de test Stripe — aucun argent réel">🧪 Abonnement test</span>`;
   if(u.stripe_subscription_status==='past_due') return `<span class="tag tag-red">Paiement en retard</span>`;
   if(u.stripe_subscription_status==='trialing') return `<span class="tag tag-subtle">Période d'essai</span>`;
   if(u.stripe_subscription_status==='active') return `<span class="tag tag-subtle">Abonnement actif</span>`;
@@ -14009,7 +14026,12 @@ function renderAdminAccountRow(u){
             <div><span class="small muted">Téléphone</span><div>${u.phone ? `<a href="tel:${escapeHtml(u.phone)}" style="color:inherit;">${escapeHtml(u.phone)}</a>` : '—'}</div></div>
             <div><span class="small muted">Email</span><div><a href="mailto:${escapeHtml(u.email)}" style="color:inherit;">${escapeHtml(u.email)}</a></div></div>
             <div><span class="small muted">Connexion</span><div>${u.oauth_provider ? escapeHtml(u.oauth_provider==='google'?'Google':u.oauth_provider==='apple'?'Apple':u.oauth_provider) : 'Email et mot de passe'}</div></div>
-            <div><span class="small muted">Abonnement Stripe</span><div>${escapeHtml(u.stripe_subscription_status||'aucun')}</div></div>
+            <div><span class="small muted">Abonnement Stripe</span><div>${escapeHtml(u.stripe_subscription_status||'aucun')}${u.stripe_subscription_id ? ` · ${u.stripe_livemode===true ? '<b>réel</b>' : u.stripe_livemode===false ? '🧪 <b>test</b>' : 'mode inconnu'}` : ''}</div>
+              ${u.stripe_subscription_id ? `<div class="flex gap8" style="margin-top:4px;">
+                ${u.stripe_livemode!==false ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();setAdminStripeMode(${u.id},'test')">Marquer comme test</button>` : ''}
+                ${u.stripe_livemode!==true ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();setAdminStripeMode(${u.id},'live')">Marquer comme réel</button>` : ''}
+              </div>` : ''}
+            </div>
             ${u.pending_deletion_at ? `<div><span class="small muted">Suppression prévue le</span><div style="color:var(--urgent);">${fmtDateLong(new Date(u.pending_deletion_at))}</div></div>` : ''}
           </div>
           <div class="flex gap8" style="flex-wrap:wrap;margin:14px 0;">
