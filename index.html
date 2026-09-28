@@ -690,6 +690,7 @@ select{ max-width:100%; text-overflow:ellipsis; }
 .admin-attention:hover b{text-decoration:underline;}
 .admin-detail-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 18px;font-size:13.5px;}
 .admin-support-card.is-open{border:1.5px solid var(--urgent);}
+.admin-clients-table td{vertical-align:top;}
 .admin-support-card.is-closed{opacity:.75;}
 @media(max-width:600px){
   .admin-topbar{padding:12px 16px;}
@@ -2908,7 +2909,8 @@ async function signOutAccount(){
 ============================================================ */
 async function goToAdminPage(){
   state.adminTab = 'dashboard';
-  state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null;
+  state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null;
+  state.adminClientSearch = ''; state.adminClientSort = 'nom'; state.adminClientFilter = '';
   state.adminExpandedUserId = null; state.adminUserDetail = null; state.adminUserFilters = {};
   state.adminError = null; state.adminSupportFilter = 'a_traiter'; state.adminSupportSearch = ''; state.adminActivityType = '';
   goToSite('admin');
@@ -2927,6 +2929,10 @@ async function loadAdminTabData(tab){
     }
     if(tab==='comptes' && !state.adminUsers){
       await adminFilterUsers(true);
+    }
+    if(tab==='clients' && !state.adminClients){
+      const data = await apiRequest('/api/admin/clients');
+      state.adminClients = data.clients;
     }
     if(tab==='aide' && !state.adminQuestions){
       const data = await apiRequest('/api/admin/support-questions');
@@ -2983,7 +2989,7 @@ async function adminFilterUsers(skipDebounce, fromState){
 }
 // Recharge tout (statistiques, liste des comptes, centre d'aide, journal) sans quitter l'onglet.
 async function adminRefresh(){
-  state.adminStats = null; state.adminQuestions = null; state.adminActivity = null;
+  state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null;
   if(state.adminTab==='comptes') state.adminUsers = null;
   state.adminError = null;
   render();
@@ -3045,6 +3051,54 @@ function exportAdminUsersCsv(){
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `comptes-mise-et-sure-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+let adminClientSearchTimer = null;
+function setAdminClientSearch(value){
+  state.adminClientSearch = value;
+  clearTimeout(adminClientSearchTimer);
+  adminClientSearchTimer = setTimeout(()=>{
+    render();
+    const input = document.getElementById('admin-client-search');
+    if(input){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  }, 200);
+}
+function copyAdminClientField(field){
+  const rows = adminClientRows();
+  const values = rows.map(c=>c[field]).filter(Boolean);
+  if(!values.length){ toast(field==='phone' ? 'Aucun téléphone dans cette liste' : 'Aucune adresse', 'alert'); return; }
+  const text = values.join(field==='phone' ? '\n' : ', ');
+  const label = field==='phone' ? 'numéro' : 'adresse';
+  const done = () => toast(`${values.length} ${label}${values.length>1?'s':''} copié${field==='phone'?'':'e'}${values.length>1?'s':''}`);
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(()=>window.prompt('Copiez :', text));
+  else window.prompt('Copiez :', text);
+}
+function exportAdminClientsCsv(){
+  const rows = adminClientRows();
+  if(!rows.length) return;
+  const esc = v => { const s = v==null ? '' : String(v); return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  const header = ['Nom','Prénom','Email','Téléphone','Établissement(s)','Adresse','Code postal','Ville','SIRET','Forfait','Facturation','Statut','Inscrit le','Dernière activité','Note interne'];
+  const lines = [];
+  rows.forEach(c=>{
+    const restos = (c.restaurants && c.restaurants.length) ? c.restaurants : [{}];
+    // Une ligne par établissement : un client Pro avec 3 restaurants donne 3 lignes, plus simple
+    // à trier et à filtrer dans Excel qu'une cellule contenant les trois.
+    restos.forEach(r=>{
+      lines.push([
+        c.last_name, c.first_name, c.email, c.phone, r.name||'', r.address||'', r.postal_code||'', (r.city && r.city!=='—') ? r.city : '', r.siret||'',
+        c.plan, c.billing_cycle==='annual'?'annuelle':'mensuelle',
+        c.suspended ? 'suspendu' : (c.stripe_subscription_status || (c.free_access_granted ? 'accès gratuit' : 'sans accès')),
+        c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '',
+        c.last_seen_at ? new Date(c.last_seen_at).toLocaleDateString('fr-FR') : '',
+        c.admin_note||'',
+      ].map(esc).join(';'));
+    });
+  });
+  const blob = new Blob(['﻿' + [header.join(';'), ...lines].join('\r\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `clients-mise-et-sure-${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
 }
@@ -13787,12 +13841,14 @@ function renderAdminPage(){
         <div class="pill-nav admin-tabs">
           <button class="${tab==='dashboard'?'active':''}" onclick="setAdminTab('dashboard')">Tableau de bord</button>
           <button class="${tab==='comptes'?'active':''}" onclick="setAdminTab('comptes')">Comptes${pastDue>0 ? ` <span class="tag tag-red" style="margin-left:4px;" title="Paiements en retard">${pastDue}</span>` : ''}</button>
+          <button class="${tab==='clients'?'active':''}" onclick="setAdminTab('clients')">Clients</button>
           <button class="${tab==='aide'?'active':''}" onclick="setAdminTab('aide')">Centre d'aide${openQ>0 ? ` <span class="tag tag-red" style="margin-left:4px;">${openQ}</span>` : ''}</button>
           <button class="${tab==='journal'?'active':''}" onclick="setAdminTab('journal')">Journal d'activité</button>
         </div>
         ${state.adminError ? `<div class="login-error" style="margin-bottom:16px;">${escapeHtml(state.adminError)}</div>` : ''}
         ${tab==='dashboard' ? renderAdminDashboard() : ''}
         ${tab==='comptes' ? renderAdminAccounts() : ''}
+        ${tab==='clients' ? renderAdminClients() : ''}
         ${tab==='aide' ? renderAdminSupport() : ''}
         ${tab==='journal' ? renderAdminActivityLog() : ''}
       </div>
@@ -13924,6 +13980,7 @@ function adminStatusTag(u){
   if(u.stripe_subscription_status==='trialing') return `<span class="tag tag-subtle">Période d'essai</span>`;
   if(u.stripe_subscription_status==='active') return `<span class="tag tag-subtle">Abonnement actif</span>`;
   if(u.free_access_granted) return `<span class="tag tag-neutral">Accès gratuit</span>`;
+  if(u.is_admin) return `<span class="tag tag-neutral">Administrateur</span>`;
   return `<span class="tag tag-neutral">Sans accès</span>`;
 }
 function renderAdminAccountRow(u){
@@ -13994,6 +14051,87 @@ function renderAdminAccountRow(u){
         </div>
       ` : ''}
     </div>
+  `;
+}
+// ---- Annuaire des clients ----
+// Toutes les coordonnées utiles en un seul tableau, pour retrouver ou contacter un client en
+// quelques secondes. La recherche porte sur tout : nom, email, téléphone, établissement, ville,
+// SIRET.
+function adminClientRows(){
+  const all = state.adminClients || [];
+  const q = (state.adminClientSearch||'').toLowerCase().trim();
+  const digits = q.replace(/\D/g,'');
+  const filter = state.adminClientFilter || '';
+  let rows = all.filter(c=>{
+    if(filter==='clients' && (c.is_admin || !c.email_verified)) return false;
+    if(filter==='avec_tel' && !c.phone) return false;
+    if(filter==='sans_tel' && c.phone) return false;
+    if(filter==='acces' && !(['active','trialing','past_due'].includes(c.stripe_subscription_status) || c.free_access_granted)) return false;
+    if(!q) return true;
+    const restos = (c.restaurants||[]).map(r=>[r.name,r.address,r.postal_code,r.city,r.siret].join(' ')).join(' ');
+    const hay = [c.first_name,c.last_name,c.email,c.phone,restos,c.plan].join(' ').toLowerCase();
+    if(hay.includes(q)) return true;
+    // Un numéro tapé avec ou sans espaces (06 12… / 0612…) doit retrouver le client.
+    return digits.length>=4 && String(c.phone||'').replace(/\D/g,'').includes(digits);
+  });
+  const sort = state.adminClientSort || 'nom';
+  const byName = (a,b)=>(`${a.last_name} ${a.first_name}`).localeCompare(`${b.last_name} ${b.first_name}`,'fr',{sensitivity:'base'});
+  if(sort==='nom') rows.sort(byName);
+  if(sort==='prenom') rows.sort((a,b)=>(`${a.first_name} ${a.last_name}`).localeCompare(`${b.first_name} ${b.last_name}`,'fr',{sensitivity:'base'}));
+  if(sort==='recent') rows.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  if(sort==='ville') rows.sort((a,b)=>String((a.restaurants[0]||{}).city||'~').localeCompare(String((b.restaurants[0]||{}).city||'~'),'fr'));
+  return rows;
+}
+function renderAdminClients(){
+  if(!state.adminClients) return `<div class="small muted">Chargement…</div>`;
+  const rows = adminClientRows();
+  const sort = state.adminClientSort || 'nom';
+  const filter = state.adminClientFilter || '';
+  const planLabel = p => ({solo:'Solo',essentiel:'Essentiel',pro:'Pro'})[p] || (p||'—');
+  return `
+    <div class="admin-filter-bar">
+      <input type="text" id="admin-client-search" placeholder="🔎 Nom, email, téléphone, établissement, ville, SIRET…" value="${escapeHtml(state.adminClientSearch||'')}" oninput="setAdminClientSearch(this.value)" style="flex:1;min-width:220px;">
+      <select onchange="state.adminClientFilter=this.value;render();">
+        ${[['','Tous les comptes'],['clients','Clients (hors admins, email vérifié)'],['acces','Avec un accès actif'],['avec_tel','Avec téléphone'],['sans_tel','Sans téléphone']].map(([v,l])=>`<option value="${v}" ${filter===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select onchange="state.adminClientSort=this.value;render();">
+        ${[['nom','Nom (A → Z)'],['prenom','Prénom (A → Z)'],['recent','Plus récents'],['ville','Ville']].map(([v,l])=>`<option value="${v}" ${sort===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+    </div>
+    <div class="flex between center" style="margin:-6px 0 12px 0;flex-wrap:wrap;gap:8px;">
+      <span class="small muted">${rows.length} client${rows.length>1?'s':''}${rows.length!==state.adminClients.length?` sur ${state.adminClients.length}`:''}</span>
+      ${rows.length ? `<div class="flex gap8" style="flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="copyAdminClientField('email')">${iconXs(I.mail)} Copier les emails</button>
+        <button class="btn btn-ghost btn-sm" onclick="copyAdminClientField('phone')">${iconXs(I.mobile)} Copier les téléphones</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportAdminClientsCsv()">${iconXs(I.download)} Exporter (CSV)</button>
+      </div>` : ''}
+    </div>
+    ${rows.length===0 ? emptyState('Aucun client ne correspond à cette recherche.') : `
+    <div class="card" style="padding:6px 16px;">
+      <table class="stack-mobile admin-clients-table">
+        <tr><th>Client</th><th>Email</th><th>Téléphone</th><th>Établissement</th><th>Forfait</th><th>Inscrit le</th></tr>
+        ${rows.map(c=>{
+          const jsEmail = escapeHtml(c.email).replace(/'/g,"\\'");
+          const restos = c.restaurants || [];
+          return `<tr class="tr-hover">
+            <td data-label="Client">
+              <a href="#" onclick="adminOpenAccountByEmail('${jsEmail}');return false;" style="color:inherit;font-weight:600;" title="Ouvrir la fiche du compte">${escapeHtml(c.last_name||'')} ${escapeHtml(c.first_name||'')}</a>
+              ${c.is_admin ? '<span class="small muted"> (admin)</span>' : ''}
+              <div style="margin-top:4px;">${adminStatusTag(c)}</div>
+            </td>
+            <td data-label="Email"><a href="mailto:${escapeHtml(c.email)}" style="color:inherit;word-break:break-all;">${escapeHtml(c.email)}</a>${c.oauth_provider?`<div class="small muted">via ${escapeHtml(c.oauth_provider==='google'?'Google':c.oauth_provider==='apple'?'Apple':c.oauth_provider)}</div>`:''}</td>
+            <td data-label="Téléphone" class="mono">${c.phone ? `<a href="tel:${escapeHtml(String(c.phone).replace(/[^\d+]/g,''))}" style="color:inherit;white-space:nowrap;">${escapeHtml(c.phone)}</a>` : '<span class="muted">—</span>'}</td>
+            <td data-label="Établissement">${restos.length ? restos.map(r=>`<div style="margin-bottom:4px;">
+                <b>${escapeHtml(r.name||'')}</b>
+                <div class="small muted">${escapeHtml([r.address, [r.postal_code, r.city && r.city!=='—' ? r.city : ''].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '—')}</div>
+                ${r.siret ? `<div class="small muted mono">SIRET ${escapeHtml(r.siret)}</div>` : ''}
+              </div>`).join('') : '<span class="muted small">Aucun établissement</span>'}</td>
+            <td data-label="Forfait">${escapeHtml(planLabel(c.plan))}${c.billing_cycle==='annual'?'<div class="small muted">annuel</div>':''}</td>
+            <td data-label="Inscrit le" class="small">${fmtDateLong(new Date(c.created_at))}<div class="small muted">actif ${adminTimeAgo(c.last_seen_at)}</div></td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>`}
   `;
 }
 // ---- Centre d'aide ----
