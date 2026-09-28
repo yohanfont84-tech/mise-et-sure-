@@ -693,6 +693,7 @@ select{ max-width:100%; text-overflow:ellipsis; }
 .admin-mode-banner{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1.5px dashed var(--border);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13.5px;line-height:1.5;}
 .admin-clients-table td{vertical-align:top;}
 .banking-lock{max-width:420px;margin:30px auto;text-align:center;}
+.admin-owner-note{display:flex;gap:10px;align-items:flex-start;background:var(--paper);border-radius:10px;padding:10px 14px;margin:14px 0;font-size:13.5px;line-height:1.5;}
 .banking-lock .field{text-align:left;}
 .admin-bar-col{flex:1;height:100%;display:flex;align-items:flex-end;}
 .admin-bar-col .admin-bar{width:100%;}
@@ -3018,14 +3019,19 @@ async function adminOpenAccountByEmail(email){
   const u = (state.adminUsers||[]).find(x=>String(x.email).toLowerCase()===String(email).toLowerCase());
   if(u) await toggleAdminAccountDetail(u.id);
 }
+// Après une action sensible (forcément lancée depuis Banking > Outils sensibles) : on recharge
+// la liste des outils, et on oublie les listes des autres onglets pour qu'elles se rechargent.
+async function refreshAfterOwnerAction(){
+  state.adminUsers = null; state.adminClients = null; state.adminStats = null; state.adminActivity = null;
+  if(state.adminTab==='banking') await loadBankingTools();
+  else await adminFilterUsers(true);
+}
+function isOwnerAccount(){ return !!(ACCOUNT && ACCOUNT.is_super_admin); }
 async function setAdminStripeMode(userId, mode){
   try{
-    const data = await apiRequest(`/api/admin/users/${userId}/stripe-mode`, { method:'PATCH', body:{ mode } });
-    const u = (state.adminUsers||[]).find(x=>x.id===userId);
-    if(u) Object.assign(u, { stripe_livemode: data.user.stripe_livemode });
-    state.adminStats = null; state.adminClients = null;
+    const data = await apiRequest(`/api/admin/users/${userId}/stripe-mode`, { method:'PATCH', headers: bankingHeaders(), body:{ mode } });
     toast(mode==='live' ? 'Abonnement marqué comme réel' : 'Abonnement marqué comme test');
-    render();
+    await refreshAfterOwnerAction();
   } catch(err){ toast(err.message, 'alert'); }
 }
 async function saveAdminNote(userId){
@@ -3142,6 +3148,7 @@ async function unlockBanking(){
     state.bankingError = null; state.bankingUserDraft = '';
     state.bankingSummary = null;
     render();
+    if(state.bankingView==='outils') await loadBankingTools();
     await loadBankingSummary();
   } catch(err){
     state.bankingUserDraft = user; // l'identifiant reste saisi : seul le mot de passe est à retaper
@@ -3152,7 +3159,7 @@ async function unlockBanking(){
 }
 function lockBanking(silent){
   state.bankingToken = null; state.bankingExpiresAt = null;
-  state.bankingSummary = null; state.bankingReport = null;
+  state.bankingSummary = null; state.bankingReport = null; state.bankingToolUsers = null;
   if(!silent){ toast('Espace Banking verrouillé'); render(); }
 }
 async function loadBankingSummary(){
@@ -3274,6 +3281,37 @@ function downloadBankingReportPdf(){
     doc.save(bankingFileBase(r) + '.pdf');
   });
 }
+function setBankingView(view){
+  state.bankingView = view;
+  render();
+  if(view==='outils' && !state.bankingToolUsers) loadBankingTools();
+}
+async function loadBankingTools(){
+  try{
+    const q = new URLSearchParams({ sort:'nom' });
+    if(state.bankingToolSearch) q.set('search', state.bankingToolSearch);
+    const data = await apiRequest(`/api/admin/users?${q.toString()}`);
+    state.bankingToolUsers = data.users;
+    render();
+    const input = document.getElementById('owner-tools-search');
+    if(input && document.activeElement !== input && state.bankingToolFocus){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  } catch(err){ handleBankingError(err); }
+}
+let ownerToolsTimer = null;
+function setOwnerToolsSearch(value){
+  state.bankingToolSearch = value;
+  state.bankingToolFocus = true;
+  clearTimeout(ownerToolsTimer);
+  ownerToolsTimer = setTimeout(loadBankingTools, 300);
+}
+// Depuis la fiche d'un compte : ouvre directement ses outils dans Banking.
+async function openOwnerToolsFor(email){
+  state.bankingToolSearch = email;
+  state.bankingToolUsers = null;
+  state.bankingView = 'outils';
+  await setAdminTab('banking');
+  if(bankingUnlocked()) await loadBankingTools();
+}
 // ---- Centre d'aide ----
 function setAdminSupportFilter(filter){
   state.adminSupportFilter = filter;
@@ -3366,27 +3404,27 @@ async function toggleAdminAccountDetail(userId){
 }
 async function toggleFreeAccess(userId, currentlyGranted){
   try{
-    await apiRequest(`/api/admin/users/${userId}/access`, { method:'PATCH', body:{ granted: !currentlyGranted } });
+    await apiRequest(`/api/admin/users/${userId}/access`, { method:'PATCH', headers: bankingHeaders(), body:{ granted: !currentlyGranted } });
     toast(!currentlyGranted ? 'Accès gratuit accordé' : 'Accès gratuit retiré');
-    await adminFilterUsers(true);
+    await refreshAfterOwnerAction();
   } catch(err){
     toast(err.message, 'alert');
   }
 }
 async function changeUserPlan(userId, newPlan){
   try{
-    await apiRequest(`/api/admin/users/${userId}/plan`, { method:'PATCH', body:{ plan: newPlan } });
+    await apiRequest(`/api/admin/users/${userId}/plan`, { method:'PATCH', headers: bankingHeaders(), body:{ plan: newPlan } });
     toast('Forfait mis à jour — ' + newPlan);
-    await adminFilterUsers(true);
+    await refreshAfterOwnerAction();
   } catch(err){
     toast(err.message, 'alert');
   }
 }
 async function toggleUserSuspension(userId, currentlySuspended){
   try{
-    await apiRequest(`/api/admin/users/${userId}/suspend`, { method:'PATCH', body:{ suspended: !currentlySuspended } });
+    await apiRequest(`/api/admin/users/${userId}/suspend`, { method:'PATCH', headers: bankingHeaders(), body:{ suspended: !currentlySuspended } });
     toast(!currentlySuspended ? 'Compte suspendu' : 'Compte réactivé');
-    await adminFilterUsers(true);
+    await refreshAfterOwnerAction();
   } catch(err){
     toast(err.message, 'alert');
   }
@@ -3409,11 +3447,11 @@ function openAdminDeleteUserModal(userId, email){
 }
 async function confirmAdminDeleteUser(userId){
   try{
-    await apiRequest(`/api/admin/users/${userId}`, { method:'DELETE', body:{ adminPassword: adminConfirmPassword() } });
+    await apiRequest(`/api/admin/users/${userId}`, { method:'DELETE', headers: bankingHeaders(), body:{ adminPassword: adminConfirmPassword() } });
     closeModal();
     toast('Compte supprimé');
     state.adminExpandedUserId = null;
-    await adminFilterUsers(true);
+    await refreshAfterOwnerAction();
   } catch(err){
     toast(err.message, 'alert');
   }
@@ -3432,10 +3470,10 @@ function openPromoteAdminModal(userId, email){
 }
 async function confirmPromoteAdmin(email){
   try{
-    await apiRequest(`/api/admin/users/promote-by-email`, { method:'POST', body:{ email, adminPassword: adminConfirmPassword() } });
+    await apiRequest(`/api/admin/users/promote-by-email`, { method:'POST', headers: bankingHeaders(), body:{ email, adminPassword: adminConfirmPassword() } });
     closeModal();
     toast('Compte promu administrateur');
-    await adminFilterUsers(true);
+    await refreshAfterOwnerAction();
   } catch(err){
     toast(err.message, 'alert');
   }
@@ -3451,10 +3489,10 @@ function openDemoteAdminModal(userId, email){
 }
 async function confirmDemoteAdmin(userId){
   try{
-    await apiRequest(`/api/admin/users/${userId}/demote`, { method:'PATCH', body:{ adminPassword: adminConfirmPassword() } });
+    await apiRequest(`/api/admin/users/${userId}/demote`, { method:'PATCH', headers: bankingHeaders(), body:{ adminPassword: adminConfirmPassword() } });
     closeModal();
     toast('Statut administrateur retiré');
-    await adminFilterUsers(true);
+    await refreshAfterOwnerAction();
   } catch(err){
     toast(err.message, 'alert');
   }
@@ -3465,7 +3503,7 @@ async function confirmDemoteAdmin(userId){
 async function adminImpersonateUser(userId, label){
   try{
     const originalToken = AUTH_TOKEN;
-    const data = await apiRequest(`/api/admin/users/${userId}/impersonate`, { method:'POST' });
+    const data = await apiRequest(`/api/admin/users/${userId}/impersonate`, { method:'POST', headers: bankingHeaders() });
     ACCOUNT = data.user;
     state.impersonating = { active:true, label, originalToken };
     toast(`Vous visualisez maintenant le compte de ${label}`);
@@ -14016,7 +14054,7 @@ function renderAdminPage(){
           <button class="${tab==='clients'?'active':''}" onclick="setAdminTab('clients')">Clients</button>
           <button class="${tab==='aide'?'active':''}" onclick="setAdminTab('aide')">Centre d'aide${openQ>0 ? ` <span class="tag tag-red" style="margin-left:4px;">${openQ}</span>` : ''}</button>
           <button class="${tab==='journal'?'active':''}" onclick="setAdminTab('journal')">Journal d'activité</button>
-          <button class="${tab==='banking'?'active':''}" onclick="setAdminTab('banking')">${bankingUnlocked() ? '🔓' : '🔒'} Banking</button>
+          ${isOwnerAccount() ? `<button class="${tab==='banking'?'active':''}" onclick="setAdminTab('banking')">${bankingUnlocked() ? '🔓' : '🔒'} Banking</button>` : ''}
         </div>
         ${state.adminError ? `<div class="login-error" style="margin-bottom:16px;">${escapeHtml(state.adminError)}</div>` : ''}
         ${tab==='dashboard' ? renderAdminDashboard() : ''}
@@ -14024,7 +14062,7 @@ function renderAdminPage(){
         ${tab==='clients' ? renderAdminClients() : ''}
         ${tab==='aide' ? renderAdminSupport() : ''}
         ${tab==='journal' ? renderAdminActivityLog() : ''}
-        ${tab==='banking' ? renderAdminBanking() : ''}
+        ${tab==='banking' && isOwnerAccount() ? renderAdminBanking() : ''}
       </div>
     </div>
   `;
@@ -14173,7 +14211,7 @@ function renderAdminAccountRow(u){
     <div class="admin-account-row ${expanded?'expanded':''}">
       <div class="flex between center" style="flex-wrap:wrap;gap:10px;cursor:pointer;" onclick="toggleAdminAccountDetail(${u.id})" role="button" tabindex="0" onkeydown="if(event.key==='Enter')toggleAdminAccountDetail(${u.id})" aria-expanded="${expanded}">
         <div style="min-width:0;">
-          <div style="font-weight:700;font-size:14px;">${escapeHtml(fullName)} ${u.is_admin?'· <span class="small muted">(admin)</span>':''} ${u.admin_note ? `<span class="small muted" title="${escapeHtml(u.admin_note)}">📝</span>` : ''}</div>
+          <div style="font-weight:700;font-size:14px;">${escapeHtml(fullName)} ${u.is_super_admin?'· <span class="small muted">(propriétaire 🛡️)</span>':u.is_admin?'· <span class="small muted">(admin)</span>':''} ${u.admin_note ? `<span class="small muted" title="${escapeHtml(u.admin_note)}">📝</span>` : ''}</div>
           <div class="small muted">${escapeHtml(u.email)} · ${u.restaurant_count} établissement${u.restaurant_count>1?'s':''}</div>
           <div class="small muted">Inscrit le ${fmtDateLong(new Date(u.created_at))} · actif ${adminTimeAgo(u.last_seen_at)}</div>
         </div>
@@ -14197,28 +14235,15 @@ function renderAdminAccountRow(u){
             </div>
             ${u.pending_deletion_at ? `<div><span class="small muted">Suppression prévue le</span><div style="color:var(--urgent);">${fmtDateLong(new Date(u.pending_deletion_at))}</div></div>` : ''}
           </div>
-          <div class="flex gap8" style="flex-wrap:wrap;margin:14px 0;">
-            <select id="plan-select-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
-              <option value="solo" ${u.plan==='solo'?'selected':''}>Solo</option>
-              <option value="essentiel" ${u.plan==='essentiel'?'selected':''}>Essentiel</option>
-              <option value="pro" ${u.plan==='pro'?'selected':''}>Pro</option>
-            </select>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();changeUserPlan(${u.id}, document.getElementById('plan-select-${u.id}').value)">Changer le forfait</button>
-            ${!u.is_admin ? `
-            <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="event.stopPropagation();toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l’accès gratuit' : 'Accorder un accès gratuit'}</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();adminImpersonateUser(${u.id}, '${jsName}')">${iconXs(I.eye)} Voir en tant que</button>
-            <button class="btn ${u.suspended?'btn-primary':'btn-ghost'} btn-sm" onclick="event.stopPropagation();toggleUserSuspension(${u.id}, ${u.suspended})">${u.suspended ? 'Réactiver' : 'Suspendre'}</button>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPromoteAdminModal(${u.id}, '${jsEmail}')">${iconXs(I.lock)} Promouvoir administrateur</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openAdminDeleteUserModal(${u.id}, '${jsEmail}')">${iconXs(I.trash)} Supprimer</button>
-            ` : `
-            <span class="small muted" style="align-self:center;">Compte administrateur — suspension, suppression et « voir en tant que » volontairement indisponibles ici.</span>
-            <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="event.stopPropagation();openDemoteAdminModal(${u.id}, '${jsEmail}')">Retirer le statut administrateur</button>
-            `}
+          <div class="admin-owner-note">
+            ${u.is_super_admin ? `🛡️ <span><b>Compte propriétaire de la plateforme</b> — protégé : aucun autre administrateur ne peut le modifier.</span>`
+              : isOwnerAccount() ? `🛠️ <span>Forfait, accès gratuit, suspension, suppression, « voir en tant que » et droits administrateur : <a href="#" onclick="event.stopPropagation();openOwnerToolsFor('${jsEmail}');return false;" style="color:inherit;font-weight:700;">ouvrir dans Banking › Outils sensibles</a></span>`
+              : `🔒 <span>Les actions sensibles (forfait, accès, suspension, suppression…) sont réservées au propriétaire de la plateforme.</span>`}
           </div>
           <div class="field" style="margin-bottom:14px;">
             <label>Note interne <span class="muted" style="font-weight:400;">— visible uniquement par les administrateurs</span></label>
-            <textarea id="admin-note-${u.id}" rows="2" placeholder="Ex : a demandé un geste commercial en mars, rappeler en fin de mois…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;">${escapeHtml(u.admin_note||'')}</textarea>
-            <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="saveAdminNote(${u.id})">Enregistrer la note</button>
+            <textarea id="admin-note-${u.id}" rows="2" ${u.is_super_admin && !isOwnerAccount() ? 'disabled' : ''} placeholder="Ex : a demandé un geste commercial en mars, rappeler en fin de mois…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:inherit;">${escapeHtml(u.admin_note||'')}</textarea>
+            ${u.is_super_admin && !isOwnerAccount() ? '' : `<button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="saveAdminNote(${u.id})">Enregistrer la note</button>`}
           </div>
           ${!detail ? `<div class="small muted">Chargement du détail…</div>` : !detail.restaurants || detail.restaurants.length===0 ? `<div class="small muted">Aucun établissement créé pour l'instant.</div>` : `
             <table class="stack-mobile">
@@ -14342,11 +14367,19 @@ function renderAdminBanking(){
   }
   const s = state.bankingSummary;
   const minutesLeft = Math.max(0, Math.round((state.bankingExpiresAt - Date.now())/60000));
+  const view = state.bankingView || 'finances';
   const head = `
     <div class="flex between center" style="margin-bottom:14px;flex-wrap:wrap;gap:10px;">
-      <div class="small muted">🔓 Déverrouillé — encore ${minutesLeft} min</div>
-      <button class="btn btn-ghost btn-sm" onclick="lockBanking()">${iconXs(I.lock)} Verrouiller</button>
+      <div class="pill-nav" style="margin:0;">
+        <button class="${view==='finances'?'active':''}" onclick="setBankingView('finances')">💰 Finances</button>
+        <button class="${view==='outils'?'active':''}" onclick="setBankingView('outils')">🛠️ Outils sensibles</button>
+      </div>
+      <div class="flex gap8 center">
+        <span class="small muted">🔓 encore ${minutesLeft} min</span>
+        <button class="btn btn-ghost btn-sm" onclick="lockBanking()">${iconXs(I.lock)} Verrouiller</button>
+      </div>
     </div>`;
+  if(view==='outils') return head + renderOwnerTools();
   if(!s) return head + `<div class="small muted">Chargement des chiffres…</div>`;
   const st = s.stripe || {};
   const months = st.months || [];
@@ -14488,6 +14521,59 @@ function renderBankingReport(r){
           </tr>`).join('')}
         </table>` : `<div class="small muted" style="margin-top:8px;">Aucune facture payée sur cette période.</div>`}
       </details>
+    </div>`;
+}
+// ---- Banking › Outils sensibles (propriétaire uniquement) ----
+// Tout ce qui peut nuire à un client s'il est fait par erreur ou par malveillance : changer son
+// forfait, lui donner/retirer l'accès, le suspendre, le supprimer, voir son compte « comme lui »,
+// nommer ou retirer un administrateur. Réservé au propriétaire, derrière le verrou Banking.
+function renderOwnerTools(){
+  const rows = state.bankingToolUsers;
+  return `
+    <div class="admin-mode-banner">⚠️ <span><b>Outils sensibles</b> — ces actions touchent directement les comptes de vos clients. Elles sont réservées à votre compte propriétaire et notées dans le journal d'activité. Suppression et droits administrateur demandent en plus votre mot de passe.</span></div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">Nommer un administrateur</div>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        <input id="owner-promote-email" type="email" placeholder="Adresse email d'un compte existant" style="flex:1;min-width:220px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+        <button class="btn btn-ghost" onclick="const e=document.getElementById('owner-promote-email').value.trim(); if(e) openPromoteAdminModal(0, e); else toast('Saisissez une adresse','alert');">${iconXs(I.lock)} Nommer administrateur</button>
+      </div>
+    </div>
+    <div class="admin-filter-bar">
+      <input type="text" id="owner-tools-search" placeholder="🔎 Rechercher un compte (nom ou email)…" value="${escapeHtml(state.bankingToolSearch||'')}" oninput="setOwnerToolsSearch(this.value)" style="flex:1;min-width:220px;">
+    </div>
+    ${!rows ? `<div class="small muted">Chargement…</div>` : rows.length===0 ? emptyState('Aucun compte ne correspond.') : rows.map(renderOwnerToolRow).join('')}
+  `;
+}
+function renderOwnerToolRow(u){
+  const fullName = `${u.first_name||''} ${u.last_name||''}`.trim();
+  const jsName = escapeHtml(fullName).replace(/'/g,"\\'");
+  const jsEmail = escapeHtml(u.email).replace(/'/g,"\\'");
+  const hasSub = !!(u.stripe_subscription_id || u.has_subscription);
+  return `
+    <div class="admin-account-row">
+      <div class="flex between center" style="flex-wrap:wrap;gap:10px;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;font-size:14px;">${escapeHtml(fullName)} ${u.is_super_admin?'<span class="small muted">· propriétaire 🛡️</span>':u.is_admin?'<span class="small muted">· admin</span>':''}</div>
+          <div class="small muted">${escapeHtml(u.email)} · forfait ${escapeHtml(u.plan||'—')}${u.billing_cycle==='annual'?' (annuel)':''}</div>
+        </div>
+        <div>${adminStatusTag(u)}</div>
+      </div>
+      ${u.is_super_admin ? `<div class="small muted" style="margin-top:10px;">🛡️ Votre compte propriétaire est protégé : il ne peut être ni suspendu, ni supprimé, ni privé de ses droits — même par erreur.</div>` : `
+      <div class="flex gap8" style="flex-wrap:wrap;margin-top:12px;">
+        <select id="owner-plan-${u.id}" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;">
+          ${['solo','essentiel','pro'].map(p=>`<option value="${p}" ${u.plan===p?'selected':''}>${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="changeUserPlan(${u.id}, document.getElementById('owner-plan-${u.id}').value)">Changer le forfait</button>
+        ${!u.is_admin ? `
+          <button class="btn ${u.free_access_granted?'btn-ghost':'btn-primary'} btn-sm" onclick="toggleFreeAccess(${u.id}, ${u.free_access_granted})">${u.free_access_granted ? 'Retirer l’accès gratuit' : 'Accorder un accès gratuit'}</button>
+          <button class="btn btn-ghost btn-sm" onclick="adminImpersonateUser(${u.id}, '${jsName}')">${iconXs(I.eye)} Voir en tant que</button>` : ''}
+        ${hasSub ? `<button class="btn btn-ghost btn-sm" onclick="setAdminStripeMode(${u.id}, '${u.stripe_livemode===true?'test':'live'}')">Marquer l'abonnement comme ${u.stripe_livemode===true?'test':'réel'}</button>` : ''}
+        <button class="btn ${u.suspended?'btn-primary':'btn-ghost'} btn-sm" onclick="toggleUserSuspension(${u.id}, ${u.suspended})">${u.suspended ? 'Réactiver' : 'Suspendre'}</button>
+        ${u.is_admin
+          ? `<button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="openDemoteAdminModal(${u.id}, '${jsEmail}')">Retirer les droits administrateur</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="openPromoteAdminModal(${u.id}, '${jsEmail}')">${iconXs(I.lock)} Nommer administrateur</button>`}
+        <button class="btn btn-ghost btn-sm" style="color:var(--urgent);" onclick="openAdminDeleteUserModal(${u.id}, '${jsEmail}')">${iconXs(I.trash)} Supprimer</button>
+      </div>`}
     </div>`;
 }
 // ---- Centre d'aide ----
