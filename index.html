@@ -431,6 +431,12 @@ tr.group-row:hover td{background:var(--gray-100);}
   table.stack-mobile.compact-rows td[data-label="Produit"]{ flex:1 1 100%; }
   table.stack-mobile.compact-rows td:not([data-label]){ flex:1 1 100%; }
   table.stack-mobile.compact-rows tr.group-row{ display:block; }
+  /* Case de sélection multiple : discrète, en haut à droite de la fiche du produit, plutôt
+     qu'une ligne entière étiquetée « Sélection ». */
+  table.stack-mobile.compact-rows tr{ position:relative; }
+  table.stack-mobile.compact-rows td.sel-cell{ position:absolute; top:12px; right:12px; flex:none; width:auto; padding:0!important; }
+  table.stack-mobile.compact-rows td.sel-cell input{ width:20px; height:20px; }
+  table.stack-mobile.compact-rows td.sel-cell + td[data-label="Produit"]{ padding-right:34px!important; }
 }
 
 .tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;}
@@ -1689,7 +1695,7 @@ function initialsFor(name){
   return name.split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
 }
 function avatarInner(photoUrl, name){
-  return photoUrl ? `<img src="${photoUrl}" alt="${escapeHtml(name)}">` : initialsFor(name);
+  return photoUrl ? `<img src="${safeImgSrc(photoUrl)}" alt="${escapeHtml(name)}">` : initialsFor(name);
 }
 function photoFor(role, employeeId){
   if(employeeId){
@@ -2058,7 +2064,7 @@ async function sendBasket(supplierId){
   items.forEach(li=>{
     const p = PRODUCTS.find(x=>x.id===li.productId);
     if(p){
-      parts.push(`${escapeHtml(p.name)} × ${li.qty} ${p.unit}`);
+      parts.push(`${p.name} × ${li.qty} ${p.unit}`);
       amount += li.qty*p.price;
       enrichedItems.push({ productId: li.productId, remoteProductId: p.remoteId, name: p.name, qty: li.qty, price: p.price, tvaRate: p.tvaRate??5.5 });
     }
@@ -3396,7 +3402,7 @@ function openMyProfileModal(){
     <h3>Mon profil</h3>
     <div class="modal-sub">${escapeHtml(name)} — ${escapeHtml(roleLabel)}</div>
     <div class="flex center gap12" style="margin-bottom:18px;">
-      <div class="avatar" style="width:60px;height:60px;font-size:20px;">${photo?`<img src="${photo}" alt="${name}">`:initialsFor(name)}</div>
+      <div class="avatar" style="width:60px;height:60px;font-size:20px;">${photo?`<img src="${safeImgSrc(photo)}" alt="${escapeHtml(name)}">`:initialsFor(name)}</div>
       ${photo ? `<button class="btn btn-ghost btn-sm" onclick="removeMyPhoto()">Retirer la photo</button>` : ''}
     </div>
     <div class="field"><label>${photo?'Changer de photo':'Ajouter une photo'}</label><input type="file" accept="image/*" onchange="handleMyPhotoUpload(this)"></div>
@@ -3614,7 +3620,7 @@ function renderShell(){
   const resto = RESTOS.find(r=>r.id===state.resto) || {name:'Mon restaurant', city:'', accentColor:null, logoDataUrl:null};
   applyAppearance(resto);
   const brandMarkContent = resto.logoDataUrl
-    ? `<img src="${resto.logoDataUrl}" alt="${escapeHtml(resto.name)}">`
+    ? `<img src="${safeImgSrc(resto.logoDataUrl)}" alt="${escapeHtml(resto.name)}">`
     : (resto.name||'?').charAt(0).toUpperCase();
 
   const sidebarHtml = `
@@ -3684,7 +3690,7 @@ function renderShell(){
           ${state.notifOpen ? renderNotifPanel() : ''}
         </div>
         <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="${state.theme==='dark'?'Passer en mode clair':'Passer en mode sombre'}" aria-label="${state.theme==='dark'?'Passer en mode clair':'Passer en mode sombre'}">${state.theme==='dark'?iconSm(I.sun):iconSm(I.moon)}</button>
-        <button class="avatar avatar-btn" title="${escapeHtml(meta.name)} — modifier ma photo" onclick="openMyProfileModal()">${photoFor(state.identity, state.loggedInEmployeeId) ? `<img src="${photoFor(state.identity, state.loggedInEmployeeId)}" alt="${escapeHtml(meta.name)}">` : meta.initials}</button>
+        <button class="avatar avatar-btn" title="${escapeHtml(meta.name)} — modifier ma photo" onclick="openMyProfileModal()">${photoFor(state.identity, state.loggedInEmployeeId) ? `<img src="${safeImgSrc(photoFor(state.identity, state.loggedInEmployeeId))}" alt="${escapeHtml(meta.name)}">` : meta.initials}</button>
         <button class="btn btn-ghost btn-sm" onclick="logout()" title="Se déconnecter" aria-label="Se déconnecter">${iconSm(I.logout)}</button>
       </div>
     </div>
@@ -3932,7 +3938,7 @@ function buildAIInsights(){
   const topId = Object.keys(freq).sort((a,b)=>freq[b]-freq[a])[0];
   if(topId){
     const p = PRODUCTS.find(x=>x.id===topId);
-    if(p) insights.push(`<b>${escapeHtml(p.name)}</b> est le produit le plus commandé, avec ${freq[topId]} ${p.unit} au total sur votre historique.`);
+    if(p) insights.push(`<b>${escapeHtml(p.name)}</b> est le produit le plus commandé, avec ${freq[topId]} ${escapeHtml(p.unit)} au total sur votre historique.`);
   }
   if(SUPPLIERS.length){
     const bySpend = SUPPLIERS.map(s=>({s, spend:supplierSpend(s.id)})).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend)[0];
@@ -4619,15 +4625,15 @@ function viewStocks(){
               </td>
             </tr>` : '';
           const itemRows = isCollapsed ? '' : g.items.map(p=>`<tr class="tr-hover">
-            ${bulk ? `<td data-label="Sélection"><input type="checkbox" class="prod-sel-chk" data-id="${p.id}" aria-label="Sélectionner ${escapeHtml(p.name)}" onchange="toggleProductSelection('${p.id}', this.checked)" ${selected.has(p.id)?'checked':''}></td>` : ''}
+            ${bulk ? `<td class="sel-cell"><input type="checkbox" class="prod-sel-chk" data-id="${p.id}" aria-label="Sélectionner ${escapeHtml(p.name)}" onchange="toggleProductSelection('${p.id}', this.checked)" ${selected.has(p.id)?'checked':''}></td>` : ''}
             <td data-label="Produit" style="font-weight:600;">${escapeHtml(p.name)}${p.supplierReference?`<div class="small muted mono">${escapeHtml(p.supplierReference)}</div>`:''}</td>
             <td data-label="Catégorie" class="muted small">${escapeHtml(p.cat||'—')}</td>
             <td data-label="Lieux">${zoneTagsFor(p) || '<span class="muted small">—</span>'}</td>
             <td data-label="Département"><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
             <td data-label="Fournisseur" class="muted">${supplierName(p.supplier)}</td>
             <td data-label="Conditionnement" class="muted small">${escapeHtml(p.packaging||'—')}</td>
-            <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${p.unit}</td>
-            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${fmtEUR(p.price||0)} HT / ${p.unit}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
+            <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${escapeHtml(p.unit)}</td>
+            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${fmtEUR(p.price||0)} HT / ${escapeHtml(p.unit)}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
               <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire" aria-label="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
@@ -7999,7 +8005,7 @@ function viewParametres(){
           <label>Logo (image)</label>
           ${draft.logoDataUrl ? `
             <div class="flex center gap8" style="margin-bottom:10px;">
-              <img src="${draft.logoDataUrl}" alt="Logo" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
+              <img src="${safeImgSrc(draft.logoDataUrl)}" alt="Logo" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
               <button class="btn btn-ghost btn-sm" onclick="removeLogo()">Retirer le logo</button>
             </div>
           ` : ''}
@@ -8011,7 +8017,7 @@ function viewParametres(){
           <div class="small muted" style="margin-bottom:8px;">Affichée en fond sur l'écran de connexion, et discrètement dans l'application elle-même, derrière vos données — jamais derrière un texte, les cartes restent toujours pleinement lisibles par-dessus.</div>
           ${draft.coverPhotoDataUrl ? `
             <div style="margin-bottom:10px;">
-              <img src="${draft.coverPhotoDataUrl}" alt="Photo de fond" style="width:100%;max-width:320px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);display:block;margin-bottom:8px;">
+              <img src="${safeImgSrc(draft.coverPhotoDataUrl)}" alt="Photo de fond" style="width:100%;max-width:320px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);display:block;margin-bottom:8px;">
               <button class="btn btn-ghost btn-sm" onclick="removeCoverPhoto()">Retirer la photo</button>
             </div>
           ` : ''}
@@ -8150,13 +8156,41 @@ async function saveAccountInfo(){
   const email = (document.getElementById('acct-email').value||'').trim();
   if(!firstName || !lastName){ toast('Le prénom et le nom sont requis','alert'); return; }
   if(!email || !isValidEmail(email)){ toast('Adresse email invalide','alert'); return; }
+  // Changer l'adresse email d'un compte demande le mot de passe actuel : c'est l'adresse qui
+  // reçoit les codes de réinitialisation, donc la clé du compte tout entier.
+  const emailChanged = email.toLowerCase() !== String(ACCOUNT.email||'').toLowerCase();
+  if(emailChanged){
+    openModal(`
+      <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+      <h3>Confirmer le changement d'email</h3>
+      <div class="modal-sub">Par sécurité, saisissez votre mot de passe actuel pour remplacer votre adresse par <b>${escapeHtml(email)}</b>.</div>
+      <div class="field"><label>Mot de passe actuel</label><input id="acct-confirm-password" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmAccountInfoSave();}"></div>
+      <div class="small muted" style="margin:-6px 0 14px 0;">Compte créé avec Google ou Apple, sans mot de passe ? Laissez ce champ vide.</div>
+      <button class="btn btn-primary btn-block" onclick="confirmAccountInfoSave()">Confirmer</button>
+    `);
+    state.pendingAccountInfo = { firstName, lastName, phone, email };
+    setTimeout(()=>{ const el = document.getElementById('acct-confirm-password'); if(el) el.focus(); }, 30);
+    return;
+  }
+  await submitAccountInfo({ firstName, lastName, phone, email });
+}
+async function confirmAccountInfoSave(){
+  const pending = state.pendingAccountInfo;
+  if(!pending) return;
+  const currentPassword = (document.getElementById('acct-confirm-password')||{}).value || '';
+  const ok = await submitAccountInfo({ ...pending, currentPassword });
+  if(ok){ state.pendingAccountInfo = null; closeModal(); render(); }
+}
+async function submitAccountInfo(body){
   try{
-    const data = await apiRequest('/api/account', { method:'PATCH', body:{ firstName, lastName, phone, email } });
+    const data = await apiRequest('/api/account', { method:'PATCH', body });
     ACCOUNT = data.account;
     toast('Informations du compte mises à jour');
     render();
+    return true;
   } catch(err){
     toast(err.message, 'alert');
+    return false;
   }
 }
 // Choisir un thème complet impose sa propre couleur d'accent (voir applyAppearance) — mais
@@ -9127,7 +9161,10 @@ async function ensureMySupportQuestionsLoaded(){
   state.mySupportQuestions = null;
   try{
     const data = await apiRequest('/api/account/support-questions');
-    state.mySupportQuestions = data.questions;
+    // Toujours une liste : si la réponse n'en contient pas (c'est le cas dans la démo publique),
+    // laisser « undefined » relançait ce chargement à chaque affichage, en boucle sans fin — la
+    // page Aide figeait complètement le navigateur.
+    state.mySupportQuestions = Array.isArray(data.questions) ? data.questions : [];
   } catch(err){
     state.mySupportQuestions = [];
   }
@@ -9167,11 +9204,24 @@ async function submitSupportQuestion(){
     toast('Question envoyée — vous recevrez une réponse par email');
     textarea.value = '';
     const data = await apiRequest('/api/account/support-questions');
-    state.mySupportQuestions = data.questions;
+    // Toujours une liste : si la réponse n'en contient pas (c'est le cas dans la démo publique),
+    // laisser « undefined » relançait ce chargement à chaque affichage, en boucle sans fin — la
+    // page Aide figeait complètement le navigateur.
+    state.mySupportQuestions = Array.isArray(data.questions) ? data.questions : [];
     render();
   } catch(err){
     toast(err.message, 'alert');
   }
+}
+// Pour une image dont l'adresse vient du serveur (logo, photo de profil, bon de livraison) :
+// seules une image encodée (data:image/...) ou une adresse web (https/http, ou un fichier du
+// site) sont acceptées, puis échappées. Sans ce filtre, une adresse piégée enregistrée par un
+// autre compte (ex. « x" onerror="... ») pouvait exécuter du code dans le navigateur du patron.
+function safeImgSrc(url){
+  if(url==null) return '';
+  const u = String(url).trim();
+  if(/^data:image\/(png|jpe?g|gif|webp|svg\+xml);/i.test(u) || /^https?:\/\//i.test(u) || /^[\w./-]+$/.test(u)) return escapeHtml(u);
+  return '';
 }
 function escapeHtml(str){
   // Échappe aussi les guillemets (en plus de < > &), pour être sûr même quand le texte est
@@ -9385,7 +9435,7 @@ function viewCuisineAccueil(){
 function catalogCard(p){
   return `<div class="card">
     <div style="font-weight:700;">${escapeHtml(p.name)}</div>
-    <div class="small muted" style="margin-top:4px;">Unité : ${p.unit} · commande standard ${p.qtyCommande} ${p.unit}</div>
+    <div class="small muted" style="margin-top:4px;">Unité : ${escapeHtml(p.unit)} · commande standard ${p.qtyCommande} ${escapeHtml(p.unit)}</div>
   </div>`;
 }
 function viewCuisineStocks(){
@@ -9615,7 +9665,7 @@ function openReceiveOrderModal(id, correcting){
     </div>`}
     <div class="field">
       <label>Bon de livraison / facture (facultatif)</label>
-      <div id="rcv-photo-preview" style="margin-bottom:8px;" ${correcting && o.deliveryNotePhotoUrl ? `data-value="${o.deliveryNotePhotoUrl}"` : ''}>${correcting && o.deliveryNotePhotoUrl ? `<img src="${o.deliveryNotePhotoUrl}" alt="Bon de livraison déjà joint" style="max-width:180px;width:100%;border:1px solid var(--border);border-radius:8px;display:block;"><div class="small muted" style="margin-top:4px;">Photo déjà jointe — en ajouter une nouvelle la remplacera.</div>` : ''}</div>
+      <div id="rcv-photo-preview" style="margin-bottom:8px;" ${correcting && o.deliveryNotePhotoUrl ? `data-value="${safeImgSrc(o.deliveryNotePhotoUrl)}"` : ''}>${correcting && o.deliveryNotePhotoUrl ? `<img src="${safeImgSrc(o.deliveryNotePhotoUrl)}" alt="Bon de livraison déjà joint" style="max-width:180px;width:100%;border:1px solid var(--border);border-radius:8px;display:block;"><div class="small muted" style="margin-top:4px;">Photo déjà jointe — en ajouter une nouvelle la remplacera.</div>` : ''}</div>
       <button type="button" class="btn btn-ghost btn-block" onclick="document.getElementById('rcv-scan-input').click()">${iconSm(I.camera)} Scanner un document</button>
       <input type="file" id="rcv-scan-input" accept="image/*" capture="environment" style="display:none;" onchange="handleDocumentScan(this,'rcv')">
       <div class="small muted" style="margin-top:6px;">Ouvre directement l'appareil photo — posez le document bien à plat, dans un endroit lumineux.</div>
@@ -9955,8 +10005,8 @@ function quickOrder(productId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Commander « ${escapeHtml(p.name)} »</h3>
-    <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${fmtEUR(p.price||0)} / ${p.unit}`}</div>
-    <div class="field"><label>Quantité (${p.unit})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
+    <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${fmtEUR(p.price||0)} / ${escapeHtml(p.unit)}`}</div>
+    <div class="field"><label>Quantité (${escapeHtml(p.unit)})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
   `);
 }
@@ -11163,7 +11213,7 @@ function editProduct(id){
     <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===p.cat?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field">
       <label>Unité de commande</label>
-      <input id="ep-unit" value="${p.unit}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
+      <input id="ep-unit" value="${escapeHtml(p.unit)}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
       <div class="small muted" style="margin-top:4px;">Comment vous commandez ce produit : au kilo, au litre, à la pièce, au carton, à la caisse…</div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
@@ -11375,7 +11425,7 @@ function orderProductRows(supplierId){
            produit occupait alors plus de 1000px de haut dans la liste de commande. -->
       <div style="flex:1 1 0;min-width:0;overflow-wrap:break-word;">
         <div style="font-weight:600;font-size:13.5px;">${escapeHtml(p.name)}</div>
-        <div class="small muted">${p.cat?escapeHtml(p.cat)+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${fmtEUR(p.price||0)} / ${p.unit}`}</div>
+        <div class="small muted">${p.cat?escapeHtml(p.cat)+' · ':''}${financialsHidden() ? p.unit : `Prix unitaire : ${fmtEUR(p.price||0)} / ${escapeHtml(p.unit)}`}</div>
         <div style="margin-top:2px;">${lastPurchaseLabel(p.id, p.unit)}</div>
       </div>
       <input type="number" id="ord-qty-${p.id}" min="0" step="1" value="${Math.round(p.qtyCommande)}" style="width:60px;flex-shrink:0;padding:6px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
@@ -11529,7 +11579,7 @@ function buildOrderDocumentHTML(o){
       <table class="invoice-table">
         <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit. HT</th><th>TVA</th><th>Total HT</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${fmtEURRaw(l.total||0)}</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${escapeHtml(l.unit)}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${fmtEURRaw(l.total||0)}</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -11715,7 +11765,7 @@ function receptionDetailHTML(o){
       ${photo ? `
         <div style="margin-top:14px;">
           <div class="small muted" style="margin-bottom:6px;">Bon de livraison photographié à la réception</div>
-          <img src="${photo}" alt="Bon de livraison de la commande ${escapeHtml(o.id)}"
+          <img src="${safeImgSrc(photo)}" alt="Bon de livraison de la commande ${escapeHtml(o.id)}"
                style="max-width:280px;width:100%;border:1px solid var(--border);border-radius:8px;cursor:zoom-in;display:block;"
                onclick="openImageLightbox('${photo}', 'Bon de livraison ${escapeHtml(o.id)}')">
           <div class="small muted" style="margin-top:6px;">Cliquez sur la photo pour l'agrandir.</div>
@@ -12339,7 +12389,7 @@ function editEmployee(id){
     <div class="field"><label>Nom complet</label><input id="ee-name" value="${escapeHtml(t.name)}"></div>
     <div class="field-row">
       <div class="field"><label>Rôle</label><select id="ee-role">${roles.map(r=>`<option ${t.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
-      <div class="field"><label>Horaires</label><input id="ee-shift" value="${t.shift}"></div>
+      <div class="field"><label>Horaires</label><input id="ee-shift" value="${escapeHtml(t.shift)}"></div>
     </div>
     <div class="field"><label>Statut</label><select id="ee-status"><option value="actif" ${t.status==='actif'?'selected':''}>En service</option><option value="repos" ${t.status==='repos'?'selected':''}>Repos</option></select></div>
     <div class="field"><label>Identifiant</label><input id="ee-username" value="${escapeHtml(t.username||'')}"></div>
@@ -12964,7 +13014,7 @@ function openImageLightbox(src, alt){
   overlay.onclick = (e) => { if(e.target === overlay) closeImageLightbox(); };
   overlay.innerHTML = `
     <button class="lightbox-close" onclick="closeImageLightbox()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
-    <img src="${src}" alt="${escapeHtml(alt)}">
+    <img src="${safeImgSrc(src)}" alt="${escapeHtml(alt)}">
   `;
   document.body.appendChild(overlay);
   document.body.style.overflow = 'hidden';
@@ -13886,7 +13936,7 @@ function renderLoginScreen(){
       ${renderBanner()}
       <div class="login-shell">
         <div class="login-brand" ${activeResto.coverPhotoDataUrl ? `style="background-image:linear-gradient(rgba(10,10,10,0.55),rgba(10,10,10,0.75)),url('${activeResto.coverPhotoDataUrl}');background-size:cover;background-position:center;"` : ''}>
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;overflow:hidden;">${activeResto.logoDataUrl ? `<img src="${activeResto.logoDataUrl}" alt="${escapeHtml(activeResto.name)}" style="width:100%;height:100%;object-fit:cover;">` : 'M'}</div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;overflow:hidden;">${activeResto.logoDataUrl ? `<img src="${safeImgSrc(activeResto.logoDataUrl)}" alt="${escapeHtml(activeResto.name)}" style="width:100%;height:100%;object-fit:cover;">` : 'M'}</div>
         <h1>${escapeHtml(activeResto.name)}</h1>
         <p>${activeResto.tagline ? escapeHtml(activeResto.tagline) : "La gestion de restaurant, sans friction. Un espace dédié pour chaque rôle, du service jusqu'au bureau."}</p>
         <div class="login-feature">${I.check} Commandez vos produits en quelques taps</div>
