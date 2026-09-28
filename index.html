@@ -3169,19 +3169,22 @@ async function loadBankingSummary(){
     render();
   } catch(err){ handleBankingError(err); }
 }
-async function loadBankingReport(){
-  const year = Number((document.getElementById('banking-report-year')||{}).value);
-  const month = (document.getElementById('banking-report-month')||{}).value;
+async function loadBankingReport(withTestData){
+  const params = state.bankingReportParams || {};
+  const yearEl = document.getElementById('banking-report-year'), monthEl = document.getElementById('banking-report-month');
+  const year = Number(yearEl ? yearEl.value : params.year);
+  const month = monthEl ? monthEl.value : (params.month || '');
   state.bankingReportParams = { year, month };
   state.bankingReportLoading = true; render();
   try{
     const q = new URLSearchParams({ year:String(year) }); if(month) q.set('month', month);
+    if(withTestData===true) q.set('test', '1');
     state.bankingReport = await apiRequest(`/api/admin/banking/report?${q.toString()}`, { headers: bankingHeaders() });
   } catch(err){ handleBankingError(err); }
   state.bankingReportLoading = false; render();
 }
 function bankingFileBase(r){
-  return `rapport-economique-mise-et-sure-${r.month ? `${r.year}-${String(r.month).padStart(2,'0')}` : r.year}`;
+  return `rapport-economique-mise-et-sure-${r.month ? `${r.year}-${String(r.month).padStart(2,'0')}` : r.year}${r.isTest ? '-FICTIF' : ''}`;
 }
 function downloadBankingReportCsv(){
   const r = state.bankingReport; if(!r || !r.available) return;
@@ -3190,7 +3193,8 @@ function downloadBankingReportCsv(){
   const lines = [];
   lines.push(['Rapport économique Mise & Sûre', r.periodLabel].map(esc).join(';'));
   lines.push(['Généré le', new Date(r.generatedAt).toLocaleString('fr-FR')].map(esc).join(';'));
-  if(r.mode==='test') lines.push(esc('ATTENTION : données de TEST Stripe (paiements fictifs)'));
+  if(r.isTest) lines.push(esc('APERÇU FICTIF : paiements de TEST Stripe, aucun argent réel — à ne pas déclarer'));
+  else if(r.mode!=='live') lines.push(esc('Projet pas encore lancé : aucun paiement réel sur la période'));
   lines.push('');
   lines.push(['Chiffre d’affaires encaissé TTC', num(r.totals.gross)].join(';'));
   lines.push(['dont TVA collectée', num(r.totals.tax)].join(';'));
@@ -3227,7 +3231,8 @@ function downloadBankingReportPdf(){
     doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Mise & Sûre — Rapport économique', M, y); y += 22;
     doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(90);
     doc.text(`Période : ${r.periodLabel}   ·   Généré le ${new Date(r.generatedAt).toLocaleString('fr-FR')}`, M, y); y += 16;
-    if(r.mode==='test'){ doc.setTextColor(180,40,40); doc.text('Données de TEST Stripe — paiements fictifs, à ne pas déclarer.', M, y); y += 16; }
+    if(r.isTest){ doc.setTextColor(180,40,40); doc.setFont('helvetica','bold'); doc.text('APERÇU FICTIF — paiements de TEST Stripe, aucun argent réel : à ne pas déclarer.', M, y); doc.setFont('helvetica','normal'); y += 16; }
+    else if(r.mode!=='live'){ doc.setTextColor(90); doc.text('Projet pas encore lancé : aucun paiement réel sur la période (Stripe en mode test).', M, y); y += 16; }
     doc.setTextColor(0); y += 8;
     const rows = [
       ['Chiffre d’affaires encaissé (TTC)', money(r.totals.gross), true],
@@ -14386,7 +14391,7 @@ function renderAdminBanking(){
   const maxNet = Math.max(1, ...months.map(m=>Math.max(m.gross||0, 0)));
   const growth = st.lastMonth && st.lastMonth.gross ? Math.round(((st.thisMonth.gross - st.lastMonth.gross) / st.lastMonth.gross) * 100) : null;
   return head + `
-    ${s.mode==='test' ? `<div class="admin-mode-banner">🧪 <span><b>Stripe en mode TEST</b> — les encaissements affichés ici sont fictifs (cartes de test). Les vrais chiffres apparaîtront avec la clé réelle (sk_live_…).</span></div>` : ''}
+    ${s.mode!=='live' ? `<div class="admin-mode-banner">🚀 <span><b>Projet pas encore lancé — aucun vrai paiement : tous les montants sont à 0 €.</b> Stripe est en mode test (clé sk_test_…) ; les vrais chiffres apparaîtront automatiquement dès que la clé réelle (sk_live_…) sera installée.${st.test && st.test.payments ? ` <span class="muted">${st.test.payments} paiement${st.test.payments>1?'s':''} de test (fictif${st.test.payments>1?'s':''}, ${eur(st.test.gross)}) ${st.test.payments>1?'sont ignorés':'est ignoré'} : ils servent seulement à vérifier que Stripe est bien branché.</span>` : ''}</span></div>` : ''}
     ${!st.available ? `<div class="admin-mode-banner">⚠️ <span>${escapeHtml(st.reason || 'Données Stripe indisponibles.')} Les indicateurs d'abonnement ci-dessous restent calculés à partir de la base.</span></div>` : ''}
     <div class="admin-kpi-grid">
       ${adminKpi('Revenu mensuel récurrent (MRR)', eur(s.mrr), `${s.payingCount} abonné${s.payingCount>1?'s':''} payant${s.payingCount>1?'s':''}`)}
@@ -14462,17 +14467,23 @@ function renderBankingReportSection(){
 function renderBankingReport(r){
   if(!r.available) return `<div class="admin-mode-banner" style="margin-top:14px;">⚠️ <span>${escapeHtml(r.reason||'Rapport indisponible.')}</span></div>`;
   const t = r.totals;
+  const notice = r.isTest
+    ? `<div class="admin-mode-banner" style="border-color:var(--urgent);margin-top:14px;">🧪 <span><b style="color:var(--urgent);">APERÇU FICTIF</b> — rapport calculé avec les paiements de TEST Stripe (cartes de test). Aucun argent réel : à ne pas déclarer. <a href="#" onclick="loadBankingReport(false);return false;" style="color:inherit;font-weight:700;">Revenir au rapport réel (0 €)</a></span></div>`
+    : r.mode!=='live'
+      ? `<div class="admin-mode-banner" style="margin-top:14px;">🚀 <span><b>Projet pas encore lancé : aucun paiement réel sur cette période (0 €).</b>${r.hiddenTest && r.hiddenTest.payments ? ` ${r.hiddenTest.payments} paiement${r.hiddenTest.payments>1?'s':''} de test ${r.hiddenTest.payments>1?'sont ignorés':'est ignoré'}. <a href="#" onclick="loadBankingReport(true);return false;" style="color:inherit;font-weight:700;">Voir un aperçu fictif avec ces paiements de test</a> (pour vérifier la mise en page).` : ''}</span></div>`
+      : '';
   const line = (label, value, strong, hint) => `<div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);${strong?'font-weight:700;':''}"><span>${label}${hint?` <span class="small muted" style="font-weight:400;">${hint}</span>`:''}</span><span class="mono">${value}</span></div>`;
   return `
     <div style="margin-top:18px;">
       <div class="flex between center" style="flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        <div style="font-weight:700;font-size:15px;">Rapport — ${escapeHtml(r.periodLabel)}${r.mode==='test'?' <span class="tag tag-neutral">🧪 données de test</span>':''}</div>
+        <div style="font-weight:700;font-size:15px;">Rapport — ${escapeHtml(r.periodLabel)}${r.isTest?' <span class="tag tag-red">🧪 FICTIF</span>':''}</div>
         <div class="flex gap8">
           <button class="btn btn-ghost btn-sm" onclick="downloadBankingReportPdf()">${iconXs(I.download)} PDF</button>
           <button class="btn btn-ghost btn-sm" onclick="downloadBankingReportCsv()">${iconXs(I.download)} CSV (factures)</button>
         </div>
       </div>
-      <div class="grid grid-2b">
+      ${notice}
+      <div class="grid grid-2b" style="margin-top:12px;">
         <div>
           ${line('Chiffre d’affaires encaissé (TTC)', eur(t.gross), true, `${t.payments} paiement${t.payments>1?'s':''}`)}
           ${line('dont TVA collectée', eur(t.tax), false, t.tax ? '' : '(aucune TVA facturée via Stripe)')}
