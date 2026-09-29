@@ -3,7 +3,7 @@
 // dernière version connue de la page si le téléphone perd la connexion. Il ne met JAMAIS en
 // cache les appels au serveur (données, connexion, paiements) : tout passe toujours par le
 // réseau, et une nouvelle version du site est visible dès qu'elle est en ligne.
-const CACHE = 'mise-et-sure-shell-v1';
+const CACHE = 'mise-et-sure-shell-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {
@@ -27,4 +27,38 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => caches.match('./index.html').then(r => r || Response.error()))
   );
+});
+
+// ---------------------------------------------------------------------------------------------
+// Notifications sur téléphone : affichage d'une notification reçue du serveur (même site fermé),
+// et ouverture de la bonne page au toucher.
+// ---------------------------------------------------------------------------------------------
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; }
+  catch (e) { data = { body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Mise & Sûre', {
+    body: data.body || '',
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    icon: 'icon-192.png',
+    badge: 'icon-192.png',
+    data: { url: data.url || './' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || './', self.registration.scope);
+  const view = target.searchParams.get('vue');
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windows) {
+      if (client.url.startsWith(self.registration.scope)) {
+        if (view) client.postMessage({ type: 'open-view', view });
+        return client.focus();
+      }
+    }
+    return self.clients.openWindow(target.href);
+  })());
 });
