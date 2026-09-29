@@ -2913,6 +2913,7 @@ function resetSessionData(){
   state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null;
   state.bankingToken = null; state.bankingExpiresAt = null; state.bankingSummary = null; state.bankingReport = null; state.bankingToolUsers = null;
   PUSH_STATE.status = 'unknown'; PUSH_STATE.endpoint = null;
+  CREDENTIALS.patron = { username:'', password:'', theme:'light' };
   try{ closeModal(); }catch(e){}
 }
 function exitPublicDemo(){
@@ -15479,13 +15480,22 @@ function render(){
     console.error('Erreur d\'affichage :', err);
     const appEl = document.getElementById('app');
     if(appEl){
+      appEl.className = ''; // l'écran d'erreur doit occuper toute la page, pas la colonne du menu
+      // Détail technique affiché en petit : permet de comprendre et corriger le problème à partir
+      // d'une simple capture d'écran. Aucune donnée personnelle n'y figure.
+      const where = ((err && err.stack) || '').split('\n').slice(0,3).join(' · ').slice(0,260);
+      const detail = `${err && err.name ? err.name : 'Erreur'} : ${err && err.message ? err.message : String(err)} — page « ${state.site}${state.view ? ' / ' + state.view : ''} »`;
       appEl.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
-          <div style="max-width:420px;text-align:center;">
+          <div style="max-width:460px;text-align:center;">
             <div style="font-size:40px;margin-bottom:16px;">⚠️</div>
             <h2 style="margin-bottom:10px;">Un problème d'affichage est survenu</h2>
-            <p style="color:#8A8A84;margin-bottom:20px;">Vos données n'ont pas été perdues. Rechargez la page pour continuer.</p>
-            <button onclick="window.location.reload()" style="background:#141414;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-weight:600;cursor:pointer;">Recharger la page</button>
+            <p style="color:#6B6B65;margin-bottom:20px;">Vos données n'ont pas été perdues. Rechargez la page pour continuer.</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+              <button onclick="window.location.reload()" style="background:#141414;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-weight:600;cursor:pointer;">Recharger la page</button>
+              <button onclick="window.location.href=window.location.pathname" style="background:transparent;color:#141414;border:1px solid #D6D6CF;padding:12px 20px;border-radius:8px;font-weight:600;cursor:pointer;">Retour à l'accueil</button>
+            </div>
+            <p style="color:#8A8A84;font-size:11px;margin-top:22px;line-height:1.5;word-break:break-word;font-family:monospace;">${escapeHtml(detail)}<br>${escapeHtml(where)}</p>
           </div>
         </div>
       `;
