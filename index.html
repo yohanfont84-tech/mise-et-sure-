@@ -811,11 +811,22 @@ select{ max-width:100%; text-overflow:ellipsis; }
    LOGO 3D DANS LE HERO — un "médaillon" tournant (cylindre plat texturé avec le logo sur
    chaque face), qu'on peut aussi faire pivoter soi-même à la souris/au doigt.
    ============================================================ */
+.trial-badge{display:inline-block;margin:0 0 12px 0;padding:7px 14px;border-radius:30px;background:var(--good-tint,#E7F3E9);color:var(--good,#2F7A3B);font-weight:700;font-size:13.5px;}
+.hero-trial-note{margin-top:14px;font-size:13px;color:var(--muted);}
 .hero-logo-3d-wrap{
   width:220px;height:220px;margin:0 auto 18px auto;cursor:grab;touch-action:none;
 }
 .hero-logo-3d-wrap:active{cursor:grabbing;}
-.hero-logo-3d-wrap canvas{width:100%;height:100%;display:block;}
+.hero-logo-3d-wrap{perspective:700px;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;}
+.coin3d{position:relative;width:80%;height:80%;transform-style:preserve-3d;will-change:transform;}
+.coin3d-edge{position:absolute;inset:0;border-radius:50%;background:#101010;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);}
+.coin3d-face{position:absolute;inset:0;border-radius:50%;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:#111;box-shadow:0 0 0 1px rgba(0,0,0,0.5);}
+.coin3d-front{transform:translateZ(7px);}
+.coin3d-back{transform:rotateY(180deg) translateZ(7px);}
+.coin3d-face img{width:100%;height:100%;display:block;object-fit:cover;pointer-events:none;}
+.coin3d-shine{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:linear-gradient(105deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.22) 48%, rgba(255,255,255,0) 66%);
+  background-size:250% 100%;mix-blend-mode:screen;}
 
 /* ============================================================
    CARROUSEL PRODUIT — de vraies captures d'écran qui défilent automatiquement, dans un cadre
@@ -2224,21 +2235,101 @@ const TEAM_TOKEN_KEY = 'mise_et_sure_team_token';
 let AUTH_TOKEN = localStorage.getItem(AUTH_TOKEN_KEY) || null;
 let TEAM_TOKEN = localStorage.getItem(TEAM_TOKEN_KEY) || null;
 const AIDE_REFERENCE_IMAGES = {
-  '01-page-produits': { desc: "La page \"Produits\" — liste du catalogue avec le bouton \"Nouveau produit\" en haut à droite", data: 'help-01-page-produits.jpg' },
-  '02-creer-produit': { desc: "La fenêtre de création d'un produit — nom, catégorie, unité de commande, prix, fournisseur, lieux", data: 'help-02-creer-produit.jpg' },
-  '03-panier-envoyer': { desc: "La page \"Commandes\" avec un panier en attente et le bouton pour l'envoyer au fournisseur", data: 'help-03-panier-envoyer.jpg' },
-  '04-page-equipe': { desc: "La page \"Équipe\" — ajouter un employé, gérer les autorisations de commande directe", data: 'help-04-page-equipe.jpg' },
-  '05-reception-ecart': { desc: "La fenêtre de réception d'une commande, comparant quantité/prix commandés et reçus", data: 'help-05-reception-ecart.jpg' },
-  '06-signaler-besoin': { desc: "La fenêtre \"Signaler un manque\" côté employé — chercher un produit et envoyer la demande", data: 'help-06-signaler-besoin.jpg' },
-  '07-tri-produits': { desc: "La page Produits avec le sélecteur de tri (nom, catégorie, prix) en haut à droite de la barre de filtres", data: 'help-07-tri-produits.jpg' },
-  '08-import-csv': { desc: "La fenêtre d'import CSV — colonnes reconnues et sélection du fichier", data: 'help-08-import-csv.jpg' },
-  '09-plafond-depense': { desc: "La page Équipe, section autorisation de commande directe, avec la colonne plafond avant validation", data: 'help-09-plafond-depense.jpg' },
-  '10-reception-partielle': { desc: "La page Livraisons avec une commande au statut \"Partiellement reçue\" et son bouton Compléter la réception", data: 'help-10-reception-partielle.jpg' },
-  '11-reception-modale': { desc: "La fenêtre de réception d'une commande, avec la case à cocher pour indiquer qu'un article n'est pas encore arrivé", data: 'help-11-reception-modale.jpg' },
-  '12-budget-previsionnel': { desc: "La carte Budget prévisionnel sur la page Statistiques, avec la projection de fin de mois", data: 'help-12-budget-previsionnel.jpg' },
-  '13-vue-consolidee': { desc: "La vue consolidée en haut de la page Multi-établissements, avec le détail par établissement", data: 'help-13-vue-consolidee.jpg' },
-  '15-regenerer-lien': { desc: "La fenêtre d'identifiants d'un employé, avec le bouton pour régénérer son lien de connexion personnel", data: 'help-15-regenerer-lien.jpg' },
+  '01-page-produits': { desc: "La page \"Produits\" — liste du catalogue avec le bouton \"Nouveau produit\" en haut à droite", data: 'help-01-page-produits.webp' },
+  '02-creer-produit': { desc: "La fenêtre de création d'un produit — nom, catégorie, unité de commande, prix, fournisseur, lieux", data: 'help-02-creer-produit.webp' },
+  '03-panier-envoyer': { desc: "La page \"Commandes\" avec un panier en attente et le bouton pour l'envoyer au fournisseur", data: 'help-03-panier-envoyer.webp' },
+  '04-page-equipe': { desc: "La page \"Équipe\" — ajouter un employé, gérer les autorisations de commande directe", data: 'help-04-page-equipe.webp' },
+  '05-reception-ecart': { desc: "La fenêtre de réception d'une commande, comparant quantité/prix commandés et reçus", data: 'help-05-reception-ecart.webp' },
+  '06-signaler-besoin': { desc: "La fenêtre \"Signaler un manque\" côté employé — chercher un produit et envoyer la demande", data: 'help-06-signaler-besoin.webp' },
+  '07-tri-produits': { desc: "La page Produits avec le sélecteur de tri (nom, catégorie, prix) en haut à droite de la barre de filtres", data: 'help-07-tri-produits.webp' },
+  '08-import-csv': { desc: "La fenêtre d'import CSV — colonnes reconnues et sélection du fichier", data: 'help-08-import-csv.webp' },
+  '09-plafond-depense': { desc: "La page Équipe, section autorisation de commande directe, avec la colonne plafond avant validation", data: 'help-09-plafond-depense.webp' },
+  '10-reception-partielle': { desc: "La page Livraisons avec une commande au statut \"Partiellement reçue\" et son bouton Compléter la réception", data: 'help-10-reception-partielle.webp' },
+  '11-reception-modale': { desc: "La fenêtre de réception d'une commande, avec la case à cocher pour indiquer qu'un article n'est pas encore arrivé", data: 'help-11-reception-modale.webp' },
+  '12-budget-previsionnel': { desc: "La carte Budget prévisionnel sur la page Statistiques, avec la projection de fin de mois", data: 'help-12-budget-previsionnel.webp' },
+  '13-vue-consolidee': { desc: "La vue consolidée en haut de la page Multi-établissements, avec le détail par établissement", data: 'help-13-vue-consolidee.webp' },
+  '15-regenerer-lien': { desc: "La fenêtre d'identifiants d'un employé, avec le bouton pour régénérer son lien de connexion personnel", data: 'help-15-regenerer-lien.webp' },
 };
+// ============================================================
+// MESURE D'AUDIENCE — anonyme, sans cookie, conforme RGPD (aucun bandeau de consentement
+// supplémentaire). Désactivée tant qu'aucun identifiant n'est renseigné ci-dessous : il suffit
+// de coller l'identifiant fourni par Umami (gratuit) OU le nom de domaine déclaré sur Plausible.
+// Ne mesure que des pages publiques et quelques étapes clés (démo, inscription, paiement) —
+// jamais le contenu de l'espace d'un restaurant, jamais d'email ni de donnée personnelle.
+// ============================================================
+const ANALYTICS = {
+  umamiWebsiteId: '',   // ex. 'a1b2c3d4-…' (Umami Cloud → Paramètres du site → Website ID)
+  plausibleDomain: '',  // ex. 'misesure.fr' (si vous utilisez Plausible à la place)
+};
+const ANALYTICS_QUEUE = [];
+function analyticsEnabled(){
+  return !!(ANALYTICS.umamiWebsiteId || ANALYTICS.plausibleDomain) && !/^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname);
+}
+function analyticsSend(kind, name, props){
+  try{
+    if(ANALYTICS.umamiWebsiteId){
+      if(!window.umami){ ANALYTICS_QUEUE.push([kind, name, props]); return; }
+      if(kind==='page') window.umami.track(p => ({ ...p, url: name, title: document.title }));
+      else window.umami.track(name, props || {});
+    } else if(ANALYTICS.plausibleDomain){
+      if(kind==='page') window.plausible('pageview', { u: location.origin + name });
+      else window.plausible(name, props ? { props } : undefined);
+    }
+  }catch(e){ /* la mesure d'audience ne doit jamais gêner le site */ }
+}
+(function loadAnalytics(){
+  if(!analyticsEnabled()) return;
+  const sc = document.createElement('script');
+  sc.defer = true;
+  if(ANALYTICS.umamiWebsiteId){
+    sc.src = 'https://cloud.umami.is/script.js';
+    sc.dataset.websiteId = ANALYTICS.umamiWebsiteId;
+    sc.dataset.autoTrack = 'false'; // pages suivies à la main : c'est un site à page unique
+    sc.onload = () => { ANALYTICS_QUEUE.splice(0).forEach(a => analyticsSend(...a)); };
+  } else {
+    sc.src = 'https://plausible.io/js/script.manual.js';
+    sc.dataset.domain = ANALYTICS.plausibleDomain;
+    window.plausible = window.plausible || function(){ (window.plausible.q = window.plausible.q || []).push(arguments); };
+  }
+  document.head.appendChild(sc);
+})();
+const TRACKED_PAGES = { marketing:'/', pricing:'/tarifs', 'account-auth':'/connexion', 'verify-email':'/verification-email',
+  'setup-restaurant':'/creation-etablissement', 'mentions-legales':'/mentions-legales', confidentialite:'/confidentialite', cgu:'/cgu' };
+let LAST_TRACKED_PAGE = null;
+function trackCurrentPage(){
+  if(!analyticsEnabled()) return;
+  const url = state.isDemoMode ? '/demo' : (TRACKED_PAGES[state.site] || (state.loggedIn || state.site==='team-login' ? '/espace' : null));
+  if(!url || url===LAST_TRACKED_PAGE) return;
+  LAST_TRACKED_PAGE = url;
+  analyticsSend('page', url);
+}
+function trackEvent(name, props){ if(analyticsEnabled()) analyticsSend('event', name, props); }
+
+// Ouverture depuis une notification (« …/?vue=demandes ») : on mémorise la page demandée et on
+// nettoie l'adresse, sans toucher aux autres paramètres (connexion Google, retour Stripe…).
+(function readRequestedView(){
+  try{
+    const params = new URLSearchParams(location.search);
+    const vue = params.get('vue');
+    if(!vue) return;
+    window.__PENDING_VIEW = vue;
+    params.delete('vue');
+    const q = params.toString();
+    history.replaceState(history.state, '', location.pathname + (q ? '?' + q : ''));
+  }catch(e){}
+})();
+function openViewIfAllowed(view){
+  if(!view || !state.loggedIn || !NAV[state.role]) return false;
+  if(!NAV[state.role].some(n => n.id===view)) return false;
+  setView(view);
+  return true;
+}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if(e.data && e.data.type==='open-view') openViewIfAllowed(e.data.view);
+  });
+}
+
 async function apiRequest(path, options={}){
   if(state.isDemoMode) return demoInterceptRequest(path, options);
   const headers = { 'Content-Type': 'application/json' };
@@ -2358,6 +2449,7 @@ const PRICING_COMPARISON = [
   { label:'Support', solo:'Par email', essentiel:'Par email', pro:'Prioritaire' },
 ];
 const PRICING_FAQ = [
+  { q:"Comment fonctionne l'essai gratuit ?", a:"Vous profitez de 14 jours gratuits, avec toutes les fonctions de votre forfait, sans donner de carte bancaire. Trois jours avant la fin, un email vous le rappelle : ajoutez votre carte dans Paramètres → Abonnement pour continuer. Sans carte, l'essai s'arrête simplement — aucun prélèvement, et vos données restent conservées si vous revenez plus tard." },
   { q:"Puis-je changer de forfait à tout moment ?", a:"Oui, à tout moment depuis vos Paramètres — à la hausse comme à la baisse. Le changement est géré directement par Stripe, notre prestataire de paiement, au prorata de la période en cours." },
   { q:"Y a-t-il un engagement ou des frais cachés ?", a:"Aucun engagement : c'est un abonnement mensuel ou annuel, résiliable à tout moment. Le prix affiché est le prix payé, sans frais additionnels surprise." },
   { q:"Que se passe-t-il si je résilie ?", a:"Vous gardez l'accès jusqu'à la fin de la période déjà payée. Vos données restent disponibles ; contactez-nous si vous souhaitez les récupérer avant suppression." },
@@ -2604,6 +2696,16 @@ window.addEventListener('popstate', (e) => {
     state._restoringFromHistory = false;
   }
 });
+// Essai gratuit de 14 jours sans carte : proposé à un visiteur, ou à un compte qui n'a encore
+// jamais eu d'abonnement ni d'essai (la règle définitive est appliquée par le serveur).
+const TRIAL_DAYS = 14;
+function trialOfferedToVisitor(){
+  return !ACCOUNT || (!ACCOUNT.trial_used && !ACCOUNT.stripe_subscription_id);
+}
+function trialDaysLeft(){
+  if(!ACCOUNT || ACCOUNT.stripe_subscription_status!=='trialing' || !ACCOUNT.stripe_trial_end) return null;
+  return Math.max(0, Math.ceil((new Date(ACCOUNT.stripe_trial_end) - new Date()) / 86400000));
+}
 function setBillingCycle(c){ state.billingCycle = c; render(); }
 function choosePlan(planId){
   state.selectedPlan = planId;
@@ -2625,6 +2727,7 @@ async function startCheckout(planId){
       method:'POST',
       body:{ plan: planId, billingCycle: state.billingCycle },
     });
+    trackEvent('Paiement commencé', { forfait: planId, cycle: state.billingCycle, essai: data.trialDays ? 'oui' : 'non' });
     window.location.href = data.url; // vraie page de paiement hébergée par Stripe
   } catch(err){
     toast(err.message, 'alert');
@@ -2643,6 +2746,7 @@ function goToLogin(){
 // n'est jamais conservé au-delà de l'onglet ouvert, et rafraîchir la page repart de zéro.
 // ============================================================
 function startPublicDemo(){
+  trackEvent('Démo lancée');
   ACCOUNT = { email:'demo@mise-et-sure.fr', plan:'pro', firstName:'Compte', lastName:'Démo' };
   RESTOS.length = 0;
   RESTOS.push({
@@ -2890,6 +2994,7 @@ async function attemptAccountSignup(){
   if(pass.length<8){ showFormError('account-error-slot', 'Mot de passe trop court (8 caractères minimum).', ['acc-password']); return; }
   if(pass!==pass2){ showFormError('account-error-slot', 'Les mots de passe ne correspondent pas.', ['acc-password','acc-password2']); return; }
   try{
+    trackEvent('Inscription commencée');
     await apiRequest('/api/auth/signup', { method:'POST', body:{ firstName, lastName, phone, email, password: pass, ...(state.selectedPlan?{plan:state.selectedPlan}:{}), billingCycle: state.billingCycle } });
     state.pendingSignup = { firstName, lastName, phone, email, plan: state.selectedPlan, billing: state.billingCycle };
     toast('Code de vérification envoyé à ' + email);
@@ -2912,6 +3017,7 @@ async function attemptVerifyEmail(){
   const entered = ((document.getElementById('verify-code')||{}).value || '').trim();
   if(!entered){ showFormError('verify-error-slot', 'Merci de saisir le code reçu par email.', ['verify-code']); return; }
   try{
+    trackEvent('Email confirmé');
     const data = await apiRequest('/api/auth/verify-email', { method:'POST', body:{ email: state.pendingSignup.email, code: entered } });
     ACCOUNT = data.user;
     state.pendingSignup = null;
@@ -3757,6 +3863,9 @@ function login(identity, employeeId){
   state.loggedInEmployeeId = employeeId || null;
   state.loggedIn = true;
   state.view = NAV[identity][0].id;
+  // Arrivée depuis une notification : on ouvre directement la page concernée (si ce rôle y a accès).
+  if(window.__PENDING_VIEW && NAV[identity].some(n => n.id===window.__PENDING_VIEW)) state.view = window.__PENDING_VIEW;
+  window.__PENDING_VIEW = null;
   state.loginStep = 'choose';
   state.loginSelectedRole = null;
   state.loginSelectedEmployeeId = null;
@@ -8666,6 +8775,7 @@ function viewParametres(){
       <div class="card">
         <div class="card-title">${iconSm(I.wallet)} Abonnement</div>
         <div class="small muted" style="margin-bottom:14px;">Changer de forfait, mettre à jour votre carte bancaire, télécharger vos factures ou résilier : tout se fait sur l'espace sécurisé de Stripe, notre prestataire de paiement.</div>
+        ${trialDaysLeft()!==null ? `<div class="small" style="font-weight:600;margin-bottom:12px;">${iconXs(I.clock)} Essai gratuit en cours — ${trialDaysLeft()} jour${trialDaysLeft()>1?'s':''} restant${trialDaysLeft()>1?'s':''}. Ajoutez votre carte ici pour continuer après l'essai.</div>` : ''}
         ${ACCOUNT.stripe_subscription_status==='past_due' ? `<div class="small" style="color:var(--urgent);font-weight:600;margin-bottom:12px;">${iconXs(I.alertTriangle)} Le dernier paiement a échoué — mettez à jour votre carte.</div>` : ''}
         <button class="btn btn-ghost" onclick="openBillingPortal()">Gérer mon abonnement</button>
       </div>` : ''}
@@ -9848,11 +9958,122 @@ function escapeHtml(str){
   div.textContent = String(str);
   return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+// ============================================================
+// NOTIFICATIONS SUR TÉLÉPHONE — une demande urgente de la cuisine s'affiche aussitôt sur le
+// téléphone du patron et des managers, même site fermé. Chaque appareil s'active une fois, ici.
+// ============================================================
+const PUSH_STATE = { status:'unknown', endpoint:null, busy:false };
+function pushSupported(){ return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+function isIOSDevice(){ return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }
+function isInstalledApp(){ return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone===true; }
+function pushAudienceAllowed(){
+  if(state.identity==='patron') return true;
+  const me = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
+  return !!(me && /manager/i.test(me.role||''));
+}
+async function refreshPushStatus(){
+  if(state.isDemoMode){ PUSH_STATE.status = 'demo'; return; }
+  if(!pushSupported()){ PUSH_STATE.status = isIOSDevice() && !isInstalledApp() ? 'ios-install' : 'unsupported'; return; }
+  try{
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    PUSH_STATE.endpoint = sub ? sub.endpoint : null;
+    PUSH_STATE.status = Notification.permission==='denied' ? 'denied' : (sub ? 'on' : 'off');
+  }catch(e){ PUSH_STATE.status = 'off'; }
+}
+function urlBase64ToUint8Array(b64){
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+function pushRestoRemoteId(){ const r = RESTOS.find(x=>x.id===state.resto); return r && r.remoteId; }
+async function enablePushNotifications(){
+  const rid = pushRestoRemoteId();
+  if(!rid || PUSH_STATE.busy) return;
+  PUSH_STATE.busy = true; render();
+  try{
+    const permission = await Notification.requestPermission();
+    if(permission!=='granted'){
+      PUSH_STATE.status = permission==='denied' ? 'denied' : 'off';
+      toast("Notifications non autorisées sur cet appareil.", 'alert');
+      return;
+    }
+    await navigator.serviceWorker.register('service-worker.js');
+    const reg = await navigator.serviceWorker.ready;
+    const { publicKey } = await apiRequest('/api/push/public-key');
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      // Limite de temps : si le service de notification du navigateur ne répond pas (réseau
+      // filtré, par exemple), on le dit clairement au lieu de rester bloqué sur « Activation… ».
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 25000));
+      try{ sub = await Promise.race([reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: urlBase64ToUint8Array(publicKey) }), timeout]); }
+      catch(e){
+        throw new Error(e.message==='timeout'
+          ? "Le service de notifications de votre navigateur ne répond pas. Vérifiez votre connexion internet, puis réessayez."
+          : "Cet appareil refuse les notifications (navigation privée, ou navigateur trop ancien). Ouvrez le site normalement, ou installez l'application, puis réessayez.");
+      }
+    }
+    await apiRequest(`/api/restaurants/${rid}/push-subscriptions`, { method:'POST', body:{ subscription: sub.toJSON() } });
+    PUSH_STATE.status = 'on'; PUSH_STATE.endpoint = sub.endpoint;
+    trackEvent('Notifications téléphone activées');
+    toast('Notifications activées sur cet appareil');
+  }catch(err){
+    toast(err.message || "Impossible d'activer les notifications sur cet appareil.", 'alert');
+  }finally{ PUSH_STATE.busy = false; render(); }
+}
+async function disablePushNotifications(){
+  const rid = pushRestoRemoteId();
+  if(PUSH_STATE.busy) return;
+  PUSH_STATE.busy = true; render();
+  try{
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    if(sub){
+      if(rid) await apiRequest(`/api/restaurants/${rid}/push-subscriptions`, { method:'DELETE', body:{ endpoint: sub.endpoint } }).catch(()=>{});
+      await sub.unsubscribe();
+    }
+    PUSH_STATE.status = 'off'; PUSH_STATE.endpoint = null;
+    toast('Notifications désactivées sur cet appareil');
+  }catch(err){ toast(err.message, 'alert'); }
+  finally{ PUSH_STATE.busy = false; render(); }
+}
+async function testPushNotification(){
+  const rid = pushRestoRemoteId();
+  try{
+    await apiRequest(`/api/restaurants/${rid}/push-test`, { method:'POST', body:{ endpoint: PUSH_STATE.endpoint } });
+    toast('Notification d’essai envoyée — elle arrive dans quelques secondes');
+  }catch(err){ toast(err.message, 'alert'); }
+}
+function pushNotificationsCardHTML(){
+  if(!pushAudienceAllowed()) return '';
+  if(PUSH_STATE.status==='unknown'){ PUSH_STATE.status = 'checking'; refreshPushStatus().then(render); }
+  const st = PUSH_STATE.status;
+  let body;
+  if(st==='demo') body = `<div class="small muted">Disponible avec un vrai compte : dans la démo, rien n'est envoyé.</div>`;
+  else if(st==='checking') body = `<div class="small muted">Vérification de cet appareil…</div>`;
+  else if(st==='ios-install') body = `<div class="small muted" style="margin-bottom:12px;">Sur iPhone et iPad, les notifications fonctionnent une fois le site installé comme une application : bouton Partager, puis « Sur l'écran d'accueil ». Ouvrez ensuite l'application et revenez ici.</div>
+      <button class="btn btn-ghost btn-block" onclick="openInstallAppModal()">${iconSm(I.mobile)} Comment installer l'application</button>`;
+  else if(st==='unsupported') body = `<div class="small muted">Ce navigateur ne permet pas les notifications. Essayez avec Chrome, Edge, Firefox ou Safari à jour.</div>`;
+  else if(st==='denied') body = `<div class="small muted">Les notifications sont bloquées pour ce site dans les réglages de votre navigateur. Autorisez-les (icône à gauche de l'adresse, ou Réglages du téléphone), puis rechargez la page.</div>`;
+  else if(st==='on') body = `<div class="small" style="font-weight:600;margin-bottom:12px;">${iconXs(I.check)} Activées sur cet appareil</div>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="testPushNotification()" ${PUSH_STATE.busy?'disabled':''}>Envoyer une notification d'essai</button>
+        <button class="btn btn-ghost btn-sm" onclick="disablePushNotifications()" ${PUSH_STATE.busy?'disabled':''}>Désactiver</button>
+      </div>`;
+  else body = `<button class="btn btn-primary btn-block" onclick="enablePushNotifications()" ${PUSH_STATE.busy?'disabled':''}>${iconSm(I.bell)} ${PUSH_STATE.busy ? 'Activation…' : 'Activer sur cet appareil'}</button>`;
+  return `
+    <div class="card">
+      <div class="card-title">${iconSm(I.mobile)} Notifications sur ce téléphone</div>
+      <div class="small muted" style="margin-bottom:14px;">Une demande <b>urgente</b> de la cuisine s'affiche aussitôt sur l'écran, même site fermé — en plus de l'email. À activer sur chaque appareil (téléphone, tablette, ordinateur).</div>
+      ${body}
+    </div>`;
+}
 function viewNotifications(role){
   const cfg = NOTIF_STATE[role];
   const events = notifEventsForRole(role);
   return `
-    <div class="section-head" style="margin-top:0;"><div><h2>Notifications par email</h2><div class="sub">La seule information nécessaire est votre adresse — le reste se passe automatiquement</div></div></div>
+    ${pushNotificationsCardHTML()}
+    <div class="section-head"><div><h2>Notifications par email</h2><div class="sub">La seule information nécessaire est votre adresse — le reste se passe automatiquement</div></div></div>
     <div class="grid grid-2b">
       <div class="card">
         <div class="card-title">${iconSm(I.mail)} Adresse de notification</div>
@@ -13689,13 +13910,13 @@ function initUseCasesReveal(){
   observer.observe(wrap);
 }
 const PRODUCT_CAROUSEL = [
-  { tag:'Commandes', title:'Vos commandes, centralisées', text:"Un panier par fournisseur, envoyé en un clic — plus besoin de jongler entre les emails et les appels.", img:'mkt-commandes.jpg', alt:'Page Commandes de Mise & Sûre' },
-  { tag:'Équipe', title:'Un espace pour chacun', text:"Patron, manager, cuisine, salle : chaque personne a son accès, avec seulement les permissions dont elle a besoin.", img:'mkt-equipe.jpg', alt:'Page Équipe de Mise & Sûre' },
-  { tag:'Réception', title:'Les écarts détectés automatiquement', text:"Quantité ou prix différent de la commande ? Le site le repère et le signale tout seul.", img:'mkt-ecarts.jpg', alt:'Page Écarts de livraison de Mise & Sûre' },
-  { tag:'Livraisons', title:'Rien ne se perd en route', text:"Une livraison incomplète ? La commande reste ouverte et se complète dès que le reste arrive.", img:'mkt-livraisons.jpg', alt:'Page Livraisons de Mise & Sûre' },
-  { tag:'Fiches techniques', title:'Le coût réel de chaque plat', text:"Calculé automatiquement à partir de vos produits — marge et food cost inclus, sans tableur à tenir à jour.", img:'mkt-fiches-techniques.jpg', alt:'Page Fiches techniques de Mise & Sûre' },
-  { tag:'HACCP', title:'Une obligation légale, sans y penser', text:"Numéro de lot, relevés de température, suivi du nettoyage — deux minutes par jour, quand vous avez un instant.", img:'mkt-haccp.jpg', alt:'Page Suivi HACCP de Mise & Sûre' },
-  { tag:'Inventaire', title:'Un relevé de stock, sans usine à gaz', text:"Quantité, date, qui l'a fait — un simple constat, à faire quand vous avez le temps.", img:'mkt-inventaire.jpg', alt:'Page Inventaire de Mise & Sûre' },
+  { tag:'Commandes', title:'Vos commandes, centralisées', text:"Un panier par fournisseur, envoyé en un clic — plus besoin de jongler entre les emails et les appels.", img:'mkt-commandes.webp', alt:'Page Commandes de Mise & Sûre' },
+  { tag:'Équipe', title:'Un espace pour chacun', text:"Patron, manager, cuisine, salle : chaque personne a son accès, avec seulement les permissions dont elle a besoin.", img:'mkt-equipe.webp', alt:'Page Équipe de Mise & Sûre' },
+  { tag:'Réception', title:'Les écarts détectés automatiquement', text:"Quantité ou prix différent de la commande ? Le site le repère et le signale tout seul.", img:'mkt-ecarts.webp', alt:'Page Écarts de livraison de Mise & Sûre' },
+  { tag:'Livraisons', title:'Rien ne se perd en route', text:"Une livraison incomplète ? La commande reste ouverte et se complète dès que le reste arrive.", img:'mkt-livraisons.webp', alt:'Page Livraisons de Mise & Sûre' },
+  { tag:'Fiches techniques', title:'Le coût réel de chaque plat', text:"Calculé automatiquement à partir de vos produits — marge et food cost inclus, sans tableur à tenir à jour.", img:'mkt-fiches-techniques.webp', alt:'Page Fiches techniques de Mise & Sûre' },
+  { tag:'HACCP', title:'Une obligation légale, sans y penser', text:"Numéro de lot, relevés de température, suivi du nettoyage — deux minutes par jour, quand vous avez un instant.", img:'mkt-haccp.webp', alt:'Page Suivi HACCP de Mise & Sûre' },
+  { tag:'Inventaire', title:'Un relevé de stock, sans usine à gaz', text:"Quantité, date, qui l'a fait — un simple constat, à faire quand vous avez le temps.", img:'mkt-inventaire.webp', alt:'Page Inventaire de Mise & Sûre' },
 ];
 function initProductCarousel(){
   const wrap = document.getElementById('product-carousel');
@@ -13735,175 +13956,120 @@ const SITE_SHOWCASE = [
     tag: 'Commandes & fournisseurs',
     title: 'Vos commandes, centralisées',
     text: "Un panier par fournisseur, une commande envoyée en un clic. Les écarts de quantité ou de prix à la réception sont détectés et signalés automatiquement — plus besoin de comparer une facture à la main.",
-    img: 'mkt-commandes.jpg',
+    img: 'mkt-commandes.webp',
     alt: 'Page Commandes de Mise & Sûre, avec un panier en attente et l’historique des commandes',
   },
   {
     tag: 'Équipe & permissions',
     title: 'Toute votre équipe, un espace chacun',
     text: "Patron, manager, cuisine, salle : chaque personne a son identifiant, son mot de passe et ses permissions. Vous décidez qui peut commander directement, et jusqu'à quel montant avant de repasser par votre validation.",
-    img: 'mkt-equipe.jpg',
+    img: 'mkt-equipe.webp',
     alt: 'Page Équipe de Mise & Sûre, avec les permissions et le plafond de commande directe',
   },
   {
     tag: 'Réception & écarts',
     title: 'Repérez les écarts avant qu\'ils ne coûtent cher',
     text: "À la réception, comparez ce qui a vraiment été livré et facturé à ce qui était commandé. Un produit manquant ? Marquez la commande comme partiellement reçue et complétez-la dès son arrivée, sans rien ressaisir.",
-    img: 'mkt-ecarts.jpg',
+    img: 'mkt-ecarts.webp',
     alt: 'Page Écarts de livraison de Mise & Sûre, montrant un écart de prix détecté automatiquement',
   },
   {
     tag: 'Statistiques',
     title: 'Des chiffres clairs, des décisions rapides',
     text: "Dépenses du mois, projection de fin de mois, répartition par fournisseur et par catégorie : tout est calculé automatiquement à partir de votre historique de commandes, sans tableur à mettre à jour.",
-    img: 'mkt-stats.jpg',
+    img: 'mkt-stats.webp',
     alt: 'Page Statistiques de Mise & Sûre, avec le budget prévisionnel',
   },
   {
     tag: 'Catalogue produits',
     title: 'Un catalogue qui reste lisible, même avec 200 produits',
     text: "Recherche, filtres et tri par nom, catégorie ou prix, plus un regroupement par catégorie qui se réduit ou se développe en un clic — comme sur un tableur, mais déjà organisé pour vous.",
-    img: 'mkt-produits.jpg',
+    img: 'mkt-produits.webp',
     alt: 'Page Produits de Mise & Sûre, avec les catégories regroupées et réductibles',
   },
   {
     tag: 'Fiches techniques',
     title: 'Le vrai coût de chaque plat, sans tableur',
     text: "Calculé automatiquement à partir de vos produits — marge et food cost inclus. Une préparation maison (sauce, fond de veau…) peut même servir d'ingrédient dans une autre fiche, au grammage voulu.",
-    img: 'mkt-fiches-techniques.jpg',
+    img: 'mkt-fiches-techniques.webp',
     alt: 'Page Fiches techniques de Mise & Sûre, montrant le coût de revient et la marge d’un plat',
   },
   {
     tag: 'Suivi HACCP',
     title: 'Une obligation légale, sans y penser',
     text: "Numéro de lot à la réception, relevés de température, suivi du nettoyage — inclus à tous les forfaits, désactivé par défaut si vous n'en avez pas l'usage.",
-    img: 'mkt-haccp.jpg',
+    img: 'mkt-haccp.webp',
     alt: 'Page Suivi HACCP de Mise & Sûre, avec les relevés de température du jour',
   },
   {
     tag: 'Inventaire',
     title: 'Un relevé de stock, sans usine à gaz',
     text: "Quantité, date, qui l'a fait — un simple constat, à faire quand vous avez le temps. Pas de rapprochement théorique compliqué, juste de quoi garder un œil sur ce qu'il reste.",
-    img: 'mkt-inventaire.jpg',
+    img: 'mkt-inventaire.webp',
     alt: 'Page Inventaire de Mise & Sûre, avec le dernier relevé de chaque produit',
   },
 ];
 // ============================================================
-// THREE.JS — chargé UNIQUEMENT sur la page marketing (pas dans le reste du site, pour ne pas
-// alourdir l'application pour les personnes déjà connectées) : logo 3D dans le hero, et scène
-// 3D du restaurant qui se construit au défilement.
+// LOGO 3D DE L'ACCUEIL — médaillon tournant en 3D native du navigateur (CSS), qu'on peut faire
+// pivoter à la souris ou au doigt, avec un élan qui ralentit en douceur. Remplace l'ancienne
+// version Three.js : même rendu, mais 0 Ko à télécharger au lieu de 600 Ko.
 // ============================================================
-let THREE_JS_LOADING = false;
-// Three.js r128 est chargé depuis un fichier séparé (lib-threejs.js, voir loadThreeJS ci-dessus),
-// plutôt que chargé depuis un CDN externe — même raison que Chart.js, jsPDF et Leaflet : un
-// serveur tiers indisponible ne doit plus jamais faire échouer silencieusement une partie du
-// site. Le chargement reste volontairement paresseux (déclenché seulement à l'arrivée sur la
-// page d'accueil publique) pour ne pas alourdir l'application pour les personnes déjà connectées.
-function loadThreeJS(callback){
-  if(window.THREE){ callback(); return; }
-  if(THREE_JS_LOADING){
-    document.addEventListener('three-js-ready', callback, { once:true });
-    return;
-  }
-  THREE_JS_LOADING = true;
-  const script = document.createElement('script');
-  script.src = 'lib-threejs.js';
-  script.onload = () => {
-    THREE_JS_LOADING = false;
-    document.dispatchEvent(new Event('three-js-ready'));
-    callback();
-  };
-  script.onerror = () => { THREE_JS_LOADING = false; console.error("Impossible de charger la bibliothèque 3D — le reste du site continue de fonctionner normalement."); };
-  document.head.appendChild(script);
+let MARKETING_3D = { logoRAF:null };
+function coinMarkup(){
+  // L'épaisseur du médaillon : une pile de fines tranches sombres entre les deux faces.
+  const edge = Array.from({length:12}, (_,i)=>`<span class="coin3d-edge" style="transform:translateZ(${(i-5.5)*1.1}px)"></span>`).join('');
+  return `<div class="coin3d" id="hero-logo-3d">
+      ${edge}
+      <span class="coin3d-face coin3d-front"><img src="icon-512.png" alt="Mise &amp; Sûre" draggable="false"><i class="coin3d-shine"></i></span>
+      <span class="coin3d-face coin3d-back"><img src="icon-512.png" alt="" draggable="false"><i class="coin3d-shine"></i></span>
+    </div>`;
 }
-// État des deux scènes 3D, pour pouvoir arrêter proprement leur boucle d'animation et leurs
-// écouteurs si la page marketing est quittée puis rouverte (sinon plusieurs boucles tourneraient
-// en même temps sur des canvas qui n'existent plus).
-let MARKETING_3D = { logoRAF:null, restoRAF:null, restoObserver:null, restoResizeHandler:null };
 function initMarketing3D(){
-  const logoCanvas = document.getElementById('hero-logo-3d');
-  if(!logoCanvas) return; // pas sur la page marketing pour l'instant
-  loadThreeJS(() => {
-    if(document.getElementById('hero-logo-3d') === logoCanvas && logoCanvas){
-      cancelAnimationFrame(MARKETING_3D.logoRAF);
-      initHeroLogo3D(logoCanvas);
-    }
-  });
-}
-// --- Logo 3D : un médaillon (cylindre plat) texturé avec le logo sur ses deux faces, qui
-// tourne doucement tout seul et qu'on peut aussi faire pivoter à la souris ou au doigt.
-function initHeroLogo3D(canvas){
-  const wrap = canvas.parentElement;
-  const size = () => Math.min(wrap.clientWidth || 220, wrap.clientHeight || 220);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-  camera.position.set(0, 0, 6.2);
-  const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(size(), size());
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-  const key = new THREE.DirectionalLight(0xffffff, 0.8);
-  key.position.set(2.5, 3, 4);
-  scene.add(key);
-  const rim = new THREE.DirectionalLight(0xffffff, 0.35);
-  rim.position.set(-3, -1, -2);
-  scene.add(rim);
-
-  const texture = new THREE.TextureLoader().load('icon-512.png');
-  texture.colorSpace = THREE.SRGBColorSpace || texture.colorSpace;
-  const faceMat = new THREE.MeshStandardMaterial({ map: texture, roughness:0.45, metalness:0.08 });
-  const edgeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness:0.55, metalness:0.15 });
-  const geometry = new THREE.CylinderGeometry(1.55, 1.55, 0.22, 72);
-  const coin = new THREE.Mesh(geometry, [edgeMat, faceMat, faceMat]);
-  coin.rotation.x = Math.PI / 2; // les faces plates du cylindre pointent vers la caméra (Z), pas vers le haut (Y)
-  scene.add(coin);
-
-  let autoSpeed = 0.45; // radians/seconde, vitesse de rotation automatique au repos
-  let velocity = autoSpeed;
-  let dragging = false;
-  let lastX = 0;
-  let lastT = performance.now();
-
-  function pointerDown(e){
-    dragging = true;
-    lastX = (e.touches ? e.touches[0].clientX : e.clientX);
-  }
-  function pointerMove(e){
+  const coin = document.getElementById('hero-logo-3d');
+  if(!coin) return; // pas sur une page publique avec le médaillon
+  cancelAnimationFrame(MARKETING_3D.logoRAF);
+  const wrap = coin.parentElement;
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const autoSpeed = reduceMotion ? 0 : 26; // degrés par seconde au repos
+  let angle = -18, velocity = autoSpeed, dragging = false, lastX = 0, lastT = performance.now();
+  const shines = coin.querySelectorAll('.coin3d-shine');
+  const paint = () => {
+    coin.style.transform = `rotateY(${angle}deg)`;
+    // Reflet qui glisse avec l'angle : donne l'impression d'une vraie lumière sur le métal.
+    const pos = 50 + Math.sin(angle * Math.PI / 180) * 60;
+    shines.forEach(el => { el.style.backgroundPosition = `${pos}% 50%`; });
+  };
+  const down = e => { dragging = true; lastX = e.touches ? e.touches[0].clientX : e.clientX; };
+  const move = e => {
     if(!dragging) return;
-    const x = (e.touches ? e.touches[0].clientX : e.clientX);
-    const dx = x - lastX;
-    lastX = x;
-    coin.rotation.y += dx * 0.012;
-    velocity = dx * 0.6; // l'élan de la dernière impulsion continue un peu après le relâchement
-  }
-  function pointerUp(){ dragging = false; }
-  wrap.addEventListener('mousedown', pointerDown);
-  wrap.addEventListener('touchstart', pointerDown, { passive:true });
-  window.addEventListener('mousemove', pointerMove);
-  window.addEventListener('touchmove', pointerMove, { passive:true });
-  window.addEventListener('mouseup', pointerUp);
-  window.addEventListener('touchend', pointerUp);
-
-  function animate(){
-    MARKETING_3D.logoRAF = requestAnimationFrame(animate);
-    if(!document.body.contains(canvas)) return; // page quittée : on arrête proprement
-    const now = performance.now();
-    const dt = Math.min((now - lastT) / 1000, 0.05);
-    lastT = now;
-    if(!dragging){
-      // Ralentit progressivement vers la vitesse de croisière après une impulsion manuelle,
-      // plutôt que de reprendre brutalement la rotation automatique.
-      velocity += (autoSpeed - velocity) * Math.min(dt * 1.5, 1);
-      coin.rotation.y += velocity * dt;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const dx = x - lastX; lastX = x;
+    angle += dx * 0.7; velocity = dx * 35;
+    paint();
+  };
+  const up = () => { dragging = false; };
+  wrap.onmousedown = down; wrap.ontouchstart = down;
+  window.addEventListener('mousemove', move);
+  window.addEventListener('touchmove', move, { passive:true });
+  window.addEventListener('mouseup', up);
+  window.addEventListener('touchend', up);
+  const animate = () => {
+    if(!document.body.contains(coin)){
+      window.removeEventListener('mousemove', move); window.removeEventListener('touchmove', move);
+      window.removeEventListener('mouseup', up); window.removeEventListener('touchend', up);
+      return; // page quittée : la boucle s'arrête proprement
     }
-    renderer.render(scene, camera);
-  }
+    MARKETING_3D.logoRAF = requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
+    if(!dragging){
+      velocity += (autoSpeed - velocity) * Math.min(dt * 1.5, 1);
+      angle += velocity * dt;
+      paint();
+    }
+  };
+  paint();
   animate();
-
-  const onResize = () => { const s = size(); renderer.setSize(s, s); };
-  window.addEventListener('resize', onResize);
 }
 function renderMarketingPage(){
   return `
@@ -13913,7 +14079,7 @@ function renderMarketingPage(){
       <section class="site-hero">
         <div class="site-hero-tag">Plateforme de gestion pour restaurants</div>
         <div class="hero-logo-3d-wrap" id="hero-logo-3d-wrap" title="Cliquez-glissez pour faire tourner">
-          <canvas id="hero-logo-3d"></canvas>
+          ${coinMarkup()}
         </div>
         <h1>La gestion de votre restaurant,<br>sans friction.</h1>
         <p>Commandes fournisseurs, coût de revient, HACCP, inventaire — un espace pour le patron, un espace pour chacun des vôtres.</p>
@@ -13922,6 +14088,7 @@ function renderMarketingPage(){
           <button class="btn btn-ghost" onclick="goToSite('pricing')">Voir les tarifs</button>
           ${ACCOUNT ? '' : `<button class="btn btn-ghost" onclick="goToLogin()">J'ai déjà un compte</button>`}
         </div>
+        ${trialOfferedToVisitor() ? `<p class="hero-trial-note">${TRIAL_DAYS} jours d'essai gratuit · sans carte bancaire · sans engagement</p>` : ''}
       </section>
 
       <section class="resto-journey-section">
@@ -14053,6 +14220,10 @@ function renderLegalPage(page){
       <p>Vos données ne sont jamais vendues. Elles sont partagées uniquement avec les prestataires nécessaires au fonctionnement du service : Stripe (paiement), Brevo (envoi d'emails), Railway (hébergement du serveur).</p>
       <h3>Cookies</h3>
       <p>Ce site utilise uniquement des cookies strictement nécessaires à son fonctionnement (maintenir votre connexion). Aucun cookie publicitaire ou de suivi tiers n'est utilisé.</p>
+      <h3>Mesure d'audience</h3>
+      <p>Pour améliorer le site, nous comptons de façon anonyme les visites des pages publiques et quelques étapes clés (lancement de la démo, inscription, souscription). Cette mesure n'utilise aucun cookie, ne collecte ni adresse email ni adresse IP complète, ne suit pas votre navigation sur d'autres sites et ne concerne jamais le contenu de l'espace de votre établissement.</p>
+      <h3>Notifications sur téléphone</h3>
+      <p>Si vous les activez, votre navigateur nous transmet une adresse technique d'envoi propre à votre appareil. Elle sert uniquement à vous prévenir des demandes urgentes de votre établissement, et est supprimée dès que vous désactivez les notifications.</p>
     `,
     'cgu': `
       <h1>Conditions générales d'utilisation et de vente</h1>
@@ -14104,9 +14275,10 @@ function renderPricingPage(){
       ${siteNav('pricing')}
       <section class="site-pricing-head">
         <div class="hero-logo-3d-wrap" id="hero-logo-3d-wrap" style="width:110px;height:110px;" title="Cliquez-glissez pour faire tourner">
-          <canvas id="hero-logo-3d"></canvas>
+          ${coinMarkup()}
         </div>
         <h1>Des tarifs simples, sans surprise.</h1>
+        ${trialOfferedToVisitor() ? `<div class="trial-badge">🎁 ${TRIAL_DAYS} jours d'essai gratuit — sans carte bancaire</div>` : ''}
         <p class="muted" style="margin-bottom:18px;">Changez de forfait ou de formule de facturation à tout moment, sans engagement.</p>
         <div class="pill-nav" style="justify-content:center;display:inline-flex;">
           <button class="${cycle==='monthly'?'active':''}" onclick="setBillingCycle('monthly')">Mensuel</button>
@@ -14128,7 +14300,8 @@ function renderPricingPage(){
             <ul class="site-plan-features">
               ${p.features.map(f=>`<li>${iconXs(I.check)}<span>${f}</span></li>`).join('')}
             </ul>
-            <button class="btn ${isRecommended?'btn-primary':'btn-ghost'} btn-block" onclick="choosePlan('${p.id}')">Choisir ${escapeHtml(p.name)}</button>
+            <button class="btn ${isRecommended?'btn-primary':'btn-ghost'} btn-block" onclick="choosePlan('${p.id}')">${trialOfferedToVisitor() ? `Essayer ${escapeHtml(p.name)} gratuitement` : `Choisir ${escapeHtml(p.name)}`}</button>
+            ${trialOfferedToVisitor() ? `<div class="small muted" style="text-align:center;margin-top:8px;">${TRIAL_DAYS} jours offerts, puis ${price}&nbsp;€ ${per} — sans carte pour commencer</div>` : ''}
           </div>`;
         }).join('')}
       </section>
@@ -14691,10 +14864,37 @@ function renderBankingReport(r){
 // Tout ce qui peut nuire à un client s'il est fait par erreur ou par malveillance : changer son
 // forfait, lui donner/retirer l'accès, le suspendre, le supprimer, voir son compte « comme lui »,
 // nommer ou retirer un administrateur. Réservé au propriétaire, derrière le verrou Banking.
+async function downloadFullBackup(){
+  const btn = document.getElementById('backup-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Préparation de la sauvegarde…'; }
+  try{
+    const headers = { ...bankingHeaders() };
+    if(AUTH_TOKEN) headers['Authorization'] = 'Bearer ' + AUTH_TOKEN;
+    const res = await fetch(API_URL + '/api/admin/banking/backup', { headers, credentials:'include' });
+    if(!res.ok){
+      let msg = 'Sauvegarde impossible pour le moment.';
+      try{ const d = await res.json(); if(d.code==='BANKING_LOCKED'){ handleBankingError({ code:'BANKING_LOCKED', message:d.error }); return; } msg = d.error || msg; }catch(e){}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const name = ((res.headers.get('Content-Disposition')||'').match(/filename="([^"]+)"/)||[])[1] || 'sauvegarde-mise-et-sure.json';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+    toast(`Sauvegarde téléchargée (${Math.max(1, Math.round(blob.size/1024))} Ko)`);
+  }catch(err){ toast(err.message, 'alert'); }
+  finally{ const b = document.getElementById('backup-btn'); if(b){ b.disabled = false; b.textContent = 'Télécharger une sauvegarde'; } }
+}
 function renderOwnerTools(){
   const rows = state.bankingToolUsers;
   return `
     <div class="admin-mode-banner">⚠️ <span><b>Outils sensibles</b> — ces actions touchent directement les comptes de vos clients. Elles sont réservées à votre compte propriétaire et notées dans le journal d'activité. Suppression et droits administrateur demandent en plus votre mot de passe.</span></div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">${iconSm(I.download)} Sauvegarde complète</div>
+      <div class="small muted" style="margin-bottom:12px;">Toutes les données du site (comptes, établissements, catalogues, commandes, HACCP…) dans un seul fichier, à garder en lieu sûr : il permet de tout reconstruire même si l'hébergeur perdait la base. Conseil : une fois par semaine, et avant chaque grosse mise à jour.</div>
+      <button class="btn btn-primary" id="backup-btn" onclick="downloadFullBackup()">Télécharger une sauvegarde</button>
+    </div>
     <div class="card" style="margin-bottom:16px;">
       <div class="card-title">Nommer un administrateur</div>
       <div class="flex gap8" style="flex-wrap:wrap;">
@@ -15190,6 +15390,15 @@ function renderBanner(){
       ${iconXs(I.alertTriangle)} <span><b>Le dernier paiement de votre abonnement a échoué.</b> Votre accès est maintenu quelques jours, le temps de mettre à jour votre moyen de paiement. <a href="#" onclick="openBillingPortal();return false;" style="color:#fff;text-decoration:underline;font-weight:700;">Mettre à jour ma carte</a></span>
     </div>`;
   }
+  // Essai gratuit en cours : le patron voit toujours combien de jours il reste, avec le bouton
+  // pour ajouter sa carte. Discret au début, bien visible les 3 derniers jours.
+  const trialLeft = trialDaysLeft();
+  if(trialLeft!==null && state.identity==='patron' && !state.isDemoMode){
+    const endLabel = fmtDateLong(new Date(ACCOUNT.stripe_trial_end));
+    html += `<div class="demo-banner" style="${trialLeft<=3 ? 'background:var(--urgent);' : 'background:var(--accent);color:var(--accent-text);'}">
+      ${iconXs(I.clock)} <span><b>Essai gratuit : ${trialLeft===0 ? 'dernier jour' : `encore ${trialLeft} jour${trialLeft>1?'s':''}`}</b> (jusqu'au ${endLabel}). Ajoutez votre carte pour continuer sans interruption — sinon l'essai s'arrête simplement, sans aucun prélèvement. <a href="#" onclick="openBillingPortal();return false;" style="color:inherit;text-decoration:underline;font-weight:700;">Ajouter ma carte</a></span>
+    </div>`;
+  }
   if(state.identity==='patron' && state.role!==state.identity){
     // iconXs() (plutôt qu'un remplacement de texte sur "width=24") : I.warn n'a jamais eu
     // d'attribut width/height à remplacer (seulement un viewBox), donc l'ancienne méthode ne
@@ -15231,6 +15440,7 @@ function render(){
     if(appRoot) appRoot.className = '';
     renderInner();
     enhanceAccessibility(document.getElementById('app'));
+    trackCurrentPage();
   } catch(err){
     // Filet de sécurité : si un affichage plante pour une raison imprévue, on montre un message
     // clair avec un bouton pour recharger, plutôt qu'une page blanche silencieuse qui donne
@@ -15413,10 +15623,12 @@ async function checkExistingSession(){
     window.history.replaceState({}, document.title, window.location.pathname);
   }
   if(checkoutCancelled){
+    trackEvent('Paiement annulé');
     toast("Paiement annulé — vous pouvez réessayer à tout moment.", 'alert');
     window.history.replaceState({}, document.title, window.location.pathname);
   }
   if(checkoutSuccess){
+    trackEvent('Abonnement souscrit');
     window.history.replaceState({}, document.title, window.location.pathname);
   }
   try{
