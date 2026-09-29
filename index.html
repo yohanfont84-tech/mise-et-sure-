@@ -2667,6 +2667,9 @@ document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && document.getE
 // Retour à l'espace de travail depuis la page publique, sans repasser par la connexion : la
 // session est toujours active, il n'y a aucune raison de redemander les identifiants.
 function backToWorkspace(){
+  // Pas (ou plus) de session ouverte dans cet onglet — nouveau compte, par exemple : on charge
+  // l'espace du compte depuis le serveur, comme à l'ouverture du site.
+  if(!state.loggedIn || !RESTOS.length){ window.location.reload(); return; }
   state.site = 'app';
   if(!state.view) state.view = 'dashboard';
   render();
@@ -2893,6 +2896,25 @@ function demoCleanup(){
   HACCP_EQUIPMENT = []; HACCP_TEMP_LOGS = []; HACCP_CLEANING_TASKS = []; HACCP_CLEANING_LOGS = [];
   RECIPES = []; RECIPE_INGREDIENTS = []; STOCK_COUNTS = [];
 }
+// Remise à zéro COMPLÈTE de tout ce que le navigateur garde en mémoire d'un compte :
+// établissements, catalogue, équipe, commandes, session d'équipe, panneau admin, Banking…
+// Appelée à chaque changement de compte (déconnexion, connexion, création de compte) : sans
+// ça, un nouveau compte ouvert dans le même onglet affichait encore l'établissement et les
+// données du compte précédent (uniquement à l'écran — le serveur, lui, les tient toujours
+// séparées et refuse tout accès croisé).
+function resetSessionData(){
+  if(AUTO_REFRESH_INTERVAL){ clearInterval(AUTO_REFRESH_INTERVAL); AUTO_REFRESH_INTERVAL = null; }
+  demoCleanup();
+  localStorage.removeItem(TEAM_TOKEN_KEY);
+  state.loggedIn = false; state.identity = null; state.role = null; state.loggedInEmployeeId = null;
+  state.resto = null; state.view = null;
+  state.loginStep = 'choose'; state.loginSelectedRole = null; state.loginSelectedEmployeeId = null; state.loginError = null;
+  state.appearanceDraft = null;
+  state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null;
+  state.bankingToken = null; state.bankingExpiresAt = null; state.bankingSummary = null; state.bankingReport = null; state.bankingToolUsers = null;
+  PUSH_STATE.status = 'unknown'; PUSH_STATE.endpoint = null;
+  try{ closeModal(); }catch(e){}
+}
 function exitPublicDemo(){
   demoCleanup();
   state.loggedIn = false; state.identity = null; state.role = null;
@@ -2908,8 +2930,14 @@ async function attemptAccountLogin(){
   }
   try{
     const data = await apiRequest('/api/auth/login', { method:'POST', body:{ email, password: pass } });
+    trackEvent('Connexion');
+    // Nouvelle session : on repart d'une page vierge, qui charge les établissements de CE
+    // compte depuis le serveur (même chemin qu'à l'ouverture du site) — jamais ceux affichés
+    // juste avant dans cet onglet.
+    resetSessionData();
     ACCOUNT = data.user;
-    goToSite('team-login');
+    if(data.token){ AUTH_TOKEN = data.token; localStorage.setItem(AUTH_TOKEN_KEY, data.token); }
+    window.location.reload();
   } catch(err){
     showFormError('account-error-slot', err.message, ['acc-email','acc-password']);
   }
@@ -3019,7 +3047,9 @@ async function attemptVerifyEmail(){
   try{
     trackEvent('Email confirmé');
     const data = await apiRequest('/api/auth/verify-email', { method:'POST', body:{ email: state.pendingSignup.email, code: entered } });
+    resetSessionData(); // compte tout neuf : aucune donnée d'un compte précédent ne doit subsister
     ACCOUNT = data.user;
+    if(data.token){ AUTH_TOKEN = data.token; localStorage.setItem(AUTH_TOKEN_KEY, data.token); }
     state.pendingSignup = null;
     state.verifyError = null;
     toast('Email vérifié — bienvenue sur Mise & Sûre');
@@ -3086,6 +3116,7 @@ async function confirmPasswordReset(){
 async function signOutAccount(){
   if(!window.confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) return;
   try{ await apiRequest('/api/auth/logout', { method:'POST' }); } catch(e){}
+  resetSessionData();
   ACCOUNT = null;
   AUTH_TOKEN = null;
   localStorage.removeItem(AUTH_TOKEN_KEY);
