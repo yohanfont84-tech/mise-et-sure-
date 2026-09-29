@@ -253,9 +253,13 @@ a{text-decoration:none;color:inherit;}
   display:flex;align-items:center;justify-content:space-between;padding:0 28px;
   position:sticky;top:0;z-index:20;
 }
-.topbar-left{display:flex;align-items:center;gap:14px;}
-.page-title{font-family:var(--heading-font);font-size:19px;font-weight:600;}
-.topbar-right{display:flex;align-items:center;gap:16px;}
+.topbar{gap:16px;}
+/* Le titre cède la place (points de suspension) plutôt que de venir toucher le sélecteur de
+   rôle et les boutons de droite sur un écran de taille moyenne. */
+.topbar-left{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto;}
+.page-title{font-family:var(--heading-font);font-size:19px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.topbar-right{display:flex;align-items:center;gap:16px;flex-shrink:0;}
+@media(max-width:1180px){ .topbar-right{gap:10px;} }
 
 .theme-choice{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--paper);border:1px solid var(--border);border-radius:12px;padding:4px;}
 .theme-choice button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border:none;border-radius:9px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
@@ -283,6 +287,18 @@ a{text-decoration:none;color:inherit;}
   .role-switcher{display:none;}
   .topbar-right{gap:8px;}
 }
+/* Écran moyen (tablette, petit portable) : les quatre boutons Patron / Manager / Cuisine /
+   Salle écrasaient le titre de la page (« St… »). Ils deviennent une petite liste déroulante,
+   qui reste disponible sur tablette (avant, l'aperçu des rôles disparaissait sous 900 px). */
+.role-select{display:none;}
+@media(max-width:1180px){
+  .topbar-right .role-switcher{display:none;}
+  .role-select{display:block;height:34px;padding:0 28px 0 12px;border:1px solid var(--border);border-radius:30px;background:var(--paper);color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer;max-width:130px;}
+}
+@media(max-width:600px){ .role-select{display:none;} }
+.sidebar-role-pick{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:13px;color:inherit;opacity:.9;}
+.sidebar-role-pick select{margin-left:auto;background:transparent;color:inherit;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:4px 6px;font:inherit;font-size:12.5px;}
+.sidebar-role-pick select option{color:#141414;}
 /* Téléphone : le titre de la page était coupé (« Ta… », « Pr… ») par sept boutons d'en-tête.
    Actualiser, thème et déconnexion passent dans le menu latéral (voir .sidebar-mobile-actions). */
 .sidebar-mobile-actions{display:none;}
@@ -312,6 +328,16 @@ a{text-decoration:none;color:inherit;}
 .grid-2{grid-template-columns:2fr 1fr;}
 .grid-2b{grid-template-columns:1fr 1fr;}
 @media(max-width:1200px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-3{grid-template-columns:repeat(2,1fr);}.grid-2{grid-template-columns:1fr;}.grid-2b{grid-template-columns:1fr;}}
+/* Rangée de exactement trois chiffres clés : reste sur une ligne jusqu'au mobile, plutôt que
+   de passer en 2 + 1 avec une carte isolée sur sa propre ligne. */
+@media(max-width:1200px){.grid-3.grid-3-fixed{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:760px){.grid-3.grid-3-fixed{grid-template-columns:1fr;}}
+/* Deux blocs (carte ou grille de cartes) qui se suivent dans la page ont toujours le même
+   espace entre eux — sans ça, sur Statistiques par exemple, les cadres se touchaient et
+   donnaient l'impression de se chevaucher. Neutralisé à l'intérieur des grilles et des lignes,
+   où c'est l'écart de la grille (gap) qui gère déjà l'espacement. */
+.content :is(.card,.grid) + :is(.card,.grid){margin-top:18px;}
+.content :is(.grid,.flex) > :is(.card,.grid) + :is(.card,.grid){margin-top:0;}
 
 .card{
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
@@ -4219,6 +4245,10 @@ function renderShell(){
         <!-- Sur téléphone, l'en-tête n'a de place que pour l'essentiel (recherche, notifications,
              profil) : actualiser, thème et déconnexion passent ici, dans le menu. -->
         <div class="sidebar-mobile-actions">
+          ${state.identity==='patron' ? `<label class="sidebar-role-pick">${iconXs(I.eye)} Voir l'espace
+            <select onchange="closeSidebar();previewRole(this.value)" aria-label="Voir l'espace de">
+              ${Object.keys(ROLE_META).map(r=>`<option value="${r}" ${state.role===r?'selected':''}>${ROLE_META[r].label}</option>`).join('')}
+            </select></label>` : ''}
           <button class="sidebar-link-btn" onclick="closeSidebar();manualRefresh()">${iconXs(I.refresh)} Actualiser les données</button>
           <button class="sidebar-link-btn" onclick="toggleTheme()">${iconXs(state.theme==='dark'?I.sun:I.moon)} ${state.theme==='dark'?'Mode clair':'Mode sombre'}</button>
           <button class="sidebar-link-btn" onclick="logout()">${iconXs(I.logout)} Se déconnecter</button>
@@ -4245,7 +4275,10 @@ function renderShell(){
         ${state.identity==='patron' ? `
         <div class="role-switcher">
           ${Object.keys(ROLE_META).map(r=>`<button class="role-btn ${state.role===r?'active':''}" onclick="previewRole('${r}')">${ROLE_META[r].label}</button>`).join('')}
-        </div>` : `<span class="tag tag-neutral" style="padding:7px 14px;font-size:12.5px;">${meta.label}</span>`}
+        </div>
+        <select class="role-select" onchange="previewRole(this.value)" aria-label="Voir l'espace de" title="Voir l'espace de">
+          ${Object.keys(ROLE_META).map(r=>`<option value="${r}" ${state.role===r?'selected':''}>${ROLE_META[r].label}</option>`).join('')}
+        </select>` : `<span class="tag tag-neutral" style="padding:7px 14px;font-size:12.5px;">${meta.label}</span>`}
         <button class="btn btn-ghost btn-sm" onclick="openGlobalSearch()" title="Rechercher (Ctrl+K)" aria-label="Rechercher">${iconSm(I.search)}</button>
         <button class="btn btn-ghost btn-sm topbar-secondary" onclick="manualRefresh()" title="Actualiser les données" aria-label="Actualiser les données">${iconSm(I.refresh)}</button>
         <div class="notif-wrap">
@@ -4410,7 +4443,7 @@ function viewStats(){
     <div class="section-head" style="margin-top:0;">
       <div><h2>Statistiques</h2><div class="sub">Dépenses par fournisseur, par catégorie, et évolution dans le temps</div></div>
     </div>
-    <div class="grid grid-3">
+    <div class="grid grid-3 grid-3-fixed">
       <div class="card"><div class="small muted">Dépenses ce mois-ci</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${fmtEUR(thisMonth)}</div></div>
       <div class="card"><div class="small muted">Commandes au total</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.status!=='refusee').length}</div></div>
       <div class="card"><div class="small muted">Écarts détectés</div><div style="font-size:26px;font-weight:700;margin-top:6px;">${ORDERS.filter(o=>o.hasDiscrepancy && !o.discrepancyResolved).length}</div></div>
@@ -4430,7 +4463,7 @@ function viewStats(){
     ${forecast ? `
     <div class="card">
       <div class="card-title">Budget prévisionnel</div>
-      <div class="grid grid-3" style="margin-top:4px;">
+      <div class="grid grid-3 grid-3-fixed" style="margin-top:4px;">
         <div>
           <div class="small muted">Dépensé ce mois-ci</div>
           <div style="font-size:20px;font-weight:700;">${fmtEUR(forecast.currentSpend)}</div>
@@ -13483,12 +13516,15 @@ function drawChartsNow(){
       type:'line',
       data:{
         labels: data.map(d=>d.label),
-        datasets:[{data:data.map(d=>d.value), borderColor:ink, backgroundColor:fillTint, fill:true, tension:0.3, pointRadius:3}]
+        // « monotone » : la courbe passe par chaque point sans jamais dépasser ses valeurs —
+        // l'ancien lissage la faisait plonger sous 0 € et sortir du cadre entre deux points.
+        datasets:[{data:data.map(d=>d.value), borderColor:ink, backgroundColor:fillTint, fill:true, cubicInterpolationMode:'monotone', borderWidth:2, pointRadius:3, pointHoverRadius:5, pointBackgroundColor:ink}]
       },
       options:{
         responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{x:{grid:{display:false}}, y:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}}
+        interaction:{mode:'index', intersect:false},
+        plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtEUR(c.parsed.y)}}},
+        scales:{x:{grid:{display:false}}, y:{beginAtZero:true, min:0, grace:'8%', grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}}
       }
     });
   });
@@ -13499,10 +13535,10 @@ function drawChartsNow(){
     const data = achatsBySupplier();
     charts.spendSupp = new Chart(spendSuppCanvas, {
       type:'bar',
-      data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor:ink, borderRadius:5, maxBarThickness:26}] },
+      data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor:ink, borderRadius:4, maxBarThickness:26}] },
       options:{
         indexAxis:'y', responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
+        plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>' '+fmtEUR(c.parsed.x)}}},
         scales:{x:{grid:{color:gridColor}, ticks:{callback:v=>v+' €'}}, y:{grid:{display:false}}}
       }
     });
@@ -13511,12 +13547,32 @@ function drawChartsNow(){
   safeChart('Dépenses par catégorie', () => {
     const spendCatCanvas = document.getElementById('chartSpendCategory');
     if(!spendCatCanvas) return;
-    const data = spendByCategoryData();
-    const palette = [ink,'#5B5B55','#8A8A84','#A93A2E','#BDBDB5','#2E4A3A'];
+    // Couleurs vérifiées (lisibles en clair comme en sombre, et pour les daltoniens), attribuées
+    // dans un ordre fixe, jamais répétées : au-delà de 7 catégories, les plus petites sont
+    // regroupées dans « Autres » (en gris) — avant, les couleurs revenaient en boucle et deux
+    // catégories pouvaient porter exactement la même.
+    const palette = isDark
+      ? ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9']
+      : ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7'];
+    const otherColor = isDark ? '#6C6C63' : '#A2A29B';
+    const sorted = spendByCategoryData().slice().sort((a,b)=>b.value-a.value);
+    const data = sorted.length > palette.length
+      ? [...sorted.slice(0, palette.length), { label:'Autres', value: Math.round(sorted.slice(palette.length).reduce((t,d)=>t+d.value,0)*100)/100 }]
+      : sorted;
+    const total = data.reduce((t,d)=>t+d.value,0) || 1;
+    const surface = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || (isDark ? '#1C1C19' : '#FFFFFF');
     charts.spendCat = new Chart(spendCatCanvas, {
       type:'doughnut',
-      data:{ labels: data.map(d=>d.label), datasets:[{data:data.map(d=>d.value), backgroundColor: data.map((_,i)=>palette[i%palette.length])}] },
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12,padding:12}}} }
+      data:{ labels: data.map(d=>d.label), datasets:[{
+        data:data.map(d=>d.value),
+        backgroundColor: data.map((d,i)=> d.label==='Autres' && i===palette.length ? otherColor : palette[i]),
+        borderColor: surface, borderWidth:2, hoverOffset:6,
+      }] },
+      options:{ responsive:true, maintainAspectRatio:false, cutout:'58%',
+        plugins:{
+          legend:{position:'bottom', labels:{boxWidth:10, boxHeight:10, padding:12, usePointStyle:true, pointStyle:'rectRounded', color:mutedText}},
+          tooltip:{callbacks:{label:c=>` ${c.label} : ${fmtEUR(c.parsed)} (${Math.round(c.parsed/total*100)} %)`}},
+        } }
     });
   });
 }
