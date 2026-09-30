@@ -260,6 +260,11 @@ a{text-decoration:none;color:inherit;}
 .page-title{font-family:var(--heading-font);font-size:19px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .topbar-right{display:flex;align-items:center;gap:16px;flex-shrink:0;}
 @media(max-width:1180px){ .topbar-right{gap:10px;} }
+/* Téléphone : un titre long (« Carte des fournisseurs ») passe sur deux lignes plutôt que
+   d'être coupé par des points de suspension. */
+@media(max-width:600px){
+  .topbar .page-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.15;font-size:15.5px;}
+}
 
 .theme-choice{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--paper);border:1px solid var(--border);border-radius:12px;padding:4px;}
 .theme-choice button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border:none;border-radius:9px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
@@ -2268,7 +2273,9 @@ function analyticsEnabled(){
 function analyticsSend(kind, name, props){
   try{
     if(ANALYTICS.umamiWebsiteId){
-      if(!window.umami){ ANALYTICS_QUEUE.push([kind, name, props]); return; }
+      // Script pas encore chargé (ou bloqué par un bloqueur de publicité) : file d'attente
+      // plafonnée, pour ne jamais grossir indéfiniment si le script ne se charge jamais.
+      if(!window.umami){ if(ANALYTICS_QUEUE.length < 30) ANALYTICS_QUEUE.push([kind, name, props]); return; }
       if(kind==='page') window.umami.track(p => ({ ...p, url: name, title: document.title }));
       else window.umami.track(name, props || {});
     } else if(ANALYTICS.plausibleDomain){
@@ -2913,6 +2920,7 @@ function resetSessionData(){
   state.adminUsers = null; state.adminStats = null; state.adminQuestions = null; state.adminActivity = null; state.adminClients = null;
   state.bankingToken = null; state.bankingExpiresAt = null; state.bankingSummary = null; state.bankingReport = null; state.bankingToolUsers = null;
   PUSH_STATE.status = 'unknown'; PUSH_STATE.endpoint = null;
+  CREDENTIALS.patron = { username:'', password:'', theme:'light' };
   try{ closeModal(); }catch(e){}
 }
 function exitPublicDemo(){
@@ -3045,8 +3053,8 @@ async function attemptVerifyEmail(){
   const entered = ((document.getElementById('verify-code')||{}).value || '').trim();
   if(!entered){ showFormError('verify-error-slot', 'Merci de saisir le code reçu par email.', ['verify-code']); return; }
   try{
-    trackEvent('Email confirmé');
     const data = await apiRequest('/api/auth/verify-email', { method:'POST', body:{ email: state.pendingSignup.email, code: entered } });
+    trackEvent('Email confirmé'); // seulement une fois le code réellement accepté
     resetSessionData(); // compte tout neuf : aucune donnée d'un compte précédent ne doit subsister
     ACCOUNT = data.user;
     if(data.token){ AUTH_TOKEN = data.token; localStorage.setItem(AUTH_TOKEN_KEY, data.token); }
@@ -15479,13 +15487,22 @@ function render(){
     console.error('Erreur d\'affichage :', err);
     const appEl = document.getElementById('app');
     if(appEl){
+      appEl.className = ''; // l'écran d'erreur doit occuper toute la page, pas la colonne du menu
+      // Détail technique affiché en petit : permet de comprendre et corriger le problème à partir
+      // d'une simple capture d'écran. Aucune donnée personnelle n'y figure.
+      const where = ((err && err.stack) || '').split('\n').slice(0,3).join(' · ').slice(0,260);
+      const detail = `${err && err.name ? err.name : 'Erreur'} : ${err && err.message ? err.message : String(err)} — page « ${state.site}${state.view ? ' / ' + state.view : ''} »`;
       appEl.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
-          <div style="max-width:420px;text-align:center;">
+          <div style="max-width:460px;text-align:center;">
             <div style="font-size:40px;margin-bottom:16px;">⚠️</div>
             <h2 style="margin-bottom:10px;">Un problème d'affichage est survenu</h2>
-            <p style="color:#8A8A84;margin-bottom:20px;">Vos données n'ont pas été perdues. Rechargez la page pour continuer.</p>
-            <button onclick="window.location.reload()" style="background:#141414;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-weight:600;cursor:pointer;">Recharger la page</button>
+            <p style="color:#6B6B65;margin-bottom:20px;">Vos données n'ont pas été perdues. Rechargez la page pour continuer.</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+              <button onclick="window.location.reload()" style="background:#141414;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-weight:600;cursor:pointer;">Recharger la page</button>
+              <button onclick="window.location.href=window.location.pathname" style="background:transparent;color:#141414;border:1px solid #D6D6CF;padding:12px 20px;border-radius:8px;font-weight:600;cursor:pointer;">Retour à l'accueil</button>
+            </div>
+            <p style="color:#8A8A84;font-size:11px;margin-top:22px;line-height:1.5;word-break:break-word;font-family:monospace;">${escapeHtml(detail)}<br>${escapeHtml(where)}</p>
           </div>
         </div>
       `;
