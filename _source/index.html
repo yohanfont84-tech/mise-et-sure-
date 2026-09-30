@@ -1581,7 +1581,6 @@ function applyAppearance(resto){
   const themeKey = resto.colorTheme && COLOR_THEMES[resto.colorTheme] ? resto.colorTheme : 'classique';
   const theme = COLOR_THEMES[themeKey];
   const root = document.documentElement.style;
-  const paletteVars = ['paper','surface','border','text','muted','muted2'];
 
   if(theme.palette){
     // Thème complet : change vraiment le fond, les cartes, les bordures, le texte — pas
@@ -4233,15 +4232,25 @@ async function triggerDirectInstall(){
   DEFERRED_INSTALL_PROMPT = null;
   closeModal();
 }
+// Copie fiable dans le presse-papiers : méthode moderne si le navigateur l'autorise, sinon
+// ancienne méthode, et en dernier recours le texte est laissé sélectionné avec un message
+// clair (certains navigateurs, Safari en tête, refusent parfois l'accès au presse-papiers).
+async function copyTextToClipboard(text, inputEl, okMessage){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); toast(okMessage); return true; }
+  }catch(e){ /* on tente l'ancienne méthode ci-dessous */ }
+  try{
+    if(inputEl){ inputEl.focus(); inputEl.select(); }
+    if(document.execCommand && document.execCommand('copy')){ toast(okMessage); return true; }
+  }catch(e){}
+  if(inputEl){ inputEl.focus(); inputEl.select(); }
+  toast('Copie automatique impossible sur ce navigateur — le lien est sélectionné : faites Copier (⌘C / Ctrl+C).', 'alert');
+  return false;
+}
 function copyInstallLink(){
   const input = document.getElementById('install-link-input');
-  input.select();
-  navigator.clipboard?.writeText(input.value).then(()=>{
-    toast('Lien copié — envoyez-le au téléphone concerné');
-  }).catch(()=>{
-    document.execCommand('copy');
-    toast('Lien copié');
-  });
+  if(!input) return;
+  copyTextToClipboard(input.value, input, 'Lien copié — envoyez-le au téléphone concerné');
 }
 function logout(){
   if(AUTO_REFRESH_INTERVAL){ clearInterval(AUTO_REFRESH_INTERVAL); AUTO_REFRESH_INTERVAL = null; }
@@ -6703,7 +6712,7 @@ function viewCommandes(role){
           ${financialsHidden()?'':`<td data-label="Montant" class="mono">${fmtEUR(o.amount)}</td>`}
           <td data-label="Statut">${orderStatusTag(o)}</td>
           <td data-label="Date" class="muted small">${o.date}</td>
-          <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document" aria-label="Voir le document">${iconXs(I.doc)}</button><button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.trash)}</button></div></td>
+          <td><div class="flex gap8">${orderRowActions(o, role)}<button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')" title="Voir le document" aria-label="Voir le document">${iconXs(I.doc)}</button>${hasPatronRights() ? `<button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')" title="Supprimer" aria-label="Supprimer">${iconXs(I.trash)}</button>` : ''}</div></td>
         </tr>`).join('')}
       </table>` : emptyState(ORDERS.length ? 'Aucune commande ne correspond à ces filtres' : 'Aucune commande pour le moment — créez votre première commande fournisseur')}
     </div>
@@ -6973,8 +6982,8 @@ function orderTemplatesHTML(){
             <div class="small muted">${escapeHtml(supplierName(t.supplier))} · ${t.items.length} produit${t.items.length>1?'s':''}</div>
           </div>
           <div class="flex gap8" style="flex-wrap:wrap;">
-            <button class="btn btn-ghost btn-sm" onclick="openEditTemplateModal('${t.id}')" title="Modifier ce panier type">${iconXs(I.copy)} Modifier</button>
-            <button class="btn btn-ghost btn-sm" onclick="deleteOrderTemplate('${t.id}')" title="Supprimer ce panier type" aria-label="Supprimer ce panier type">${iconXs(I.trash)}</button>
+            ${hasPatronRights() ? `<button class="btn btn-ghost btn-sm" onclick="openEditTemplateModal('${t.id}')" title="Modifier ce panier type">${iconXs(I.copy)} Modifier</button>
+            <button class="btn btn-ghost btn-sm" onclick="deleteOrderTemplate('${t.id}')" title="Supprimer ce panier type" aria-label="Supprimer ce panier type">${iconXs(I.trash)}</button>` : ''}
             <button class="btn btn-primary btn-sm" onclick="applyOrderTemplate('${t.id}')">Remplir le panier</button>
           </div>
         </div>`).join('')}`}
@@ -7004,7 +7013,7 @@ function renderBasketCard(supplierId, role){
       <div class="flex between center" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
         ${financialsHidden() ? '<div></div>' : `<div class="mono" style="font-weight:700;font-size:15px;">${fmtEUR(total)}</div>`}
         <div class="flex gap8 center">
-          <button class="btn btn-ghost btn-sm" onclick="openSaveTemplateModal('${supplierId}')" title="Réutiliser ce panier plus tard en un clic">${iconXs(I.copy)} Enregistrer</button>
+          ${hasPatronRights() ? `<button class="btn btn-ghost btn-sm" onclick="openSaveTemplateModal('${supplierId}')" title="Réutiliser ce panier plus tard en un clic">${iconXs(I.copy)} Enregistrer</button>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="openNewOrderModal('${supplierId}')">Ajouter</button>
           ${canSend
             ? `<button class="btn btn-primary btn-sm" onclick="sendBasket('${supplierId}')">Envoyer la commande</button>`
@@ -7257,6 +7266,10 @@ function openOrderRowDetail(event, orderId){
   if(event && event.target && event.target.closest('button, a, input, select, label')) return;
   openOrderDocumentModal(orderId);
 }
+// Droits réels de la personne connectée (et non du rôle affiché en aperçu) : certaines actions
+// — supprimer une commande, gérer les paniers types — sont réservées au patron par le serveur.
+// Les montrer à un manager ne menait qu'à un refus « action non autorisée ».
+function hasPatronRights(){ return state.identity==='patron' || state.isDemoMode; }
 function orderRowActions(o, role){
   const canDuplicate = role==='patron' && !o.custom && (o.lineItems||[]).some(li=>li.productId);
   const dupBtn = canDuplicate ? `<button class="btn btn-ghost btn-sm" onclick="duplicateOrder('${o.id}')" title="Réutiliser cette commande">${iconXs(I.copy)} Dupliquer</button>` : '';
@@ -8131,6 +8144,9 @@ function confirmUpgrade(){
 async function syncTeamFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
   if(!resto || !resto.remoteId) return;
+  // La liste complète de l'équipe est réservée au patron : un employé connecté (session d'équipe,
+  // sans compte patron) la recevait en refus à chaque rafraîchissement, toutes les 30 secondes.
+  if(!AUTH_TOKEN) return;
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team`);
     const d = ensureRestoData(localId);
@@ -8464,6 +8480,9 @@ async function syncNotificationSettingsFromServer(localId){
 let RESTO_DATA_LOADED_FOR = null;
 function restoDataReady(){ return RESTO_DATA_LOADED_FOR === state.resto; }
 async function syncRestoOperationalData(localId){
+  // Démo : les données sont fictives et locales, il n'y a aucun serveur à interroger (avant,
+  // « Actualiser » et le rafraîchissement automatique produisaient des erreurs en arrière-plan).
+  if(state.isDemoMode) return;
   // Les fournisseurs et les lieux/zones doivent être rechargés AVANT les produits, puisque
   // chaque produit s'y relie. Idem pour les commandes et les paniers, qui se relient eux aussi
   // à un fournisseur et des produits déjà chargés.
@@ -13252,9 +13271,8 @@ async function regenerateInviteLink(employeeId){
 }
 function copyInviteLink(){
   const input = document.getElementById('invite-link-input');
-  input.select();
-  navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(input.value) : document.execCommand('copy');
-  toast('Lien copié');
+  if(!input) return;
+  copyTextToClipboard(input.value, input, 'Lien copié');
 }
 function editEmployee(id){
   const t = TEAM.find(x=>x.id===id); if(!t) return;
@@ -15843,9 +15861,7 @@ function showInstallBanner(){
 // rien ne se déclenche tout seul, on affiche nous-mêmes ces instructions bien en évidence dès
 // l'ouverture de la page, plutôt que de les cacher dans les paramètres où seul le patron les
 // verrait — sinon la personne qui reçoit le lien atterrit juste sur le site, sans aucune piste.
-function isIOSDevice(){
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-}
+// isIOSDevice() : définie plus haut (reconnaît aussi les iPad récents, qui se présentent comme un Mac).
 function isRunningStandalone(){
   return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 }
