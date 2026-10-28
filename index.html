@@ -2074,6 +2074,25 @@ function basketTotal(supplierId){
     return a + (p ? li.qty*p.price : 0);
   }, 0);
 }
+// ============================================================
+// QUI PEUT RÉCEPTIONNER UNE LIVRAISON
+//
+// Le patron, le manager et la cuisine, comme toujours. Et un membre de la salle à qui le
+// patron a explicitement accordé la permission depuis la page Équipe : dans beaucoup
+// d'établissements, c'est la personne en salle qui est présente quand le camion arrive.
+//
+// On lit state.identity (le rôle réellement authentifié) et non state.role (l'interface
+// affichée) : quand le patron prévisualise l'interface de la salle, il doit voir exactement ce
+// que verrait un serveur autorisé, sans perdre ses propres droits au passage.
+//
+// Le serveur n'a JAMAIS accès à l'historique des réceptions — c'est géré dans viewLivraisons,
+// et la correction d'une réception déjà confirmée reste refusée côté serveur de toute façon.
+// ============================================================
+function canReceiveDeliveries(){
+  if(state.identity==='patron' || state.identity==='manager' || state.identity==='cuisine') return true;
+  const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+  return !!(m && m.canReceiveOrders);
+}
 function canSendOrders(){
   if(state.role==='patron') return true;
   const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
@@ -2370,6 +2389,9 @@ const NAV = {
     {id:'accueil', label:'Accueil salle', icon:I.tray},
     {id:'signaler', label:'Signaler un manque', icon:I.warn},
     {id:'stocks', label:'Catalogue', icon:I.doc},
+    // N'apparaît que pour un serveur à qui le patron a accordé la réception des livraisons
+    // (voir le filtre du menu plus bas) — invisible pour tous les autres.
+    {id:'livraisons', label:'Livraisons', icon:I.truck},
     {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
     {id:'inventaire', label:'Inventaire', icon:I.box},
     {id:'demandes', label:'Mes demandes', icon:I.clock},
@@ -2597,7 +2619,7 @@ function startPublicDemo(){
   d.team = [
     {id:'t1', remoteId:1, name:'Camille Bernard', role:'manager', shift:'10h – 18h', canOrderDirectly:true, orderSpendingLimit:200, status:'actif'},
     {id:'t2', remoteId:2, name:'Yohan Fontaine', role:'cuisine', shift:'8h – 16h', canOrderDirectly:true, orderSpendingLimit:80, status:'actif'},
-    {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', shift:'17h – 23h', canOrderDirectly:false, orderSpendingLimit:null, status:'actif'},
+    {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', shift:'17h – 23h', canOrderDirectly:false, orderSpendingLimit:null, status:'actif', canReceiveOrders:true},
   ];
   // Signalements de manque (REQUESTS) : la fonctionnalité la plus utilisée au quotidien par la
   // cuisine et la salle. Sans ces données, l'accueil Cuisine et la file de validation du patron
@@ -3156,6 +3178,14 @@ async function attemptLogin(){
         render();
         return;
       }
+      // La réponse de connexion porte les permissions de cette personne. On les applique à
+      // son entrée locale AVANT d'entrer dans l'application, sinon le menu se construirait
+      // sans savoir qu'elle a le droit de réceptionner.
+      const myEntry = TEAM.find(t=>t.id===employeeId);
+      if(myEntry && data.member){
+        myEntry.canOrderDirectly = !!data.member.can_order_directly;
+        myEntry.canReceiveOrders = !!data.member.can_receive_orders;
+      }
       login(role, employeeId);
       // Première connexion réelle de cette personne (surtout si elle arrive via son lien
       // personnel, sans être jamais passée par le compte du patron) : on recharge tout
@@ -3641,7 +3671,7 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
 ============================================================ */
 function renderShell(){
   const restoForNav = RESTOS.find(r=>r.id===state.resto);
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)) && !(n.id==='recettes' && restoForNav && restoForNav.recipesEnabled===false) && !(n.id==='inventaire' && !(restoForNav && restoForNav.stockCountsEnabled)));
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)) && !(n.id==='recettes' && restoForNav && restoForNav.recipesEnabled===false) && !(n.id==='inventaire' && !(restoForNav && restoForNav.stockCountsEnabled)) && !(n.id==='livraisons' && state.role==='salle' && !canReceiveDeliveries()));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -7075,7 +7105,7 @@ function viewEquipe(){
     <div class="section-head"><div><h2>Autorisation de commande directe</h2><div class="sub">Ces personnes peuvent envoyer une commande au fournisseur sans attendre la validation du patron</div></div></div>
     <div class="card">
       ${TEAM.length ? `<table class="stack-mobile">
-        <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th><th>Plafond avant validation</th></tr>
+        <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th><th>Plafond avant validation</th><th>Peut réceptionner les livraisons</th></tr>
         ${TEAM.map(t=>`<tr class="tr-hover">
           <td data-label="Nom" style="font-weight:600;">${escapeHtml(t.name)}</td>
           <td data-label="Rôle" class="muted">${escapeHtml(t.role)}</td>
@@ -7087,6 +7117,11 @@ function viewEquipe(){
             </div>
             ${t.canOrderDirectly ? `<div class="small muted" style="margin-top:2px;">${t.orderSpendingLimit!=null ? 'Au-delà, repasse par votre validation' : 'Aucune limite — commande toujours validée automatiquement'}</div>` : ''}
           </td>
+          <td data-label="Peut réceptionner les livraisons">
+            ${receptionIsImplicit(t.role) ? `<span class="small muted">Inclus dans son rôle</span>` : `
+              <label class="flex center gap8" style="cursor:pointer;"><input type="checkbox" ${t.canReceiveOrders?'checked':''} onchange="toggleCanReceiveOrders('${t.id}', this.checked)"> ${t.canReceiveOrders?'Autorisé':'Non autorisé'}</label>
+              ${t.canReceiveOrders ? `<div class="small muted" style="margin-top:2px;">Voit les livraisons à réceptionner, pas l'historique</div>` : ''}`}
+          </td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
@@ -7097,6 +7132,32 @@ function viewEquipe(){
       `).join('')}
     </div>
   `;
+}
+// Le manager et la cuisine réceptionnent déjà de par leur poste : proposer une case à cocher
+// pour eux laisserait croire qu'on peut leur retirer ce droit ici, ce qui n'est pas le cas.
+function receptionIsImplicit(role){
+  // Les deux écritures circulent dans l'application : le poste tel qu'il est enregistré
+  // ("Manager", "Chef de partie"...) pour les données venues du serveur, et l'identité
+  // abrégée ("manager", "cuisine") dans la démonstration. On accepte les deux plutôt que de
+  // laisser apparaître une case à cocher trompeuse d'un côté ou de l'autre.
+  return ['Manager','Chef de partie','Commis de cuisine'].includes(role)
+      || ['manager','cuisine'].includes(String(role||'').toLowerCase());
+}
+async function toggleCanReceiveOrders(id, checked){
+  const t = TEAM.find(x=>x.id===id); if(!t) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team/${t.remoteId}`, {
+      method:'PATCH', body:{ canReceiveOrders: checked },
+    });
+    t.canReceiveOrders = !!data.member.can_receive_orders;
+    toast(checked
+      ? `${escapeHtml(t.name)} peut désormais réceptionner les livraisons`
+      : `${escapeHtml(t.name)} ne peut plus réceptionner les livraisons`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 async function toggleCanOrderDirectly(id, checked){
   const t = TEAM.find(x=>x.id===id); if(!t) return;
@@ -7268,6 +7329,7 @@ async function syncTeamFromServer(localId){
       id: 't'+m.id, remoteId: m.id, name: m.name, role: m.role, shift: m.shift,
       status: m.status, username: m.username, photoDataUrl: m.photo_url, theme: m.theme,
       inviteToken: m.invite_token, canOrderDirectly: !!m.can_order_directly,
+      canReceiveOrders: !!m.can_receive_orders,
       orderSpendingLimit: m.order_spending_limit != null ? parseFloat(m.order_spending_limit) : null,
     }));
     if(state.resto === localId) TEAM = d.team;
@@ -8373,6 +8435,7 @@ function gatherAllRestaurantData(resto){
     equipe: TEAM.map(t => ({
       nom: t.name, role: t.role, horaires: t.shift||null, statut: t.status,
       peut_commander_directement: !!t.canOrderDirectly, plafond_commande_avant_validation: t.orderSpendingLimit ?? null,
+      peut_receptionner_les_livraisons: receptionIsImplicit(t.role) ? true : !!t.canReceiveOrders,
     })),
     historique_commandes: ORDERS.map(o => ({
       reference: o.id, fournisseur: (SUPPLIERS.find(s=>s.id===o.supplier)||{}).name || null,
@@ -9185,14 +9248,19 @@ function viewManagerDemandes(){
     </div>
   `;
 }
-function viewLivraisons(){
+function viewLivraisons(viewerRole){
+  // La salle ne voit QUE ce qui reste à réceptionner. Pas l'historique, pas les bons de
+  // livraison archivés, pas les réceptions déjà enregistrées : la permission ouvre un geste
+  // précis (constater ce qui arrive), pas la comptabilité des achats de l'établissement.
+  const role = viewerRole || state.role;
+  const restricted = role === 'salle';
   const awaiting = ORDERS.filter(o=>o.status==='validee' || o.status==='partiellement_recue');
   // 20 et non 5 : c'est ici que la cuisine et le manager retrouvent une réception passée pour
   // revoir ce qui avait été livré et relire le bon de livraison photographié. Cinq lignes ne
   // couvrent pas une semaine de service.
-  const recent = ORDERS.filter(o=>o.status==='livree' || o.status==='partiellement_recue').slice(0,20);
+  const recent = restricted ? [] : ORDERS.filter(o=>o.status==='livree' || o.status==='partiellement_recue').slice(0,20);
   return `
-    <div class="section-head" style="margin-top:0;"><div><h2>Livraisons</h2><div class="sub">Réceptionnez les commandes validées par le patron</div></div></div>
+    <div class="section-head" style="margin-top:0;"><div><h2>Livraisons</h2><div class="sub">${restricted ? 'Les commandes qui restent à réceptionner' : 'Réceptionnez les commandes validées par le patron'}</div></div></div>
     <div class="card">
       <div class="card-title">En attente de réception</div>
       <table>
@@ -9201,6 +9269,12 @@ function viewLivraisons(){
         ${awaiting.length===0?`<tr><td colspan="6"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
+    ${restricted ? `
+    <div class="small muted" style="margin-top:14px;line-height:1.7;">
+      Une fois une livraison confirmée, elle quitte cette liste : vous voyez ici ce qui reste à
+      faire, rien d'autre. L'historique des réceptions et les bons de livraison archivés restent
+      consultables par le patron, le manager et la cuisine.
+    </div>` : `
     <div class="section-head"><div><h2>Réceptions récentes</h2><div class="sub">Ouvrez une réception pour revoir ce qui a été livré et le bon de livraison photographié</div></div></div>
     <div class="card">
       <table>
@@ -9208,7 +9282,7 @@ function viewLivraisons(){
         ${recent.map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la réception" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${orderVendorLabel(o)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td><td><button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')">${iconXs(I.doc)} Voir le détail</button></td></tr>`).join('')}
         ${recent.length===0?`<tr><td colspan="6"><div class="empty">Aucune réception récente</div></td></tr>`:''}
       </table>
-    </div>
+    </div>`}
   `;
 }
 
@@ -9305,6 +9379,10 @@ function viewDemandesList(role){
 ============================================================ */
 function viewSalleAccueil(){
   const mine = REQUESTS.filter(r=>r.from==='Salle');
+  // Raccourci vers les livraisons, uniquement pour un serveur autorisé et seulement s'il reste
+  // vraiment quelque chose à réceptionner.
+  const deliveriesWaiting = ORDERS.filter(o=>o.status==='validee' || o.status==='partiellement_recue').length;
+  const showDeliveriesTile = canReceiveDeliveries() && deliveriesWaiting > 0;
   const restoForTile = RESTOS.find(r=>r.id===state.resto);
   const showHaccpTempTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
   const showHaccpCleaningTile = restoForTile && restoForTile.haccpEnabled && HACCP_CLEANING_TASKS.length>0;
@@ -9342,6 +9420,12 @@ function viewSalleAccueil(){
         <div class="tile-icon">${I.check}</div>
         <div class="tile-label">Nettoyage du jour</div>
         <div class="tile-sub">Cochez ce qui vient d'être fait</div>
+      </button>` : ''}
+      ${showDeliveriesTile ? `
+      <button class="tile" onclick="setView('livraisons')">
+        <div class="tile-icon">${I.truck}</div>
+        <div class="tile-label">Livraison${deliveriesWaiting>1?'s':''} à réceptionner</div>
+        <div class="tile-sub">${deliveriesWaiting} en attente</div>
       </button>` : ''}
     </div>
     <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
@@ -9430,6 +9514,10 @@ function toggleReceiveLine(id, idx){
 // rester figé pour toujours — sans cela, la seule issue était de vivre avec un chiffre faux
 // dans l'historique et les statistiques.
 function openReceiveOrderModal(id, correcting){
+  if(!canReceiveDeliveries()){
+    toast("Vous n'avez pas l'autorisation de réceptionner une livraison — demandez au patron", 'alert');
+    return;
+  }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
   if(correcting){
     // Corriger touche aux montants déjà enregistrés : c'est un acte de gestion, réservé au
@@ -11991,6 +12079,9 @@ function renderContent(){
   if(role==='salle'){
     if(view==='accueil') return viewSalleAccueil();
     if(view==='signaler'){ openSignalModal('Salle', false); return viewSalleAccueil(); }
+    // Second verrou : même si la vue était atteinte autrement que par le menu (dernière vue
+    // mémorisée, permission retirée entre-temps), on ne l'affiche pas sans la permission.
+    if(view==='livraisons') return canReceiveDeliveries() ? viewLivraisons() : viewSalleAccueil();
     if(view==='stocks') return viewSalleStocks();
     if(view==='demandes') return viewDemandesList('salle');
   }
@@ -13815,6 +13906,8 @@ async function checkExistingSession(){
         d.team = [{
           id: localEmployeeId, remoteId: data.member.id, name: data.member.name,
           role: data.member.role, photoDataUrl: data.member.photo_url,
+          canOrderDirectly: !!data.member.can_order_directly,
+          canReceiveOrders: !!data.member.can_receive_orders,
         }];
         state.resto = localId;
         loadRestoData(localId);
