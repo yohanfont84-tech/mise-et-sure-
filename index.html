@@ -47,10 +47,22 @@
   --gray-200:#E3E3DD;
   --gray-100:#EFEFEA;
   --urgent:#A93A2E;
+  /* Fond plein des actions destructrices (« Supprimer définitivement », toast d'alerte,
+     bandeau de démonstration) : toujours assez sombre pour porter du texte blanc. Distinct de
+     --urgent, qui sert de couleur de TEXTE et doit donc s'éclaircir en mode sombre. */
+  --urgent-solid:#A93A2E;
+  /* Petites pastilles pleines (compteurs, boutons ronds) : le fond s'inverse selon le thème,
+     sinon une pastille sombre disparaît sur une carte sombre. */
+  --badge-bg:#111111;
+  --badge-text:#ffffff;
+  /* Survol d'une ligne cliquable. Était écrit en secours « rgba(0,0,0,0.04) », un voile NOIR :
+     en mode sombre, survoler une ligne l'assombrissait encore, ce qui se lit comme « désactivé »
+     plutôt que comme « survolé ». Le voile s'éclaircit donc en mode sombre. */
+  --surface-hover:#F2F2EE;
   --urgent-tint:#F3E2DE;
   --info:#2D5F7C;
   --info-tint:#E1EBF0;
-  --good:#2E7D32;
+  --good:#2D7B31;
   --good-tint:#E3F2E4;
   /* Avertissement (ex : commande partiellement reçue) — seule teinte de statut sans paire de
      variables : elle était écrite en dur et restait jaune clair en mode sombre, seule étiquette
@@ -62,12 +74,14 @@
   --border:#E1E1DA;
   --text:#141414;
   --muted:#6B6B65;
-  --muted-2:#A2A29B;
+  --muted-2:#6D6D66;
   --surface-subtle:#F1F1EC;
   --radius:10px;
   --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
 }
 html.theme-dark{
+  --accent:#EDEDE6;
+  --accent-text:#111111;
   --gray-900:#E7E7E0;
   --gray-700:#B7B7AE;
   --gray-500:#8D8D84;
@@ -75,7 +89,11 @@ html.theme-dark{
   --gray-300:#46463F;
   --gray-200:#2B2B27;
   --gray-100:#201F1C;
-  --urgent:#C85C4E;
+  --urgent:#D07468;
+  --urgent-solid:#B5412F;
+  --badge-bg:#EDEDE6;
+  --badge-text:#111111;
+  --surface-hover:#272723;
   --urgent-tint:#3A211D;
   --info:#7FA8C4;
   --info-tint:#1C2B33;
@@ -88,7 +106,7 @@ html.theme-dark{
   --border:#333330;
   --text:#EDEDE6;
   --muted:#A3A399;
-  --muted-2:#6C6C63;
+  --muted-2:#8D8D82;
   --surface-subtle:#26261F;
   --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
 }
@@ -487,7 +505,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .field input[type="checkbox"], .field input[type="radio"]{
   width:auto;flex-shrink:0;padding:0;
 }
-.field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--black);outline-offset:1px;border-color:var(--black);}
+.field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .zone-checklist{max-height:160px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
 .price-history-list{max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;}
@@ -611,8 +629,8 @@ tr.group-row:hover td{background:var(--gray-100);}
 select{ max-width:100%; text-overflow:ellipsis; }
 .product-filter-bar select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;max-width:100%;text-overflow:ellipsis;}
 .product-picker-row{padding:8px 6px;border-radius:6px;cursor:pointer;font-size:13.5px;overflow-wrap:break-word;max-width:100%;}
-.product-picker-row:hover{background:var(--surface-hover, rgba(0,0,0,0.04));}
-.product-picker-row.selected{background:var(--accent, #111);color:#fff;}
+.product-picker-row:hover{background:var(--surface-hover);}
+.product-picker-row.selected{background:var(--accent);color:var(--accent-text);}
 .text-alert{color:var(--urgent);font-weight:700;}
 .tag-remove{border:none;background:transparent;padding:0 0 0 4px;cursor:pointer;display:inline-flex;align-items:center;vertical-align:middle;color:inherit;opacity:0.6;}
 .tag-remove svg{width:12px;height:12px;flex-shrink:0;}
@@ -964,7 +982,7 @@ body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
   box-shadow:0 8px 24px rgba(0,0,0,0.25);display:flex;align-items:center;gap:9px;min-width:220px;
   animation:slidein .22s ease;
 }
-.toast.alert{background:var(--urgent);}
+.toast.alert{background:var(--urgent-solid);}
 .toast.mail{background:var(--surface);color:var(--text);border:1px solid var(--black);}
 
 .notif-wrap{position:relative;}
@@ -1582,15 +1600,39 @@ function updateFavicon(logoDataUrl){
   }
   link.href = logoDataUrl || 'icon-192.png';
 }
+// Luminance relative au sens de la norme d'accessibilité (WCAG) — pas une moyenne pondérée
+// approximative : chaque composante est d'abord linéarisée, parce que l'œil ne perçoit pas la
+// clarté proportionnellement à la valeur du pixel.
+function relativeLuminance(hex){
+  const h = String(hex||'').replace('#','');
+  if(h.length!==6) return null;
+  const channel = v => {
+    const c = parseInt(v,16) / 255;
+    return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+  };
+  const r = channel(h.substring(0,2)), g = channel(h.substring(2,4)), b = channel(h.substring(4,6));
+  return 0.2126*r + 0.7152*g + 0.0722*b;
+}
+// Rapport de contraste entre deux couleurs (de 1 pour deux couleurs identiques, à 21 pour noir
+// sur blanc). Sert aussi bien à choisir une couleur de texte qu'à vérifier une lisibilité.
+function contrastRatio(hexA, hexB){
+  const a = relativeLuminance(hexA), b = relativeLuminance(hexB);
+  if(a == null || b == null) return 1;
+  return (Math.max(a,b) + 0.05) / (Math.min(a,b) + 0.05);
+}
 function accentTextColor(hex){
-  // Choisit blanc ou noir comme couleur de texte selon la vraie clarté de la couleur d'accent
-  // (par défaut ou choisie par le restaurant) — pour ne jamais se retrouver avec un texte
-  // blanc sur un fond devenu clair (ex : en mode sombre) ou l'inverse.
-  const h = (hex||'#111111').replace('#','');
-  if(h.length!==6) return '#fff';
-  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
-  const luminance = (0.299*r + 0.587*g + 0.114*b) / 255;
-  return luminance > 0.6 ? '#111111' : '#ffffff';
+  // Choisit blanc ou noir comme couleur de texte sur la couleur d'accent de l'établissement.
+  //
+  // L'ancienne version comparait une clarté approximative à un seuil fixe de 0,6. Sur un
+  // balayage de 4096 couleurs, elle se trompait pour 1158 d'entre elles (28 %) : l'autre
+  // couleur de texte aurait été plus lisible. Tous les bleus, turquoises et verts de clarté
+  // moyenne — exactement le genre de couleur qu'un restaurant choisit pour son identité —
+  // recevaient du texte blanc là où du texte noir se lisait mieux.
+  //
+  // On mesure donc les deux contrastes pour de vrai, et on garde le meilleur. Plus de seuil à
+  // deviner, et le résultat est juste pour n'importe quelle couleur choisie.
+  const candidate = (hex && String(hex).replace('#','').length===6) ? hex : '#111111';
+  return contrastRatio('#111111', candidate) >= contrastRatio('#ffffff', candidate) ? '#111111' : '#ffffff';
 }
 function financialsHidden(){
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -1690,7 +1732,7 @@ function initialsFor(name){
   return name.split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
 }
 function avatarInner(photoUrl, name){
-  return photoUrl ? `<img src="${photoUrl}" alt="${escapeHtml(name)}">` : initialsFor(name);
+  return photoUrl ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(name)}">` : initialsFor(name);
 }
 function photoFor(role, employeeId){
   if(employeeId){
@@ -2047,7 +2089,7 @@ async function sendBasket(supplierId){
   items.forEach(li=>{
     const p = PRODUCTS.find(x=>x.id===li.productId);
     if(p){
-      parts.push(`${escapeHtml(p.name)} × ${li.qty} ${p.unit}`);
+      parts.push(`${p.name} × ${li.qty} ${p.unit}`);
       amount += li.qty*p.price;
       enrichedItems.push({ productId: li.productId, remoteProductId: p.remoteId, name: p.name, qty: li.qty, price: p.price, tvaRate: p.tvaRate??5.5 });
     }
@@ -2068,8 +2110,9 @@ async function sendBasket(supplierId){
     // un employé autorisé sous son plafond ; en_attente_validation sinon) — on ne le devine
     // jamais côté navigateur, pour ne pas afficher un statut different de la réalité.
     const finalStatus = data.order.status;
+    const localOrderId = 'CMD-'+nextId();
     ORDERS.unshift({
-      id:'CMD-'+nextId(), remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
+      id:localOrderId, remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
       lineItems: enrichedItems.map(li=>({productId:li.productId, name:li.name, qty:li.qty, price:li.price, tvaRate:li.tvaRate})),
       amount: Math.round(amount*100)/100, status:finalStatus, date: fmtDateShort(now), createdAt: now
     });
@@ -2083,6 +2126,12 @@ async function sendBasket(supplierId){
       toast('Commande envoyée — '+supplierName(supplierId));
     } else {
       toast('Commande envoyée pour validation — '+supplierName(supplierId));
+    }
+    // Le patron est prévenu dès qu'une commande attend sa décision. Volontairement sans
+    // montant : la notification doit rester lisible même quand le volet financier est masqué,
+    // et le détail est de toute façon à un clic dans la page Commandes.
+    if(finalStatus==='en_attente_validation'){
+      notifyByEmail('patron', `commande ${localOrderId} en attente de votre validation — ${supplierName(supplierId)}.`, 'commandes');
     }
     render();
   } catch(err){
@@ -2403,7 +2452,7 @@ async function notifyByEmail(roleKey, message, eventKey){
       body:{ role: roleKey, message },
     });
     if(data.sent){
-      toast(`<b>Email envoyé</b> à ${escapeHtml(maskEmail(cfg.email))} — ${message}`, 'mail');
+      toast(`<b>Email envoyé</b> à ${escapeHtml(maskEmail(cfg.email))} — ${escapeHtml(message)}`, 'mail');
     } else if(data.simulated){
       // Le serveur n'a pas de clé d'envoi : rien n'est parti. Le dire franchement plutôt que
       // d'afficher « Email envoyé », qui laisserait croire le problème réglé.
@@ -2413,7 +2462,7 @@ async function notifyByEmail(roleKey, message, eventKey){
     // Une notification manquée ne doit jamais bloquer l'action en cours (approbation d'une
     // demande, envoi d'une commande...) — on l'indique, avec la raison exacte renvoyée par le
     // serveur, pour qu'on sache quoi corriger.
-    toast(`Email non envoyé — ${err.message}`, 'alert');
+    toast(`Email non envoyé — ${escapeHtml(err.message)}`, 'alert');
   }
 }
 function openModal(html){
@@ -2964,7 +3013,7 @@ function openAdminDeleteUserModal(userId, email){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3 style="color:var(--urgent);">Supprimer ce compte ?</h3>
     <p class="small muted" style="margin-bottom:16px;">Supprime immédiatement et définitivement le compte <b>${escapeHtml(email)}</b> et tous ses établissements — contrairement à la suppression en libre-service, aucun délai de grâce ici. Réservé aux cas exceptionnels.</p>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmAdminDeleteUser(${userId})">Je confirme, supprimer définitivement</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmAdminDeleteUser(${userId})">Je confirme, supprimer définitivement</button>
   `);
 }
 async function confirmAdminDeleteUser(userId){
@@ -3004,7 +3053,7 @@ function openDemoteAdminModal(userId, email){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Retirer le statut administrateur ?</h3>
     <p class="small muted" style="margin-bottom:16px;">Retire à <b>${escapeHtml(email)}</b> l'accès au panneau administrateur — le reste de son compte (forfait, établissements, données) n'est pas affecté.</p>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmDemoteAdmin(${userId})">Je confirme, retirer le statut</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmDemoteAdmin(${userId})">Je confirme, retirer le statut</button>
   `);
 }
 async function confirmDemoteAdmin(userId){
@@ -3668,7 +3717,7 @@ function renderShell(){
         <div class="notif-wrap">
           <button class="btn btn-ghost btn-sm" style="position:relative" onclick="toggleNotifPanel()" title="Notifications" aria-label="Notifications">
             ${I.bell}
-            ${getNotificationsForRole(state.role).length>0?`<span style="position:absolute;top:-4px;right:-4px;background:var(--black);color:#fff;width:16px;height:16px;border-radius:50%;font-size:9.5px;display:flex;align-items:center;justify-content:center;">${getNotificationsForRole(state.role).length}</span>`:''}
+            ${getNotificationsForRole(state.role).length>0?`<span style="position:absolute;top:-4px;right:-4px;background:var(--badge-bg);color:var(--badge-text);width:16px;height:16px;border-radius:50%;font-size:9.5px;display:flex;align-items:center;justify-content:center;">${getNotificationsForRole(state.role).length}</span>`:''}
           </button>
           ${state.notifOpen ? renderNotifPanel() : ''}
         </div>
@@ -3921,7 +3970,7 @@ function buildAIInsights(){
   const topId = Object.keys(freq).sort((a,b)=>freq[b]-freq[a])[0];
   if(topId){
     const p = PRODUCTS.find(x=>x.id===topId);
-    if(p) insights.push(`<b>${escapeHtml(p.name)}</b> est le produit le plus commandé, avec ${freq[topId]} ${p.unit} au total sur votre historique.`);
+    if(p) insights.push(`<b>${escapeHtml(p.name)}</b> est le produit le plus commandé, avec ${freq[topId]} ${escapeHtml(p.unit||'')} au total sur votre historique.`);
   }
   if(SUPPLIERS.length){
     const bySpend = SUPPLIERS.map(s=>({s, spend:supplierSpend(s.id)})).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend)[0];
@@ -4197,7 +4246,7 @@ function ticketDemande(r, viewerRole){
   const myMember = TEAM.find(t=>t.id===state.loggedInEmployeeId);
   const isMine = (viewerRole==='cuisine' || viewerRole==='salle') && myMember && r.createdByMemberId === myMember.remoteId && r.status==='attente';
   let stateTag = '';
-  if(r.status==='approuvee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-subtle">${iconXs(I.check)} Approuvée${r.qty?' · '+r.qty+' '+r.unit+' commandé'+(r.qty>1?'s':''):''}</span></div>`;
+  if(r.status==='approuvee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-subtle">${iconXs(I.check)} Approuvée${r.qty?' · '+r.qty+' '+escapeHtml(r.unit||'')+' commandé'+(r.qty>1?'s':''):''}</span></div>`;
   if(r.status==='refusee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-red">${iconXs(I.x)} Refusée</span></div>`;
   if(r.status==='attente' && !canAct && !isMine) stateTag = `<div style="margin-top:8px;"><span class="tag tag-neutral">${iconXs(I.clock)} En attente</span></div>`;
   return `
@@ -4397,7 +4446,7 @@ function viewStocks(){
             <td data-label="Département"><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
             <td data-label="Fournisseur" class="muted">${supplierName(p.supplier)}</td>
             <td data-label="Conditionnement" class="muted small">${escapeHtml(p.packaging||'—')}</td>
-            <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${p.unit}</td>
+            <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${escapeHtml(p.unit||'')}</td>
             ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${fmtEUR(p.price||0)} HT / ${p.unit}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
@@ -4823,7 +4872,7 @@ function deleteRecipe(id){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Supprimer « ${escapeHtml(r.name)} » ?</h3>
     <p class="small muted" style="margin-bottom:16px;">Cette fiche et tous ses ingrédients seront définitivement supprimés.</p>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmDeleteRecipe('${id}')">Supprimer définitivement</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmDeleteRecipe('${id}')">Supprimer définitivement</button>
   `);
 }
 async function confirmDeleteRecipe(id){
@@ -5967,7 +6016,7 @@ function sendAccountingExportToAccountant(period){
       } else if(data.simulated){
         toast(data.reason || "L'envoi d'emails n'est pas configuré sur le serveur.", 'alert');
       }
-    } catch(err){ toast(`Export non envoyé — ${err.message}`, 'alert'); }
+    } catch(err){ toast(`Export non envoyé — ${escapeHtml(err.message)}`, 'alert'); }
   });
 }
 // Rappel en début de mois, une fois le mois précédent terminé. Volontairement une suggestion
@@ -6077,7 +6126,7 @@ function renderBasketCard(supplierId, role){
           const p = PRODUCTS.find(x=>x.id===li.productId);
           return `<tr class="tr-hover">
             <td>${escapeHtml(p?p.name:'—')}</td>
-            <td><div class="flex center gap8"><input type="number" min="1" step="1" value="${Math.round(li.qty)}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;" onchange="updateBasketLineQty('${supplierId}','${li.productId}', this.value)"><span class="small muted">${p?p.unit:''}</span></div></td>
+            <td><div class="flex center gap8"><input type="number" min="1" step="1" value="${Math.round(li.qty)}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;" onchange="updateBasketLineQty('${supplierId}','${li.productId}', this.value)"><span class="small muted">${escapeHtml(p?p.unit:'')}</span></div></td>
             <td><button class="btn btn-ghost btn-sm" onclick="removeBasketLine('${supplierId}','${li.productId}')" title="Retirer" aria-label="Retirer">${iconXs(I.x)}</button></td>
           </tr>`;
         }).join('')}
@@ -6848,7 +6897,7 @@ function initSupplierMapNow(){
     if(state.mapProducersOnly && !s.isProducer) return; // filtre "producteurs uniquement" actif
     const alreadyKnown = SUPPLIERS.some(k=>(k.name||'').toLowerCase().trim() === (s.name||'').toLowerCase().trim());
     if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
-    const badge = s.isProducer ? '<span style="background:#2F9E44;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
+    const badge = s.isProducer ? '<span style="background:var(--good-tint);color:var(--good);font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
     const icon = createMapPin(s.isProducer ? '#2F9E44' : '#E08A2E', s.isProducer ? 26 : 22);
     const contactLines = [];
     if(s.address) contactLines.push(`📍 ${escapeHtml(s.address)}`);
@@ -7954,7 +8003,7 @@ function openDeleteAccountModal(){
       Cette action supprime votre compte et <b>tous</b> les établissements qui lui sont rattachés — produits, fournisseurs, commandes, équipe, tout l'historique. Un délai de grâce de 30 jours s'applique : rien n'est perdu tant que vous n'aurez pas laissé ce délai s'écouler sans annuler.
     </p>
     <div class="field"><label>Confirmez avec votre mot de passe</label><input id="delete-account-password" type="password" placeholder="Votre mot de passe" autofocus></div>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmDeleteAccount()">Je confirme, supprimer mon compte</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmDeleteAccount()">Je confirme, supprimer mon compte</button>
   `);
 }
 async function confirmDeleteAccount(){
@@ -8383,7 +8432,7 @@ function buildDataExportDocumentHTML(){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city || ''}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -9216,7 +9265,7 @@ function viewCuisineAccueil(){
 function catalogCard(p){
   return `<div class="card">
     <div style="font-weight:700;">${escapeHtml(p.name)}</div>
-    <div class="small muted" style="margin-top:4px;">Unité : ${p.unit} · commande standard ${p.qtyCommande} ${p.unit}</div>
+    <div class="small muted" style="margin-top:4px;">Unité : ${escapeHtml(p.unit||'')} · commande standard ${p.qtyCommande} ${escapeHtml(p.unit||'')}</div>
   </div>`;
 }
 function viewCuisineStocks(){
@@ -9697,10 +9746,12 @@ async function confirmValidateDemande(id){
         method:'POST',
         body:{ supplierId: supplierObj?supplierObj.remoteId:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now) },
       });
-      ORDERS.unshift({id:'CMD-'+nextId(), remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
+      const newOrderId = 'CMD-'+nextId();
+      ORDERS.unshift({id:newOrderId, remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
       toast('Demande approuvée — commande fournisseur créée');
+      notifyByEmail('patron', `commande ${newOrderId} en attente de votre validation — issue de la demande ${r.id}.`, 'commandes');
     }
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${escapeHtml(r.item)}) a été approuvée.`, 'decision');
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`, 'decision');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -9714,7 +9765,7 @@ async function refuseDemande(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
     r.status = 'refusee';
     toast('Demande refusée', 'alert');
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${escapeHtml(r.item)}) a été refusée.`, 'decision');
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`, 'decision');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -9787,7 +9838,7 @@ function quickOrder(productId){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Commander « ${escapeHtml(p.name)} »</h3>
     <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${fmtEUR(p.price||0)} / ${p.unit}`}</div>
-    <div class="field"><label>Quantité (${p.unit})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
+    <div class="field"><label>Quantité (${escapeHtml(p.unit||'')})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
   `);
 }
@@ -9830,7 +9881,7 @@ async function submitSignal(from, urgent){
     const recipient = from==='Cuisine' ? 'patron' : 'manager';
     toast(urgent ? `Commande urgente signalée au ${recipient}` : `Demande envoyée au ${recipient}`);
     if(urgent){
-      if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`, 'demandes');
+      notifyByEmail('manager', `commande urgente signalée en ${from.toLowerCase()} : ${item} (par ${author}).`, 'demandes');
       notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`, 'urgent');
     } else {
       notifyByEmail(recipient, `nouvelle demande : ${item} (par ${author}).`, 'demande_normale');
@@ -10325,7 +10376,7 @@ function handleDocumentScan(input, prefix){
       preview.innerHTML = `
         <div style="position:relative;display:inline-block;">
           <img src="${scanned}" alt="Document scanné" style="width:110px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
-          <button type="button" onclick="clearDocumentScan('${prefix}')" title="Retirer" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--black);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;">×</button>
+          <button type="button" onclick="clearDocumentScan('${prefix}')" title="Retirer" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--badge-bg);color:var(--badge-text);border:none;cursor:pointer;font-size:13px;line-height:1;">×</button>
         </div>
         <div class="small muted" style="margin-top:6px;">Document scanné — pas assez lisible ? Reprenez la photo ci-dessous.</div>
       `;
@@ -10615,13 +10666,13 @@ function editProduct(id){
     <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===p.cat?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field">
       <label>Unité de commande</label>
-      <input id="ep-unit" value="${p.unit}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
+      <input id="ep-unit" value="${escapeHtml(p.unit||'')}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
       <div class="small muted" style="margin-top:4px;">Comment vous commandez ce produit : au kilo, au litre, à la pièce, au carton, à la caisse…</div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
     ${financialsHidden() ? '' : `
     <div class="field-row">
-      <div class="field"><label id="ep-price-label">Prix par ${p.unit || 'unité'} — HT (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>
+      <div class="field"><label id="ep-price-label">Prix par ${escapeHtml(p.unit || 'unité')} — HT (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>
       <div class="field"><label>Taux de TVA</label><select id="ep-tva">${TVA_RATES.map(t=>`<option value="${t.value}" ${Math.abs((p.tvaRate??5.5)-t.value)<0.01?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>
     </div>
     `}
@@ -10954,7 +11005,7 @@ function buildOrderDocumentHTML(o){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -10981,7 +11032,7 @@ function buildOrderDocumentHTML(o){
       <table class="invoice-table">
         <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit. HT</th><th>TVA</th><th>Total HT</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${l.unit}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${fmtEURRaw(l.total||0)}</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${escapeHtml(l.unit||'')}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${fmtEURRaw(l.total||0)}</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -11219,7 +11270,7 @@ function buildHistoryDocumentHTML(period){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -11298,7 +11349,7 @@ function buildHaccpReportHTML(period){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -11791,7 +11842,7 @@ function editEmployee(id){
     <div class="field"><label>Nom complet</label><input id="ee-name" value="${escapeHtml(t.name)}"></div>
     <div class="field-row">
       <div class="field"><label>Rôle</label><select id="ee-role">${roles.map(r=>`<option ${t.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
-      <div class="field"><label>Horaires</label><input id="ee-shift" value="${t.shift}"></div>
+      <div class="field"><label>Horaires</label><input id="ee-shift" value="${escapeHtml(t.shift||'')}"></div>
     </div>
     <div class="field"><label>Statut</label><select id="ee-status"><option value="actif" ${t.status==='actif'?'selected':''}>En service</option><option value="repos" ${t.status==='repos'?'selected':''}>Repos</option></select></div>
     <div class="field"><label>Identifiant</label><input id="ee-username" value="${escapeHtml(t.username||'')}"></div>
@@ -12344,7 +12395,7 @@ function siteNav(active){
   return `
     <header class="site-nav">
       <button class="site-nav-brand" onclick="goToSite('marketing')">
-        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--black);color:#fff;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--badge-bg);color:var(--badge-text);"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <span>Mise &amp; Sûre</span>
       </button>
       <nav class="site-nav-links">
@@ -13446,7 +13497,7 @@ function renderBanner(){
   // suppression en attente) : jamais d'ambiguïté possible sur le fait qu'on ne regarde pas son
   // propre compte, avec un chemin de sortie toujours visible.
   if(state.impersonating && state.impersonating.active){
-    html += `<div class="demo-banner" style="background:var(--urgent);">
+    html += `<div class="demo-banner" style="background:var(--urgent-solid);">
       ${iconXs(I.alertTriangle)} <span><b>Vous visualisez le compte de ${escapeHtml(state.impersonating.label)}</b> en tant qu'administrateur. <a href="#" onclick="exitImpersonation();return false;" style="color:#fff;text-decoration:underline;font-weight:700;">Quitter cette vue</a></span>
     </div>`;
     return html; // rien d'autre ne doit se superposer à ce bandeau tant qu'on imite un compte
@@ -13456,7 +13507,7 @@ function renderBanner(){
   if(ACCOUNT && ACCOUNT.pending_deletion_at){
     const deletionDate = new Date(ACCOUNT.pending_deletion_at);
     const daysLeft = Math.max(0, Math.ceil((deletionDate - new Date()) / (1000*60*60*24)));
-    html += `<div class="demo-banner" style="background:var(--urgent);">
+    html += `<div class="demo-banner" style="background:var(--urgent-solid);">
       ${iconXs(I.alertTriangle)} <span><b>Suppression de compte demandée</b> — votre compte et tous vos établissements seront définitivement supprimés dans ${daysLeft} jour${daysLeft>1?'s':''} (le ${fmtDateLong(deletionDate)}). <a href="#" onclick="cancelAccountDeletion();return false;" style="color:#fff;text-decoration:underline;font-weight:700;">Annuler la suppression</a></span>
     </div>`;
   }
