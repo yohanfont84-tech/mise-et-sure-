@@ -289,7 +289,7 @@ const OG_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8">
   .r img{ position:absolute; left:36px; top:78px; width:720px; border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.6); border:1px solid #333; }
 </style></head><body>
   <div class="l">
-    <div class="b"><img src="/icon-256.webp" alt="">Mise &amp; Sûre</div>
+    <div class="b"><img src="/icon-256.png" alt="">Mise &amp; Sûre</div>
     <h1>La gestion de votre restaurant, sans friction.</h1>
     <p>Commandes fournisseurs, coût de revient, HACCP, allergènes, inventaire.</p>
     <div><span class="t">14 jours d'essai gratuit</span></div>
