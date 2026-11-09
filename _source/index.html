@@ -4,19 +4,22 @@
 <meta charset="UTF-8">
 <title>Mise & Sûre — plateforme de gestion pour restaurants</title>
 <link rel="canonical" href="https://misesure.fr/">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Mise & Sûre, la plateforme de gestion pour restaurants : commandes fournisseurs, coût de revient par plat, suivi HACCP, inventaire et statistiques, sans friction.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://misesure.fr/">
 <meta property="og:site_name" content="Mise & Sûre">
 <meta property="og:title" content="Mise & Sûre — la gestion de restaurant, sans friction">
 <meta property="og:description" content="Commandes fournisseurs, coût de revient par plat, suivi HACCP, inventaire : tout ce qu'il faut pour gérer un restaurant, au même endroit.">
-<meta property="og:image" content="https://misesure.fr/icon-512.png">
+<meta property="og:image" content="https://misesure.fr/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Mise & Sûre — la gestion de restaurant, sans friction">
 <meta property="og:locale" content="fr_FR">
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Mise & Sûre — la gestion de restaurant, sans friction">
 <meta name="twitter:description" content="Commandes fournisseurs, coût de revient par plat, suivi HACCP, inventaire, au même endroit.">
-<meta name="twitter:image" content="https://misesure.fr/icon-512.png">
+<meta name="twitter:image" content="https://misesure.fr/og-image.jpg">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#FFFFFF">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
@@ -26,7 +29,25 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Mise & Sûre">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Polices de base seulement. Cormorant Garamond et Space Grotesk ne servent qu'aux styles
+     « Élégant » et « Contemporain » d'un établissement : elles sont chargées à la demande
+     (voir ensureExtraFonts), pas pour chaque visiteur de la page d'accueil. -->
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Données structurées : permettent à Google d'afficher le logiciel, son prix et sa
+     description directement dans les résultats de recherche. -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Organization","@id":"https://misesure.fr/#org","name":"Mise & Sûre","url":"https://misesure.fr/","logo":"https://misesure.fr/icon-512.png"},
+ {"@type":"WebSite","@id":"https://misesure.fr/#site","url":"https://misesure.fr/","name":"Mise & Sûre","inLanguage":"fr-FR","publisher":{"@id":"https://misesure.fr/#org"}},
+ {"@type":"SoftwareApplication","name":"Mise & Sûre","applicationCategory":"BusinessApplication","applicationSubCategory":"Logiciel de gestion de restaurant","operatingSystem":"Web, iOS, Android","url":"https://misesure.fr/","image":"https://misesure.fr/og-image.jpg","inLanguage":"fr-FR","description":"Logiciel de gestion pour restaurants : commandes fournisseurs, coût de revient et fiches techniques, suivi HACCP, fiche allergènes, inventaire et statistiques.","publisher":{"@id":"https://misesure.fr/#org"},"offers":{"@type":"AggregateOffer","priceCurrency":"EUR","lowPrice":"19","highPrice":"79","offerCount":"3","url":"https://misesure.fr/tarifs/"}}
+]}
+</script>
+<script>
+  // Personne déjà connectée qui recharge la page : on masque le contenu affiché d'avance (la page
+  // d'accueil) le temps que l'application s'ouvre, pour éviter un « flash » de l'accueil.
+  try{ if(localStorage.getItem('mise_et_sure_auth_token') || localStorage.getItem('mise_et_sure_team_token')) document.documentElement.className += ' app-booting'; }catch(e){}
+</script>
 
 
 
@@ -36,6 +57,14 @@
 
 
 <style>
+/* Ouverture de l'application pour une personne connectée : contenu pré-affiché masqué, petit
+   indicateur de chargement à la place (retiré au premier affichage réel, voir render()). */
+.app-booting #app{visibility:hidden;}
+.app-booting body::after{content:'';position:fixed;top:50%;left:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:3px solid rgba(128,128,128,.25);border-top-color:#888;animation:boot-spin .8s linear infinite;}
+@keyframes boot-spin{to{transform:rotate(360deg);}}
+/* Zoom de nouveau autorisé sur téléphone (accessibilité) : on garde des champs en 16 px pour
+   que l'iPhone ne zoome pas tout seul quand on touche un champ de saisie. */
+@media (max-width:768px){ input:not([type=checkbox]):not([type=radio]), select, textarea{ font-size:16px !important; } }
 :root{
   --black:#111111;
   --ink:#141414;
@@ -993,7 +1022,7 @@ select{ max-width:100%; text-overflow:ellipsis; }
 .site-cta h2{font-family:'Fraunces',serif;font-size:26px;margin:0 0 8px 0;color:#fff;}
 .site-cta .muted{color:#B8B8B1 !important;}
 .site-footer{text-align:center;padding:26px;font-size:11.5px;color:var(--muted-2);display:flex;flex-direction:column;gap:8px;align-items:center;}
-.site-footer-links{display:flex;gap:16px;}
+.site-footer-links{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
 .site-footer-links a{cursor:pointer;color:var(--muted-2);text-decoration:underline;text-underline-offset:2px;}
 .site-footer-links a:hover{color:var(--text);}
 .legal-page{max-width:680px;margin:0 auto;padding:40px 24px 20px 24px;}
@@ -1570,6 +1599,17 @@ const COLOR_THEMES = {
   }},
   custom: { label: 'Personnalisée', swatch: null, palette: null },
 };
+// Polices supplémentaires des styles « Élégant » et « Contemporain » : chargées une seule fois,
+// seulement quand un établissement les utilise (ou quand on choisit son style).
+let EXTRA_FONTS_LOADED = false;
+function ensureExtraFonts(){
+  if(EXTRA_FONTS_LOADED) return;
+  EXTRA_FONTS_LOADED = true;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Space+Grotesk:wght@500;600;700&display=swap';
+  document.head.appendChild(link);
+}
 const FONT_STYLES = {
   classique: { label: 'Classique', heading: "'Fraunces',serif", preview: 'Aa' },
   moderne: { label: 'Moderne', heading: "'Inter',sans-serif", preview: 'Aa' },
@@ -1623,6 +1663,7 @@ function applyAppearance(resto){
   root.setProperty('--accent-text', accentTextColor(accentColor));
 
   const fontKey = resto.fontStyle && FONT_STYLES[resto.fontStyle] ? resto.fontStyle : 'classique';
+  if(fontKey === 'elegant' || fontKey === 'contemporain') ensureExtraFonts();
   root.setProperty('--heading-font', FONT_STYLES[fontKey].heading);
 
   // Même photo que celle utilisée sur l'écran de connexion, réutilisée ici pour le fond de
@@ -1799,6 +1840,7 @@ let HACCP_CLEANING_LOGS = []; // {id, remoteId, taskId, taskName, frequency, don
 // Fiches techniques (coût de revient par plat) — jamais de coût stocké en dur : toujours
 // recalculé à partir du prix ACTUEL des produits liés, pour ne jamais montrer un coût obsolète.
 let RECIPES = []; // {id, remoteId, name, sellingPriceTtc, category}
+let PRICE_CHANGES = []; // {remoteId, productRemoteId, productName, oldPrice, newPrice, createdAt} — alertes de marge
 let RECIPE_INGREDIENTS = []; // {id, remoteId, recipeId, productId, productNameSnapshot, quantity, unit}
 
 // Inventaire — relevé simple de stock (quantité, date, auteur), sans réconciliation théorique.
@@ -1811,7 +1853,7 @@ function ensureRestoData(id){
   if(!RESTO_DATA[id]) RESTO_DATA[id] = {
     suppliers: [], products: [], requests: [], orders: [], baskets: {}, customRequests: [], team: [], categories: [], zones: [],
     haccpEquipment: [], haccpTempLogs: [], haccpCleaningTasks: [], haccpCleaningLogs: [],
-    recipes: [], recipeIngredients: [], stockCounts: [], orderTemplates: [],
+    recipes: [], recipeIngredients: [], stockCounts: [], orderTemplates: [], priceChanges: [],
   };
   return RESTO_DATA[id];
 }
@@ -1837,6 +1879,7 @@ function loadRestoData(id){
   // précédent, jusqu'à ce que la synchronisation les remplace — des données d'un restaurant
   // visibles dans un autre, même brièvement.
   ORDER_TEMPLATES = d.orderTemplates || [];
+  PRICE_CHANGES = d.priceChanges || [];
 }
 
 function identityForTeamRole(role){
@@ -2451,8 +2494,29 @@ async function apiRequest(path, options={}){
 /* ============================================================
    ÉTAT GLOBAL
 ============================================================ */
+// ============================================================
+// VRAIES ADRESSES POUR LES PAGES PUBLIQUES — misesure.fr/tarifs/, /cgu/… : chaque page publique
+// a sa propre adresse, que Google peut indexer et qu'on peut partager. Ces dossiers contiennent
+// une copie de la page (fabriquée par _source/build-pages.js), le site s'ouvre donc directement
+// sur la bonne page. Les pages de l'application, elles, restent à la racine « / ».
+// Ouvert depuis un fichier « …/index.html » (tests en local), on garde l'adresse telle quelle.
+// ============================================================
+function sitePaths(){
+  return { marketing:'/', pricing:'/tarifs/', 'mentions-legales':'/mentions-legales/', confidentialite:'/confidentialite/', cgu:'/cgu/' };
+}
+function usesFileStylePath(){ return /\/index\.html$/.test(window.location.pathname); }
+function pathForSite(site){
+  if(usesFileStylePath()) return window.location.pathname;
+  return sitePaths()[site] || '/';
+}
+function appRootPath(){ return usesFileStylePath() ? window.location.pathname : '/'; }
+function siteFromPath(){
+  const path = window.location.pathname.replace(/index\.html$/, '');
+  const paths = sitePaths();
+  return Object.keys(paths).find(k => k !== 'marketing' && paths[k] === path) || null;
+}
 const state = {
-  site: 'marketing', // 'marketing' | 'pricing' | 'payment' | 'account-auth' | 'verify-email' | 'setup-restaurant' | 'reset-password' | 'team-login' | 'app'
+  site: siteFromPath() || 'marketing', // 'marketing' | 'pricing' | 'payment' | 'account-auth' | 'verify-email' | 'setup-restaurant' | 'reset-password' | 'team-login' | 'app'
   billingCycle: 'monthly', // 'monthly' | 'annual'
   selectedPlan: null, // 'essentiel' | 'pro'
   authMode: 'login', // 'login' | 'signup'
@@ -2762,7 +2826,7 @@ function goToSite(site){
   // navigateur ramène à CETTE page précise (ex : Tarifs) plutôt qu'à l'accueil par défaut —
   // utile en particulier après un aller-retour vers la page de paiement Stripe.
   if(!state._restoringFromHistory){
-    window.history.pushState({ site }, '', window.location.pathname);
+    window.history.pushState({ site }, '', pathForSite(site));
   }
   render();
   window.scrollTo(0,0);
@@ -3130,6 +3194,7 @@ async function attemptVerifyEmail(){
     state.pendingSignup = null;
     state.verifyError = null;
     toast('Email vérifié — bienvenue sur Mise & Sûre');
+    maybeClaimReferral();
     goToSite('marketing');
   } catch(err){
     showFormError('verify-error-slot', err.message, ['verify-code']);
@@ -3890,7 +3955,7 @@ function renderForcedPasswordChangeScreen(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
         <h1>Nouveau mot de passe requis</h1>
         <p>Pour la sécurité de votre compte, choisissez un mot de passe personnel avant de continuer${member ? ', '+escapeHtml(member.name) : ''}.</p>
       </div>
@@ -3968,12 +4033,38 @@ function startAutoRefresh(){
   // Rafraîchit les données en arrière-plan toutes les 30 secondes, sans message ni interruption
   // — pour que les chiffres (statistiques, commandes, écarts...) restent à jour même si une
   // autre personne (employé, autre appareil) a fait une action entre-temps.
+  // Personne ne touche l'écran depuis plus de 10 minutes (tablette posée en cuisine, onglet
+  // oublié) : on ne rafraîchit plus qu'une fois toutes les 2 minutes. Dès qu'on y revient, la
+  // fréquence normale reprend, avec une mise à jour immédiate si les données datent un peu.
+  let tick = 0;
   AUTO_REFRESH_INTERVAL = setInterval(() => {
+    tick++;
+    const idle = Date.now() - LAST_USER_ACTIVITY > 10*60*1000;
+    if(idle && tick % 4 !== 0) return;
     if(state.loggedIn && state.resto && document.visibilityState === 'visible'){
-      syncRestoOperationalData(state.resto);
+      LAST_AUTO_SYNC = Date.now();
+      syncRestoOperationalData(state.resto, { background:true });
     }
   }, 30000);
 }
+let LAST_USER_ACTIVITY = Date.now();
+let LAST_AUTO_SYNC = Date.now();
+function noteUserActivity(){
+  const wasIdle = Date.now() - LAST_USER_ACTIVITY > 10*60*1000;
+  LAST_USER_ACTIVITY = Date.now();
+  if(wasIdle && Date.now() - LAST_AUTO_SYNC > 30000 && AUTO_REFRESH_INTERVAL && state.loggedIn && state.resto){
+    LAST_AUTO_SYNC = Date.now();
+    syncRestoOperationalData(state.resto, { background:true });
+  }
+}
+['pointerdown','keydown','touchstart'].forEach(ev => window.addEventListener(ev, noteUserActivity, { passive:true }));
+document.addEventListener('visibilitychange', () => {
+  // Retour sur l'onglet après un moment ailleurs : données remises à jour tout de suite.
+  if(document.visibilityState === 'visible' && AUTO_REFRESH_INTERVAL && state.loggedIn && state.resto && Date.now() - LAST_AUTO_SYNC > 30000){
+    LAST_AUTO_SYNC = Date.now(); LAST_USER_ACTIVITY = Date.now();
+    syncRestoOperationalData(state.resto, { background:true });
+  }
+});
 function login(identity, employeeId){
   state.identity = identity;
   state.role = identity;
@@ -4252,7 +4343,7 @@ function installLinkFor(employeeId){
   // personnel (avec son établissement déjà repéré) s'il en a un ; sinon, à défaut, le même lien
   // de base, il se connectera alors avec son identifiant comme d'habitude.
   if(member && member.inviteToken) return inviteLinkFor(member.inviteToken);
-  return window.location.origin + window.location.pathname;
+  return window.location.origin + appRootPath();
 }
 function myInstallLink(){
   return installLinkFor(state.loggedInEmployeeId);
@@ -4940,6 +5031,7 @@ function viewPatronDashboard(){
 
   return `
     ${onboardingChecklist()}
+    ${marginAlertsHTML({ limit: 3 })}
     ${haccpDashboardReminderHTML()}
     ${staleSuppliersReminderHTML()}
     <div class="grid grid-4">
@@ -5733,8 +5825,12 @@ function viewRecipes(){
   return `
     <div class="section-head" style="margin-top:0;">
       <div><h2>Fiches techniques</h2><div class="sub">Le coût de revient réel de chaque plat, calculé à partir de vos prix fournisseurs actuels</div></div>
-      <button class="btn btn-primary" onclick="openNewRecipeModal()">${iconSm(I.plus)} Ajouter une fiche</button>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        ${RECIPES.length ? `<button class="btn btn-ghost" onclick="openAllergenSheetModal()" title="Tableau des 14 allergènes de chaque plat, à afficher en salle">🖨️ Fiche allergènes</button>` : ''}
+        <button class="btn btn-primary" onclick="openNewRecipeModal()">${iconSm(I.plus)} Ajouter une fiche</button>
+      </div>
     </div>
+    ${marginAlertsHTML()}
     ${RECIPES.length ? RECIPES.map(r=>renderRecipeCard(r)).join('') : emptyState("Aucune fiche technique pour le moment — ajoutez votre premier plat pour connaître son coût de revient réel.", {label:'Créer une fiche technique', onclick:'openNewRecipeModal()'})}
   `;
 }
@@ -5748,6 +5844,7 @@ function renderRecipeCard(recipe){
         <div>
           <div style="font-weight:700;font-size:15px;">${escapeHtml(recipe.name)}</div>
           <div class="small muted">${ingredients.length} ingrédient${ingredients.length>1?'s':''}${recipe.category ? ' · '+escapeHtml(recipe.category) : ''}${recipe.yieldQty && recipe.yieldUnit ? ` · rendement ${recipe.yieldQty} ${escapeHtml(recipe.yieldUnit)} — utilisable comme sous-recette` : ''}${hasUnknownCost ? ' · un ingrédient a un coût inconnu' : ''}</div>
+          ${recipeAllergenLineHTML(recipe)}
         </div>
         <div class="flex gap8 center" style="flex-wrap:wrap;">
           ${!financialsHidden() ? `
@@ -8405,6 +8502,8 @@ async function syncProductsFromServer(localId){
         zoneIds: localZoneIds, tvaRate: p.tva_rate != null ? parseFloat(p.tva_rate) : 5.5,
         netContentQty: p.net_content_qty != null ? parseFloat(p.net_content_qty) : null,
         netContentUnit: p.net_content_unit || null,
+        allergens: Array.isArray(p.allergens) ? p.allergens : [],
+        allergensChecked: !!p.allergens_checked,
       };
     });
     if(state.resto === localId) PRODUCTS = d.products;
@@ -8416,9 +8515,28 @@ async function syncOrdersFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
   if(!resto || !resto.remoteId) return;
   try{
-    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders`);
     const d = ensureRestoData(localId);
-    d.orders = data.orders.map(o => {
+    // Synchronisation incrémentale : après le premier chargement, on ne redemande que les
+    // commandes créées ou modifiées depuis le dernier passage (et la liste des numéros, pour
+    // retirer celles supprimées). Les lignes brutes reçues du serveur sont gardées en mémoire
+    // et toutes « retraduites » à chaque fois — les correspondances fournisseur/produit restent
+    // donc toujours justes, même si le catalogue a été rechargé entre-temps.
+    const cache = d._ordersRaw && d._ordersSince ? d._ordersRaw : null;
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders` + (cache ? `?since=${encodeURIComponent(d._ordersSince)}` : ''));
+    let raw;
+    if(data.incremental && cache){
+      const keep = new Set(data.ids || []);
+      const byId = new Map(cache.filter(o => keep.has(o.id)).map(o => [o.id, o]));
+      data.orders.forEach(o => byId.set(o.id, o));
+      raw = Array.from(byId.values()).sort((a,b) => b.id - a.id);
+    } else {
+      raw = data.orders;
+    }
+    d._ordersRaw = raw;
+    d._ordersSince = data.serverTime || null;
+    // Photos de bons de livraison déjà ouvertes : gardées d'un rafraîchissement à l'autre.
+    const photoCache = d._orderPhotos || (d._orderPhotos = {});
+    d.orders = raw.map(o => {
       const localSupplier = o.supplier_id ? d.suppliers.find(s => s.remoteId === o.supplier_id) : null;
       const lineItems = (o.line_items || []).map(li => {
         if(!li.productId) return li;
@@ -8429,7 +8547,10 @@ async function syncOrdersFromServer(localId){
         id: 'CMD-'+o.id, remoteId: o.id, supplier: localSupplier ? localSupplier.id : null,
         items: o.items, lineItems, amount: parseFloat(o.amount), status: o.status,
         date: o.order_date, createdAt: new Date(o.created_at), custom: o.is_custom,
-        hasDiscrepancy: o.has_discrepancy, deliveryNotePhotoUrl: o.delivery_note_photo_url,
+        hasDiscrepancy: o.has_discrepancy,
+        hasDeliveryNotePhoto: !!(o.has_delivery_note_photo || o.delivery_note_photo_url),
+        deliveryNotePhotoUrl: o.delivery_note_photo_url || (photoCache[o.id] && photoCache[o.id].updatedAt === o.updated_at ? photoCache[o.id].url : null),
+        updatedAt: o.updated_at || null,
         vendorName: o.vendor_name || '',
         // Sans ces deux champs, un écart clos réapparaîtrait comme non traité au prochain
         // chargement : l'information ne serait retenue que le temps de la session en cours.
@@ -8649,6 +8770,289 @@ async function syncOrderTemplatesFromServer(localId){
     ensureRestoData(localId).orderTemplates = mapped;
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncOrderTemplatesFromServer —', err); }
 }
+// ============================================================
+// ALERTE « TA MARGE A BAISSÉ »
+//
+// Le serveur garde la trace de chaque changement de prix du catalogue (ancien → nouveau prix).
+// Ici, on en déduit l'effet concret sur chaque fiche technique : coût de revient et marge avant
+// / après la hausse. Le calcul réutilise exactement celui des fiches techniques (conversions
+// d'unités, contenu net, sous-recettes) en remplaçant juste, le temps du calcul, le prix du
+// produit concerné par l'ancien puis par le nouveau prix.
+// Réservé au patron (le manager n'a accès ni aux fiches techniques ni aux statistiques), et
+// masqué si l'établissement a choisi de cacher les montants.
+// ============================================================
+const MARGIN_ALERT_MIN_PCT = 3;
+// ============================================================
+// ALLERGÈNES — les 14 allergènes à déclaration obligatoire (règlement européen INCO
+// n° 1169/2011). On les coche une fois sur chaque produit du catalogue ; chaque fiche technique
+// en déduit automatiquement les siens (sous-recettes comprises), et la fiche allergènes à
+// afficher en salle s'imprime en un clic.
+// ============================================================
+const ALLERGENS = [
+  { code:'gluten', label:'Gluten', short:'Gluten', icon:'🌾', detail:'blé, seigle, orge, avoine, épeautre…' },
+  { code:'crustaces', label:'Crustacés', short:'Crustacés', icon:'🦐', detail:'crevettes, crabes, homard…' },
+  { code:'oeufs', label:'Œufs', short:'Œufs', icon:'🥚', detail:'' },
+  { code:'poissons', label:'Poissons', short:'Poissons', icon:'🐟', detail:'' },
+  { code:'arachides', label:'Arachides', short:'Arachides', icon:'🥜', detail:'cacahuètes' },
+  { code:'soja', label:'Soja', short:'Soja', icon:'🫘', detail:'' },
+  { code:'lait', label:'Lait', short:'Lait', icon:'🥛', detail:'y compris le lactose' },
+  { code:'fruits_a_coque', label:'Fruits à coque', short:'Fruits à coque', icon:'🌰', detail:'amandes, noisettes, noix, pistaches…' },
+  { code:'celeri', label:'Céleri', short:'Céleri', icon:'🥬', detail:'' },
+  { code:'moutarde', label:'Moutarde', short:'Moutarde', icon:'🟡', detail:'' },
+  { code:'sesame', label:'Graines de sésame', short:'Sésame', icon:'⚪', detail:'' },
+  { code:'sulfites', label:'Anhydride sulfureux et sulfites', short:'Sulfites', icon:'🍷', detail:'plus de 10 mg/kg ou 10 mg/L' },
+  { code:'lupin', label:'Lupin', short:'Lupin', icon:'🌼', detail:'' },
+  { code:'mollusques', label:'Mollusques', short:'Mollusques', icon:'🦪', detail:'moules, huîtres, calamars…' },
+];
+function allergenLabel(code){ const a = ALLERGENS.find(x=>x.code===code); return a ? a.label : code; }
+// Allergènes d'une fiche technique : réunion de ceux de ses produits et de ses sous-recettes.
+function recipeAllergens(recipeId, visited){
+  visited = visited || new Set();
+  if(visited.has(recipeId)) return new Set();
+  visited.add(recipeId);
+  const found = new Set();
+  RECIPE_INGREDIENTS.filter(i=>i.recipeId===recipeId).forEach(ing => {
+    if(ing.subRecipeId){ recipeAllergens(ing.subRecipeId, visited).forEach(c=>found.add(c)); return; }
+    const product = ing.productId ? PRODUCTS.find(p=>p.id===ing.productId) : null;
+    if(product && Array.isArray(product.allergens)) product.allergens.forEach(c=>found.add(c));
+  });
+  return found;
+}
+// Ingrédients d'une fiche dont les allergènes n'ont jamais été renseignés : la fiche
+// allergènes le signale, plutôt que d'afficher à tort « aucun allergène ».
+function recipeIngredientsWithoutAllergenInfo(recipeId, visited){
+  visited = visited || new Set();
+  if(visited.has(recipeId)) return [];
+  visited.add(recipeId);
+  const out = [];
+  RECIPE_INGREDIENTS.filter(i=>i.recipeId===recipeId).forEach(ing => {
+    if(ing.subRecipeId){ out.push(...recipeIngredientsWithoutAllergenInfo(ing.subRecipeId, visited)); return; }
+    const product = ing.productId ? PRODUCTS.find(p=>p.id===ing.productId) : null;
+    if(product && !product.allergensChecked) out.push(product.name);
+  });
+  return Array.from(new Set(out));
+}
+function recipeAllergenLineHTML(recipe){
+  const codes = recipeAllergens(recipe.id);
+  const missing = recipeIngredientsWithoutAllergenInfo(recipe.id);
+  if(!codes.size && !missing.length) return `<div class="small muted" style="margin-top:4px;">Allergènes : aucun</div>`;
+  return `<div style="margin-top:6px;">${codes.size ? allergenBadgesHTML(codes) : ''}${missing.length ? `<span class="small muted" title="${escapeHtml(missing.join(', '))}"> ⚠️ allergènes non renseignés pour ${missing.length} produit${missing.length>1?'s':''}</span>` : ''}</div>`;
+}
+// ---- Fiche allergènes imprimable (obligatoire en France : l'information doit être
+// disponible par écrit pour le client) ----
+function openAllergenSheetModal(){
+  const cats = Array.from(new Set(RECIPES.map(r=>r.category).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'fr'));
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>🖨️ Fiche allergènes</h3>
+    <div class="modal-sub">Un tableau des 14 allergènes réglementaires pour chaque plat, à afficher en salle ou à présenter sur demande. Calculé à partir des allergènes cochés sur vos produits.</div>
+    <div class="field"><label>Plats à inclure</label>
+      <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+        <label class="flex center gap8 small" style="margin-bottom:6px;font-weight:600;"><input type="checkbox" checked onchange="document.querySelectorAll('.alg-recipe-chk').forEach(c=>c.checked=this.checked)"> Tout cocher / décocher</label>
+        ${RECIPES.slice().sort((a,b)=>(a.category||'').localeCompare(b.category||'','fr') || a.name.localeCompare(b.name,'fr')).map(r=>{
+          const missing = recipeIngredientsWithoutAllergenInfo(r.id).length;
+          return `<label class="flex center gap8" style="margin-bottom:4px;font-size:13.5px;"><input type="checkbox" class="alg-recipe-chk" value="${r.id}" checked> ${escapeHtml(r.name)}${r.category ? ` <span class="muted small">· ${escapeHtml(r.category)}</span>` : ''}${missing ? ' <span class="small" title="Des produits de ce plat n\'ont pas encore leurs allergènes renseignés">⚠️</span>' : ''}</label>`;
+        }).join('')}
+      </div>
+    </div>
+    ${cats.length ? '<div class="small muted" style="margin-bottom:12px;">Les plats sont regroupés par catégorie sur la fiche.</div>' : ''}
+    <button class="btn btn-primary btn-block" onclick="printAllergenSheet()">Imprimer / enregistrer en PDF</button>
+  `);
+}
+function allergenSheetHTML(recipeIds){
+  const resto = RESTOS.find(r=>r.id===state.resto) || {};
+  const recipes = RECIPES.filter(r=>recipeIds.includes(r.id))
+    .sort((a,b)=>(a.category||'').localeCompare(b.category||'','fr') || a.name.localeCompare(b.name,'fr'));
+  let lastCat = null;
+  const rows = recipes.map(r => {
+    const codes = recipeAllergens(r.id);
+    const missing = recipeIngredientsWithoutAllergenInfo(r.id).length > 0;
+    const catRow = (r.category || '') !== lastCat && r.category ? `<tr class="cat"><td colspan="${ALLERGENS.length+1}">${escapeHtml(r.category)}</td></tr>` : '';
+    lastCat = r.category || '';
+    return catRow + `<tr><td class="dish">${escapeHtml(r.name)}${missing ? ' <span class="warn">*</span>' : ''}</td>${ALLERGENS.map(a=>`<td class="${codes.has(a.code)?'yes':''}">${codes.has(a.code)?'●':''}</td>`).join('')}</tr>`;
+  }).join('');
+  const anyMissing = recipes.some(r=>recipeIngredientsWithoutAllergenInfo(r.id).length);
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Allergènes — ${escapeHtml(resto.name||'')}</title>
+<style>
+  @page { size: A4 landscape; margin: 12mm; }
+  *{ box-sizing:border-box; }
+  body{ font-family: Inter, Arial, sans-serif; color:#141414; margin:0; padding:16px; }
+  h1{ font-size:20px; margin:0 0 2px 0; } .sub{ color:#555; font-size:12px; margin-bottom:12px; }
+  table{ width:100%; border-collapse:collapse; font-size:11px; }
+  th, td{ border:1px solid #bbb; padding:5px 4px; text-align:center; }
+  th{ background:#f2f2ee; font-weight:600; vertical-align:bottom; }
+  th .ic{ display:block; font-size:15px; margin-bottom:2px; }
+  td.dish{ text-align:left; font-weight:600; font-size:12px; min-width:150px; }
+  td.yes{ background:#fde2dc; color:#a01b00; font-size:14px; font-weight:700; }
+  tr.cat td{ text-align:left; background:#141414; color:#fff; font-weight:700; letter-spacing:.04em; text-transform:uppercase; font-size:10.5px; }
+  .warn{ color:#a01b00; }
+  .foot{ margin-top:10px; font-size:10.5px; color:#444; line-height:1.5; }
+  tr{ page-break-inside:avoid; }
+</style></head><body>
+  <h1>Informations sur les allergènes${resto.name ? ' — '+escapeHtml(resto.name) : ''}</h1>
+  <div class="sub">Présence des 14 allergènes à déclaration obligatoire (règlement (UE) n° 1169/2011, art. R. 412-12 et suivants du code de la consommation) · mise à jour le ${new Date().toLocaleDateString('fr-FR')}</div>
+  <table>
+    <thead><tr><th style="text-align:left;">Plat</th>${ALLERGENS.map(a=>`<th><span class="ic">${a.icon}</span>${escapeHtml(a.short)}</th>`).join('')}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="foot">
+    ● = contient cet allergène (ou un ingrédient qui en contient).
+    ${anyMissing ? '<br><span class="warn">*</span> Les allergènes de certains ingrédients de ce plat n\'ont pas encore été vérifiés : renseignez-vous auprès de notre équipe.' : ''}
+    <br>Des traces peuvent être présentes du fait de la préparation en cuisine. Pour toute question sur les allergènes, adressez-vous à notre personnel.
+  </div>
+</body></html>`;
+}
+function printAllergenSheet(){
+  const ids = Array.from(document.querySelectorAll('.alg-recipe-chk:checked')).map(el=>el.value);
+  if(!ids.length){ toast('Cochez au moins un plat', 'alert'); return; }
+  const html = allergenSheetHTML(ids);
+  // Impression via un cadre invisible : pas de fenêtre surgissante (souvent bloquée sur
+  // téléphone), et le menu d'impression propose aussi « Enregistrer en PDF ».
+  const old = document.getElementById('allergen-print-frame'); if(old) old.remove();
+  const frame = document.createElement('iframe');
+  frame.id = 'allergen-print-frame';
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  document.body.appendChild(frame);
+  const doc = frame.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  setTimeout(() => { try{ frame.contentWindow.focus(); frame.contentWindow.print(); } catch(e){ toast("Impression impossible sur cet appareil", 'alert'); } }, 250);
+  trackEvent('Fiche allergènes imprimée');
+}
+function allergenBadgesHTML(codes){
+  const list = ALLERGENS.filter(a => codes.has ? codes.has(a.code) : codes.includes(a.code));
+  if(!list.length) return '';
+  return list.map(a => `<span class="tag tag-neutral" style="margin:2px 4px 2px 0;" title="${escapeHtml(a.label)}">${a.icon} ${escapeHtml(a.short)}</span>`).join('');
+}
+// Bloc de cases à cocher dans les fenêtres de création / modification d'un produit.
+function allergenChecklistHTML(prefix, selected, checked){
+  selected = selected || [];
+  return `
+    <details class="field allergen-picker" ${selected.length ? 'open' : ''}>
+      <summary style="cursor:pointer;font-weight:600;font-size:13.5px;">Allergènes ${selected.length ? `(${selected.length})` : '(facultatif)'}</summary>
+      <div class="small muted" style="margin:6px 0 8px 0;">Cochez ceux que contient ce produit (voir l'étiquette). Ils remontent automatiquement dans les fiches techniques et la fiche allergènes.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 12px;">
+        ${ALLERGENS.map(a => `<label class="flex center gap8" style="font-size:13.5px;" title="${escapeHtml(a.detail || a.label)}"><input type="checkbox" class="${prefix}-allergen-chk" value="${a.code}" ${selected.includes(a.code)?'checked':''}> ${a.icon} ${escapeHtml(a.short)}</label>`).join('')}
+      </div>
+      <label class="flex center gap8 small" style="margin-top:8px;"><input type="checkbox" id="${prefix}-allergens-checked" ${checked || selected.length ? 'checked' : ''}> Allergènes vérifiés pour ce produit${selected.length ? '' : ' (aucun allergène)'}</label>
+    </details>`;
+}
+function readAllergenChecklist(prefix){
+  const codes = Array.from(document.querySelectorAll(`.${prefix}-allergen-chk:checked`)).map(el=>el.value);
+  const confirmEl = document.getElementById(`${prefix}-allergens-checked`);
+  return { codes, checked: codes.length > 0 || !!(confirmEl && confirmEl.checked) };
+}
+function canSeeMarginAlerts(){
+  return hasPatronRights() && state.role === 'patron' && !financialsHidden();
+}
+async function syncPriceChangesFromServer(localId){
+  const resto = RESTOS.find(r=>r.id===localId);
+  if(!resto || !resto.remoteId) return;
+  if(state.identity !== 'patron') return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/price-changes`);
+    const d = ensureRestoData(localId);
+    d.priceChanges = (data.priceChanges || []).map(c => ({
+      remoteId: c.id, productRemoteId: c.product_id, productName: c.product_name || 'Produit',
+      oldPrice: parseFloat(c.old_price), newPrice: parseFloat(c.new_price), createdAt: new Date(c.created_at),
+    }));
+    if(state.resto === localId) PRICE_CHANGES = d.priceChanges;
+  } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncPriceChangesFromServer —', err); }
+}
+// Coût d'une fiche avec un prix donné pour UN produit (le reste du catalogue inchangé).
+function recipeCostWithProductPrice(recipeId, product, price){
+  const saved = product.price;
+  try{ product.price = price; return recipeCostBreakdown(recipeId); }
+  finally{ product.price = saved; }
+}
+// Hausses récentes qui touchent au moins une fiche technique, avec le détail par fiche.
+function marginAlerts(){
+  if(!canSeeMarginAlerts()) return [];
+  const seen = new Set();
+  const alerts = [];
+  for(const c of PRICE_CHANGES){
+    // Une seule alerte par produit : la plus récente (la liste arrive triée du plus récent au plus ancien).
+    if(seen.has(c.productRemoteId)) continue;
+    seen.add(c.productRemoteId);
+    const pct = c.oldPrice > 0 ? (c.newPrice - c.oldPrice) / c.oldPrice * 100 : 0;
+    if(pct < MARGIN_ALERT_MIN_PCT) continue;
+    const product = PRODUCTS.find(p => p.remoteId === c.productRemoteId);
+    if(!product) continue;
+    const recipes = [];
+    for(const r of RECIPES){
+      const before = recipeCostWithProductPrice(r.id, product, c.oldPrice);
+      const after = recipeCostWithProductPrice(r.id, product, c.newPrice);
+      if(before.circular || after.circular) continue;
+      const delta = after.totalCostHT - before.totalCostHT;
+      if(Math.abs(delta) < 0.005) continue;
+      const sell = r.sellingPriceTtc;
+      recipes.push({
+        recipe: r, costBefore: before.totalCostHT, costAfter: after.totalCostHT, delta,
+        marginBefore: sell != null ? sell - before.totalCostHT : null,
+        marginAfter: sell != null ? sell - after.totalCostHT : null,
+        foodCostAfter: sell ? Math.round(after.totalCostHT / sell * 1000) / 10 : null,
+        incomplete: before.hasUnknownCost || after.hasUnknownCost,
+      });
+    }
+    if(!recipes.length) continue;
+    recipes.sort((a,b) => b.delta - a.delta);
+    alerts.push({ change: c, product, pct, recipes });
+  }
+  return alerts;
+}
+function fmtEurPrecise(n){
+  // Un coût de revient de quelques centimes mérite le centime près (0,42 € → 0,47 €).
+  return Number(n).toLocaleString('fr-FR',{minimumFractionDigits:2, maximumFractionDigits:2}) + '\u00A0€';
+}
+function marginAlertsHTML(options){
+  const alerts = marginAlerts();
+  if(!alerts.length) return '';
+  const limit = (options && options.limit) || alerts.length;
+  const shown = alerts.slice(0, limit);
+  const rest = alerts.length - shown.length;
+  return `
+    <div class="card margin-alerts" style="margin-bottom:18px;border-left:4px solid var(--urgent-solid);">
+      <div class="flex between center" style="flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div class="card-title" style="margin:0;">📈 Ta marge a baissé — ${alerts.length} hausse${alerts.length>1?'s':''} de prix</div>
+        <button class="btn btn-ghost btn-sm" onclick="dismissPriceChange('tout')">Tout marquer comme vu</button>
+      </div>
+      ${shown.map(a => `
+        <div class="margin-alert-item" style="padding:10px 0;border-top:1px solid var(--border);">
+          <div class="flex between center" style="gap:10px;flex-wrap:wrap;">
+            <div><strong>${escapeHtml(a.product.name)}</strong> a pris <strong class="text-alert">+${fmtNum(Math.round(a.pct*10)/10)}&nbsp;%</strong>
+              <span class="small muted">(${fmtEurPrecise(a.change.oldPrice)} → ${fmtEurPrecise(a.change.newPrice)}${a.product.unit ? ' / '+escapeHtml(a.product.unit) : ''} · ${a.change.createdAt.toLocaleDateString('fr-FR')})</span></div>
+            <button class="btn btn-ghost btn-sm" onclick="dismissPriceChange(${a.change.remoteId})" title="Masquer cette alerte">Vu</button>
+          </div>
+          <ul style="margin:6px 0 0 0;padding-left:18px;">
+            ${a.recipes.slice(0,4).map(x => `<li class="small" style="margin:3px 0;">
+              <strong>${escapeHtml(x.recipe.name)}</strong> : coût ${fmtEurPrecise(x.costBefore)} → <strong>${fmtEurPrecise(x.costAfter)}</strong>
+              ${x.marginAfter!=null ? ` · marge ${fmtEurPrecise(x.marginBefore)} → <strong>${fmtEurPrecise(x.marginAfter)}</strong>` : ''}
+              ${x.foodCostAfter!=null ? ` <span class="muted">(food cost ${fmtNum(x.foodCostAfter)} %)</span>` : ''}
+              ${x.incomplete ? ' <span class="muted">— coût partiel</span>' : ''}
+            </li>`).join('')}
+            ${a.recipes.length>4 ? `<li class="small muted">… et ${a.recipes.length-4} autre${a.recipes.length-4>1?'s':''} fiche${a.recipes.length-4>1?'s':''}</li>` : ''}
+          </ul>
+        </div>`).join('')}
+      ${rest>0 ? `<div class="small" style="padding-top:8px;"><a href="#" onclick="setView('recettes');return false;">Voir les ${rest} autre${rest>1?'s':''} hausse${rest>1?'s':''} →</a></div>` : ''}
+      <div class="small muted" style="margin-top:8px;">Pensez à ajuster le prix de vente ou à comparer avec un autre fournisseur.</div>
+    </div>`;
+}
+async function dismissPriceChange(id){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const d = ensureRestoData(state.resto);
+  const all = d.priceChanges || [];
+  // « Vu » sur une alerte : on masque toutes les lignes de ce produit (seule la plus récente
+  // était affichée — les plus anciennes ne doivent pas réapparaître à sa place).
+  const target = id === 'tout' ? null : all.find(x=>x.remoteId===id);
+  const toDismiss = id === 'tout' ? ['tout'] : all.filter(x => target && x.productRemoteId===target.productRemoteId).map(x=>x.remoteId);
+  d.priceChanges = id === 'tout' ? [] : all.filter(x => !target || x.productRemoteId!==target.productRemoteId);
+  PRICE_CHANGES = d.priceChanges;
+  render();
+  if(!resto || !resto.remoteId || state.isDemoMode) return;
+  try{
+    for(const x of toDismiss) await apiRequest(`/api/restaurants/${resto.remoteId}/price-changes/${x}/dismiss`, { method:'POST' });
+  } catch(err){ toast(err.message, 'alert'); }
+}
 async function syncNotificationSettingsFromServer(localId){
   const resto = RESTOS.find(r=>r.id===localId);
   if(!resto || !resto.remoteId) return;
@@ -8671,7 +9075,20 @@ async function syncNotificationSettingsFromServer(localId){
 // était déjà configuré : le site croyait le catalogue vide parce qu'il n'était pas encore reçu.
 let RESTO_DATA_LOADED_FOR = null;
 function restoDataReady(){ return RESTO_DATA_LOADED_FOR === state.resto; }
-async function syncRestoOperationalData(localId){
+// Empreinte compacte des données d'un établissement : sert à savoir si un rafraîchissement
+// automatique a réellement apporté du nouveau. Les longues chaînes (photos) sont résumées et les
+// caches internes (clés commençant par « _ ») ignorés, pour que le calcul reste rapide.
+function restoDataFingerprint(localId){
+  try{
+    const resto = RESTOS.find(r=>r.id===localId);
+    return JSON.stringify({ d: RESTO_DATA[localId] || null, resto }, (key, value) => {
+      if(key && key[0] === '_') return undefined;
+      if(typeof value === 'string' && value.length > 300) return value.length + ':' + value.slice(0, 40) + value.slice(-40);
+      return value;
+    });
+  } catch(e){ return null; }
+}
+async function syncRestoOperationalData(localId, options){
   // Démo : les données sont fictives et locales, il n'y a aucun serveur à interroger (avant,
   // « Actualiser » et le rafraîchissement automatique produisaient des erreurs en arrière-plan).
   if(state.isDemoMode) return;
@@ -8680,13 +9097,27 @@ async function syncRestoOperationalData(localId){
   // à un fournisseur et des produits déjà chargés.
   // Chaque étape est isolée : si l'une d'elles échoue (réseau, ou un imprévu à l'affichage), les
   // suivantes s'exécutent quand même, plutôt que de laisser le reste des données périmées.
-  const steps = [
-    syncRestaurantInfoFromServer, syncHaccpFromServer, syncNotificationSettingsFromServer, syncCategoriesFromServer,
-    syncZonesFromServer, syncSuppliersFromServer, syncProductsFromServer, syncOrderTemplatesFromServer, syncRecipesFromServer, syncStockCountsFromServer, syncOrdersFromServer,
-    syncBasketsFromServer, syncRequestsFromServer, syncCustomRequestsFromServer, syncTeamFromServer,
+  //
+  // Les étapes indépendantes partent EN MÊME TEMPS (3 vagues au lieu de 15 appels l'un après
+  // l'autre) : le rafraîchissement complet est 2 à 3 fois plus rapide, surtout en 4G.
+  //   1re vague : tout ce qui ne dépend de rien ;
+  //   2e vague  : les produits (reliés aux fournisseurs et aux lieux) et l'HACCP (qui dépend
+  //               des réglages de l'établissement) ;
+  //   3e vague  : commandes, paniers et modèles (reliés aux produits).
+  const waves = [
+    [syncRestaurantInfoFromServer, syncNotificationSettingsFromServer, syncCategoriesFromServer, syncZonesFromServer,
+     syncSuppliersFromServer, syncTeamFromServer, syncRequestsFromServer, syncCustomRequestsFromServer,
+     syncRecipesFromServer, syncStockCountsFromServer, syncPriceChangesFromServer],
+    [syncProductsFromServer, syncHaccpFromServer],
+    [syncOrderTemplatesFromServer, syncOrdersFromServer, syncBasketsFromServer],
   ];
-  for(const step of steps){
-    try{ await step(localId); } catch(err){ console.error('Erreur de synchronisation (une étape ignorée, les autres continuent) :', err); }
+  // Empreinte de ce qui est affiché AVANT la synchronisation : si les données reçues sont
+  // identiques, on ne redessine rien (voir plus bas).
+  const fingerprintBefore = (options && options.background) ? restoDataFingerprint(localId) : null;
+  for(const wave of waves){
+    await Promise.all(wave.map(step => Promise.resolve().then(() => step(localId)).catch(err => {
+      console.error('Erreur de synchronisation (une étape ignorée, les autres continuent) :', err);
+    })));
   }
   // Un SEUL rendu ici, une fois toutes les étapes terminées — plutôt qu'un rendu après chacune
   // des 11 étapes. Chaque rendu recrée entièrement la carte des fournisseurs et les graphiques
@@ -8702,6 +9133,10 @@ async function syncRestoOperationalData(localId){
   // rendu naturel, une fois la saisie terminée et enregistrée.
   RESTO_DATA_LOADED_FOR = localId;
   if(hasPendingInventoryInput()) return;
+  // Rafraîchissement automatique sans aucun changement : on ne redessine pas. Avant, toute la
+  // page (graphiques, carte des fournisseurs...) était reconstruite toutes les 30 secondes pour
+  // rien — ce qui coûtait de la batterie sur téléphone et faisait parfois sauter le défilement.
+  if(fingerprintBefore && fingerprintBefore === restoDataFingerprint(localId)) return;
   render();
 }
 // Vrai si au moins un champ de l'inventaire contient une valeur pas encore enregistrée.
@@ -8829,7 +9264,9 @@ function viewParametres(){
       <button class="${tab==='apparence'?'active':''}" onclick="setParametresTab('apparence')">Apparence</button>
       <button class="${tab==='compte'?'active':''}" onclick="setParametresTab('compte')">Compte</button>
       <button class="${tab==='donnees'?'active':''}" onclick="setParametresTab('donnees')">Données</button>
+      ${hasPatronRights() ? `<button class="${tab==='parrainage'?'active':''}" onclick="setParametresTab('parrainage')">🎁 Parrainage</button>` : ''}
     </div>
+    ${tab==='parrainage' && hasPatronRights() ? viewReferralTab() : ''}
 
     ${tab==='general' ? `
     <div class="grid grid-2b">
@@ -8920,6 +9357,7 @@ function viewParametres(){
     </div>
     ` : ''}
 
+    ${tab==='apparence' ? (ensureExtraFonts(), '') : ''}
     ${tab==='apparence' ? `
     <div class="grid grid-2b">
       <div class="card">
@@ -10719,6 +11157,7 @@ function openReceiveOrderModal(id, correcting){
     return;
   }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
+  if(correcting && orderPhotoMissing(o)){ ensureOrderPhoto(o).then(()=>openReceiveOrderModal(id, correcting)); return; }
   if(correcting){
     // Corriger touche aux montants déjà enregistrés : c'est un acte de gestion, réservé au
     // patron et au manager. La cuisine constate la livraison, elle ne révise pas les prix.
@@ -10869,6 +11308,8 @@ async function confirmReceiveOrder(id){
     // (voir la route /receive) — on la récupère pour que l'onglet Inventaire soit à jour sans
     // attendre un rechargement complet de la page.
     if(resto.stockCountsEnabled) await syncStockCountsFromServer(state.resto);
+    // Un prix facturé repris au catalogue peut déclencher une alerte de marge.
+    if(updateCatalogPrices && canSeeMarginAlerts()) await syncPriceChangesFromServer(state.resto);
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -11823,6 +12264,7 @@ function openNewProductModal(prefill, sticky){
       <div class="zone-checklist" id="np-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="np-zone-chk" ${prefillZoneIds.includes(z.id)?'checked':''}> ${escapeHtml(z.name)}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
       <div class="flex gap8" style="margin-top:8px;"><input id="np-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('np')">Ajouter</button></div>
     </div>
+    ${allergenChecklistHTML('np', init.allergens || [], false)}
     </div>
     </details>
     <div class="flex gap8" style="flex-wrap:wrap;">
@@ -12010,6 +12452,7 @@ async function addProduct(keepOpen){
   const supplier = document.getElementById('np-supplier').value;
   const department = document.getElementById('np-department').value;
   const zoneIds = Array.from(document.querySelectorAll('.np-zone-chk:checked')).map(el=>el.value);
+  const allergenInput = readAllergenChecklist('np');
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
   const zoneRemoteIds = zoneIds.map(zid=>{ const z = ZONES.find(zz=>zz.id===zid); return z?z.remoteId:null; }).filter(Boolean);
@@ -12019,9 +12462,9 @@ async function addProduct(keepOpen){
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products`, {
       method:'POST',
-      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate, netContentQty, netContentUnit },
+      body:{ name, category:cat, unit, price, qtyCommande:1, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate, netContentQty, netContentUnit , allergens: allergenInput.codes, allergensChecked: allergenInput.checked },
     });
-    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds, tvaRate:parseFloat(data.product.tva_rate), netContentQty, netContentUnit});
+    PRODUCTS.push({id:'p'+data.product.id, remoteId:data.product.id, allergens: data.product.allergens || allergenInput.codes, allergensChecked: !!data.product.allergens_checked, name:data.product.name, unit:data.product.unit, qtyCommande:parseFloat(data.product.qty_commande), supplier, cat:data.product.category, price:parseFloat(data.product.price), department:data.product.department, packaging, supplierReference, zoneIds, tvaRate:parseFloat(data.product.tva_rate), netContentQty, netContentUnit});
     closeModal();
     toast('Produit « '+escapeHtml(name)+' » créé');
     render();
@@ -12372,6 +12815,7 @@ function editProduct(id){
       <div class="zone-checklist" id="ep-zone-checklist">${ZONES.map(z=>`<label class="flex center gap8" style="margin-bottom:6px;"><input type="checkbox" value="${z.id}" class="ep-zone-chk" ${zoneIds.includes(z.id)?'checked':''}> ${escapeHtml(z.name)}</label>`).join('') || '<div class="small muted">Aucun lieu créé pour l\u2019instant.</div>'}</div>
       <div class="flex gap8" style="margin-top:8px;"><input id="ep-new-zone" placeholder="Nouveau lieu (ex : Terrasse)" style="flex:1;"><button type="button" class="btn btn-ghost btn-sm" onclick="addZoneInline('ep')">Ajouter</button></div>
     </div>
+    ${allergenChecklistHTML('ep', p.allergens || [], p.allergensChecked)}
     ${financialsHidden() ? '' : `
     <div class="field">
       <label>Historique de prix</label>
@@ -12443,13 +12887,14 @@ async function saveProduct(id){
   const supplier = document.getElementById('ep-supplier').value;
   const department = document.getElementById('ep-department').value;
   const zoneIds = Array.from(document.querySelectorAll('.ep-zone-chk:checked')).map(el=>el.value);
+  const allergenInput = readAllergenChecklist('ep');
   const resto = RESTOS.find(r=>r.id===state.resto);
   const supplierObj = SUPPLIERS.find(s=>s.id===supplier);
   const zoneRemoteIds = zoneIds.map(zid=>{ const z = ZONES.find(zz=>zz.id===zid); return z?z.remoteId:null; }).filter(Boolean);
   try{
     const data = await apiRequest(`/api/restaurants/${resto.remoteId}/products/${p.remoteId}`, {
       method:'PATCH',
-      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate, netContentQty, netContentUnit },
+      body:{ name, category:cat, unit, price, department, supplierId: supplierObj?supplierObj.remoteId:null, packaging, supplierReference, zoneIds: zoneRemoteIds, tvaRate, netContentQty, netContentUnit , allergens: allergenInput.codes, allergensChecked: allergenInput.checked },
     });
     p.name = data.product.name; p.cat = data.product.category; p.unit = data.product.unit;
     p.price = parseFloat(data.product.price); p.qtyCommande = parseFloat(data.product.qty_commande);
@@ -12457,9 +12902,13 @@ async function saveProduct(id){
     p.packaging = packaging; p.supplierReference = supplierReference; p.zoneIds = zoneIds;
     p.tvaRate = parseFloat(data.product.tva_rate);
     p.netContentQty = netContentQty; p.netContentUnit = netContentUnit;
+    p.allergens = data.product.allergens || allergenInput.codes; p.allergensChecked = !!data.product.allergens_checked;
     closeModal();
     toast('Produit mis à jour');
     render();
+    // Prix modifié : l'alerte de marge éventuelle s'affiche tout de suite, sans attendre le
+    // prochain rafraîchissement automatique.
+    if(canSeeMarginAlerts()) syncPriceChangesFromServer(state.resto).then(render);
   } catch(err){
     toast(err.message, 'alert');
   }
@@ -12895,8 +13344,27 @@ function receptionDetailHTML(o){
       ` : `<div class="small muted" style="margin-top:12px;">Aucune photo de bon de livraison n'a été jointe à cette réception.</div>`}
     </div>`;
 }
+// La photo du bon de livraison n'arrive plus avec la liste des commandes (trop lourde à
+// retélécharger toutes les 30 secondes) : on la charge ici, une seule fois, quand on en a besoin.
+function orderPhotoMissing(o){ return !!(o && o.hasDeliveryNotePhoto && !o.deliveryNotePhotoUrl && o.remoteId && !o._photoTried); }
+async function ensureOrderPhoto(o){
+  if(!orderPhotoMissing(o)) return;
+  o._photoTried = true;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto || !resto.remoteId) return;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/orders/${o.remoteId}/photo`);
+    if(data && data.photo){
+      o.deliveryNotePhotoUrl = data.photo;
+      const d = ensureRestoData(state.resto);
+      // Gardée tant que la commande n'est pas modifiée (une correction peut changer la photo).
+      (d._orderPhotos || (d._orderPhotos = {}))[o.remoteId] = { url: data.photo, updatedAt: o.updatedAt || null };
+    }
+  } catch(err){ console.error('Photo du bon de livraison indisponible :', err); }
+}
 function openOrderDocumentModal(orderId){
   const o = ORDERS.find(x=>x.id===orderId); if(!o) return;
+  if(orderPhotoMissing(o)){ ensureOrderPhoto(o).then(()=>openOrderDocumentModal(orderId)); return; }
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     ${buildOrderDocumentHTML(o)}
@@ -13460,7 +13928,7 @@ async function addEmployee(){
   }
 }
 function inviteLinkFor(token){
-  return window.location.origin + window.location.pathname + '?equipe=' + token;
+  return window.location.origin + appRootPath() + '?equipe=' + token;
 }
 function showEmployeeCredentialsModal(name, username, password, inviteToken, employeeId){
   const link = inviteLinkFor(inviteToken);
@@ -14092,7 +14560,7 @@ function siteNav(active){
   return `
     <header class="site-nav">
       <button class="site-nav-brand" onclick="goToSite('marketing')">
-        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--badge-bg);color:var(--badge-text);"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--badge-bg);color:var(--badge-text);"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
         <span>Mise &amp; Sûre</span>
       </button>
       <nav class="site-nav-links">
@@ -14307,8 +14775,8 @@ function coinMarkup(){
   const edge = Array.from({length:12}, (_,i)=>`<span class="coin3d-edge" style="transform:translateZ(${(i-5.5)*1.1}px)"></span>`).join('');
   return `<div class="coin3d" id="hero-logo-3d">
       ${edge}
-      <span class="coin3d-face coin3d-front"><img src="icon-512.png" alt="Mise &amp; Sûre" draggable="false"><i class="coin3d-shine"></i></span>
-      <span class="coin3d-face coin3d-back"><img src="icon-512.png" alt="" draggable="false"><i class="coin3d-shine"></i></span>
+      <span class="coin3d-face coin3d-front"><img src="icon-256.webp" alt="Mise &amp; Sûre" width="256" height="256" draggable="false"><i class="coin3d-shine"></i></span>
+      <span class="coin3d-face coin3d-back"><img src="icon-256.webp" alt="" width="256" height="256" loading="lazy" draggable="false"><i class="coin3d-shine"></i></span>
     </div>`;
 }
 function initMarketing3D(){
@@ -14363,6 +14831,7 @@ function renderMarketingPage(){
     <div class="site-page">
 
       ${siteNav('marketing')}
+      ${referralInviteBannerHTML()}
       <section class="site-hero">
         <div class="site-hero-tag">Plateforme de gestion pour restaurants</div>
         <div class="hero-logo-3d-wrap" id="hero-logo-3d-wrap" title="Cliquez-glissez pour faire tourner">
@@ -14387,7 +14856,7 @@ function renderMarketingPage(){
           <div class="journey-line"><div class="journey-line-fill"></div></div>
           ${RESTO_JOURNEY.map(s=>`
             <div class="journey-step">
-              <div class="journey-icon ${s.logo?'journey-icon-logo':''}">${s.logo?`<img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';">`:I[s.icon]}</div>
+              <div class="journey-icon ${s.logo?'journey-icon-logo':''}">${s.logo?`<img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';">`:I[s.icon]}</div>
               <div class="journey-title">${escapeHtml(s.title)}</div>
               <div class="small muted">${escapeHtml(s.text)}</div>
             </div>
@@ -14404,7 +14873,7 @@ function renderMarketingPage(){
           <div class="browser-frame">
             <div class="browser-frame-bar"><span></span><span></span><span></span></div>
             <div class="browser-frame-body">
-              ${PRODUCT_CAROUSEL.map((s,i)=>`<div class="carousel-slide ${i===0?'active':''}"><img src="${s.img}" alt="${escapeHtml(s.alt)}" loading="${i===0?'eager':'lazy'}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="carousel-slide-fallback">${I.camera}</div></div>`).join('')}
+              ${PRODUCT_CAROUSEL.map((s,i)=>`<div class="carousel-slide ${i===0?'active':''}"><img src="${s.img}" alt="${escapeHtml(s.alt)}" width="1200" height="750" decoding="async" loading="${i===0?'eager':'lazy'}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="carousel-slide-fallback">${I.camera}</div></div>`).join('')}
             </div>
           </div>
           <div class="carousel-caption">
@@ -14531,7 +15000,7 @@ function renderLegalPage(page){
     <div class="site-page">
       <div class="site-nav">
         <div class="site-brand" onclick="goToSite('marketing')" style="cursor:pointer;">
-          <div class="brand-mark" style="width:30px;height:30px;background:var(--black);flex-shrink:0;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+          <div class="brand-mark" style="width:30px;height:30px;background:var(--black);flex-shrink:0;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
           <div class="brand-text">Mise<br>&amp; Sûre</div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="goToSite('marketing')">← Retour à l'accueil</button>
@@ -14547,10 +15016,20 @@ function renderSiteFooter(){
   return `
     <footer class="site-footer">
       <div>Mise &amp; Sûre — plateforme de gestion pour restaurants</div>
+      <!-- Vrais liens (href) : Google les suit pour découvrir chaque page. Pour les pages de ce
+           site, le clic reste géré sans rechargement (goToSite). -->
+      <nav class="site-footer-links site-footer-features" aria-label="Fonctionnalités">
+        <a href="/haccp/">Logiciel HACCP</a>
+        <a href="/fiche-technique/">Fiche technique &amp; coût de revient</a>
+        <a href="/allergenes/">Fiche allergènes</a>
+        <a href="/commandes-fournisseurs/">Commandes fournisseurs</a>
+        <a href="/inventaire/">Inventaire</a>
+      </nav>
       <div class="site-footer-links">
-        <a onclick="goToSite('mentions-legales')">Mentions légales</a>
-        <a onclick="goToSite('confidentialite')">Confidentialité</a>
-        <a onclick="goToSite('cgu')">CGU/CGV</a>
+        <a href="/tarifs/" onclick="goToSite('pricing');return false;">Tarifs</a>
+        <a href="/mentions-legales/" onclick="goToSite('mentions-legales');return false;">Mentions légales</a>
+        <a href="/confidentialite/" onclick="goToSite('confidentialite');return false;">Confidentialité</a>
+        <a href="/cgu/" onclick="goToSite('cgu');return false;">CGU/CGV</a>
       </div>
     </footer>
   `;
@@ -14560,6 +15039,7 @@ function renderPricingPage(){
   return `
     <div class="site-page">
       ${siteNav('pricing')}
+      ${referralInviteBannerHTML()}
       <section class="site-pricing-head">
         <div class="hero-logo-3d-wrap" id="hero-logo-3d-wrap" style="width:110px;height:110px;" title="Cliquez-glissez pour faire tourner">
           ${coinMarkup()}
@@ -14657,7 +15137,7 @@ function renderAdminPage(){
     <div class="admin-shell">
       <div class="admin-topbar">
         <div class="brand">
-          <div class="brand-mark" style="width:28px;height:28px;font-size:13px;background:#141414;color:#fff;border:1px solid var(--border);"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+          <div class="brand-mark" style="width:28px;height:28px;font-size:13px;background:#141414;color:#fff;border:1px solid var(--border);"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
           <span>Mise &amp; Sûre <span class="admin-topbar-sub">— Panneau administrateur</span></span>
         </div>
         <div class="flex gap8 center">
@@ -15354,7 +15834,7 @@ function renderAccountAuthPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>${plan ? `Vous vous abonnez au forfait <b>${escapeHtml(plan.name)}</b>, facturation ${state.billingCycle==='monthly'?'mensuelle':'annuelle'}.` : "Connectez-vous pour accéder à votre espace."}</p>
         <div class="login-feature">${I.check} Sans engagement</div>
@@ -15365,6 +15845,7 @@ function renderAccountAuthPage(){
         <div class="login-form-inner">
           <button class="back-link" onclick="goToSite('${plan ? 'pricing' : 'marketing'}')">← Retour ${plan ? 'aux tarifs' : "à l'accueil"}</button>
           ${plan && mode==='signup' ? `<div class="login-step-label">Étape 2 sur 2 — Créer votre compte</div>` : ''}
+          ${referralInviteBannerHTML()}
           <div class="pill-nav">
             <button class="${mode==='login'?'active':''}" onclick="setAuthMode('login')">Se connecter</button>
             <button class="${mode==='signup'?'active':''}" onclick="setAuthMode('signup')">Créer un compte</button>
@@ -15404,7 +15885,7 @@ function renderVerifyEmailPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Vérifiez votre adresse email pour activer votre compte.</p>
         <div class="login-feature">${I.check} Ça ne prend que quelques secondes</div>
@@ -15434,7 +15915,7 @@ function renderResetPasswordPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Réinitialisez votre mot de passe en toute sécurité.</p>
         <div class="login-feature">${I.check} Code à usage unique</div>
@@ -15474,7 +15955,7 @@ function renderSetupRestaurantPage(){
   return `
     <div class="login-shell">
       <div class="login-brand">
-        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:40px;height:40px;font-size:18px;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" width="40" height="40" onerror="this.outerHTML='M';"></div>
         <h1>Mise &amp; Sûre</h1>
         <p>Bienvenue ! Configurons votre premier établissement.</p>
         <div class="login-feature">${I.check} Ça prend moins d'une minute</div>
@@ -15726,6 +16207,7 @@ function render(){
     const appRoot = document.getElementById('app');
     if(appRoot) appRoot.className = '';
     renderInner();
+    document.documentElement.classList.remove('app-booting');
     enhanceAccessibility(document.getElementById('app'));
     trackCurrentPage();
     saveNavSnapshot();
@@ -15878,7 +16360,7 @@ async function loadTeamInvite(token){
     state.resto = localId;
     loadRestoData(localId);
     state.site = 'team-login';
-    window.history.replaceState({ site: 'team-login' }, '', window.location.pathname);
+    window.history.replaceState({ site: 'team-login' }, '', appRootPath());
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -15894,6 +16376,110 @@ async function loadTeamInvite(token){
 // efface tout, et la prochaine ouverture redemande bien la connexion. Rien de secret n'y est
 // stocké (ni mot de passe, ni jeton) : la session elle-même reste vérifiée par le serveur.
 // ============================================================
+// ============================================================
+// PARRAINAGE — « Invite un restaurateur, gagne 1 mois offert »
+// Un visiteur arrive par https://misesure.fr/?parrain=MS-XXXXXX : le code est gardé dans ce
+// navigateur (60 jours), un bandeau « X vous invite » s'affiche, et dès que la personne a créé
+// son compte, il est rattaché à son parrain. Le mois offert n'est accordé par le serveur qu'au
+// premier VRAI paiement du filleul (voir utils/referral.js côté serveur).
+// ============================================================
+const REFERRAL_STORAGE_KEY = 'mise_et_sure_referral';
+function storedReferralCode(){
+  try{
+    const v = JSON.parse(localStorage.getItem(REFERRAL_STORAGE_KEY) || 'null');
+    if(!v || !v.code || Date.now() - (v.at||0) > 60*86400000) return null;
+    return v.code;
+  } catch(e){ return null; }
+}
+function clearStoredReferral(){ try{ localStorage.removeItem(REFERRAL_STORAGE_KEY); }catch(e){} }
+async function captureReferralCode(code){
+  code = String(code || '').trim().toUpperCase().slice(0, 20);
+  if(!/^MS-[A-Z0-9]{6}$/.test(code)) return;
+  try{
+    const data = await apiRequest(`/api/referral/code/${encodeURIComponent(code)}`);
+    if(!data.valid) return;
+    try{ localStorage.setItem(REFERRAL_STORAGE_KEY, JSON.stringify({ code, at: Date.now(), firstName: data.firstName || '' })); }catch(e){}
+    state.referralInvite = { code, firstName: data.firstName || '' };
+    trackEvent('Lien de parrainage ouvert');
+    render();
+  } catch(e){}
+}
+function referralInviteFirstName(){
+  if(state.referralInvite) return state.referralInvite.firstName;
+  try{ const v = JSON.parse(localStorage.getItem(REFERRAL_STORAGE_KEY) || 'null'); return v && storedReferralCode() ? (v.firstName || '') : null; }catch(e){ return null; }
+}
+function referralInviteBannerHTML(){
+  if(ACCOUNT) return '';
+  const name = referralInviteFirstName();
+  if(name === null || name === undefined) return '';
+  return `<div class="referral-invite-banner" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-left:4px solid #E8A33D;border-radius:10px;padding:10px 14px;margin:12px auto;max-width:760px;font-size:14px;text-align:center;">
+    🎁 <strong>${escapeHtml(name || 'Un restaurateur')}</strong> vous invite sur Mise &amp; Sûre — 14 jours d'essai gratuit, sans carte bancaire.
+  </div>`;
+}
+// Rattache le compte (neuf) au parrain, une fois connecté. Le serveur refuse tout seul si le
+// compte n'est pas éligible (déjà abonné, déjà parrainé, trop ancien, propre code...).
+async function maybeClaimReferral(){
+  const code = storedReferralCode();
+  if(!code || !AUTH_TOKEN || !ACCOUNT || state.isDemoMode) return;
+  if(ACCOUNT.referred_by || ACCOUNT.stripe_subscription_id){ clearStoredReferral(); return; }
+  try{
+    const data = await apiRequest('/api/referral/claim', { method:'POST', body:{ code } });
+    ACCOUNT.referred_by = true;
+    clearStoredReferral();
+    toast(`Parrainage enregistré${data.referrerFirstName ? ' — merci à '+escapeHtml(data.referrerFirstName) : ''} 🎁`);
+  } catch(err){
+    if(err.code !== 'NETWORK_ERROR') clearStoredReferral();
+  }
+}
+async function loadReferralInfo(){
+  if(state.referralLoading) return;
+  state.referralLoading = true; state.referralError = null;
+  try{ state.referralData = await apiRequest('/api/referral'); }
+  catch(err){ state.referralError = err.message; }
+  finally{ state.referralLoading = false; render(); }
+}
+function referralShareText(link){
+  return `Je gère mon restaurant avec Mise & Sûre (commandes fournisseurs, coût de revient, HACCP, inventaire). Essaie 14 jours gratuitement avec mon lien : ${link}`;
+}
+function viewReferralTab(){
+  if(state.isDemoMode) return `<div class="card">${emptyState("Le parrainage est disponible avec un vrai compte.")}</div>`;
+  if(!state.referralData && !state.referralLoading && !state.referralError) setTimeout(loadReferralInfo, 0);
+  if(state.referralError) return `<div class="card"><div class="text-alert">${escapeHtml(state.referralError)}</div><button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="state.referralError=null;loadReferralInfo()">Réessayer</button></div>`;
+  const d = state.referralData;
+  if(!d) return `<div class="card"><div class="small muted">Chargement…</div></div>`;
+  const rewarded = d.referrals.filter(r=>r.status==='recompense').length;
+  const waiting = d.referrals.filter(r=>r.status!=='recompense').length;
+  const text = referralShareText(d.link);
+  return `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-title">🎁 Invite un restaurateur, gagne 1 mois offert</div>
+      <p style="margin:6px 0 14px 0;line-height:1.55;">Partagez votre lien à un collègue restaurateur. Il profite de <b>14 jours d'essai gratuit</b>, et dès qu'il s'abonne, <b>vous gagnez un mois</b> de votre forfait, déduit automatiquement de votre prochaine facture. Jusqu'à ${d.maxPerYear} mois offerts par an.</p>
+      <div class="field"><label>Votre lien personnel</label>
+        <div class="flex gap8" style="flex-wrap:wrap;">
+          <input id="referral-link" value="${escapeHtml(d.link)}" readonly style="flex:1;min-width:220px;" onclick="this.select()">
+          <button class="btn btn-primary" onclick="copyTextToClipboard(document.getElementById('referral-link').value, document.getElementById('referral-link'), 'Lien copié — envoyez-le à un restaurateur')">${iconSm(I.copy)} Copier</button>
+        </div>
+        <div class="small muted" style="margin-top:6px;">Votre code : <span class="mono">${escapeHtml(d.code)}</span></div>
+      </div>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        <a class="btn btn-ghost" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">WhatsApp</a>
+        <a class="btn btn-ghost" href="sms:?&body=${encodeURIComponent(text)}">SMS</a>
+        <a class="btn btn-ghost" href="mailto:?subject=${encodeURIComponent('Essaie Mise & Sûre pour ton restaurant')}&body=${encodeURIComponent(text)}">Email</a>
+        ${navigator.share ? `<button class="btn btn-ghost" onclick="navigator.share({title:'Mise & Sûre', text:${escapeHtml(JSON.stringify(text))}}).catch(()=>{})">Partager…</button>` : ''}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Vos filleuls</div>
+      <div class="flex gap8" style="flex-wrap:wrap;margin:6px 0 12px 0;">
+        <span class="tag tag-neutral">${d.referrals.length} inscrit${d.referrals.length>1?'s':''}</span>
+        <span class="tag tag-neutral">${rewarded} mois gagné${rewarded>1?'s':''}</span>
+        ${waiting ? `<span class="tag tag-neutral">${waiting} en essai</span>` : ''}
+      </div>
+      ${d.referrals.length ? `<table class="stack-mobile"><tr><th>Restaurateur</th><th>Inscrit le</th><th>Statut</th></tr>
+        ${d.referrals.map(r=>`<tr><td data-label="Restaurateur">${escapeHtml(r.firstName)}</td><td data-label="Inscrit le">${new Date(r.joinedAt).toLocaleDateString('fr-FR')}</td><td data-label="Statut">${r.status==='recompense' ? `✅ Mois offert crédité${r.amountCents ? ' ('+fmtEurPrecise(r.amountCents/100)+')' : ''}` : r.status==='en_attente' ? '⏳ Abonné — crédit en cours' : '🕒 En essai — pas encore abonné'}</td></tr>`).join('')}
+      </table>` : emptyState("Personne pour le moment — partagez votre lien pour commencer.")}
+    </div>`;
+}
 var NAV_SNAPSHOT_READY = false; // pas d'écriture avant la fin de la reprise (sinon le premier affichage écraserait la page à reprendre)
 function readNavSnapshot(){
   if(window.__BOOT_NAV === undefined){
@@ -15916,6 +16502,9 @@ function saveNavSnapshot(){
       employeeId: state.loggedIn ? state.loggedInEmployeeId : null,
       restoRemoteId: resto && resto.remoteId ? resto.remoteId : null,
       adminTab: state.site==='admin' ? state.adminTab : null,
+      // Le compte était-il déjà connecté sur cette page ? Sinon (connexion faite entre-temps dans
+      // un autre onglet, par exemple), on ne garde pas une page publique vue en simple visiteur.
+      hadAccount: !!AUTH_TOKEN,
     }));
   } catch(e){}
 }
@@ -15948,6 +16537,14 @@ async function checkExistingSession(){
   const checkoutCancelled = urlParams.get('checkout') === 'cancelled';
   const checkoutSuccess = urlParams.get('checkout') === 'success';
   const equipeToken = urlParams.get('equipe');
+  // « ?demo=1 » (boutons des pages fonctionnalités) : ouvre directement la démo.
+  const wantsDemo = urlParams.get('demo') === '1';
+  // Lien de parrainage : on garde le code, et on retire « ?parrain=… » de l'adresse.
+  const referralParam = urlParams.get('parrain');
+  if(referralParam){
+    captureReferralCode(referralParam);
+    window.history.replaceState({ site: state.site }, '', pathForSite(state.site));
+  }
   // Un retour de Google/Apple, de Stripe ou un lien d'équipe décide lui-même de la page : dans
   // ces cas-là on ne reprend pas la page mémorisée.
   const bootNav = (tokenFromUrl || oauthError || checkoutCancelled || checkoutSuccess || equipeToken) ? null : readNavSnapshot();
@@ -15955,7 +16552,7 @@ async function checkExistingSession(){
     // Lien personnel d'un membre de l'équipe : ce chemin est totalement indépendant du compte
     // du patron (aucun email, aucun abonnement) — on saute directement à l'écran de connexion
     // de son établissement précis.
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({}, document.title, pathForSite(state.site));
     NAV_SNAPSHOT_READY = true;
     await loadTeamInvite(equipeToken);
     return;
@@ -15963,24 +16560,25 @@ async function checkExistingSession(){
   if(tokenFromUrl){
     AUTH_TOKEN = tokenFromUrl;
     localStorage.setItem(AUTH_TOKEN_KEY, tokenFromUrl);
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({}, document.title, pathForSite(state.site));
   }
   if(oauthError){
     toast("La connexion via Google/Apple a échoué. Merci de réessayer.", 'alert');
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({}, document.title, pathForSite(state.site));
   }
   if(checkoutCancelled){
     trackEvent('Paiement annulé');
     toast("Paiement annulé — vous pouvez réessayer à tout moment.", 'alert');
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({}, document.title, pathForSite(state.site));
   }
   if(checkoutSuccess){
     trackEvent('Abonnement souscrit');
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({}, document.title, pathForSite(state.site));
   }
   try{
     const meData = await apiRequest('/api/auth/me');
     ACCOUNT = meData.user;
+    maybeClaimReferral();
     if(ACCOUNT.team_username) CREDENTIALS.patron.username = ACCOUNT.team_username;
     try{
       // C'est CETTE étape qui vérifie réellement l'abonnement, quelle que soit la façon dont
@@ -16036,14 +16634,16 @@ async function checkExistingSession(){
           if(bootNav.adminTab && !['dashboard','banking'].includes(bootNav.adminTab)) await setAdminTab(bootNav.adminTab);
           return;
         }
-        if(!restoredLogin && bootNav && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) state.site = bootNav.site;
+        if(!restoredLogin && bootNav && bootNav.hadAccount && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) state.site = bootNav.site;
+        // Adresse d'une page publique ouverte directement (misesure.fr/tarifs/…) : elle prime.
+        if(siteFromPath()) state.site = siteFromPath();
       }
     } catch(restoErr){
       if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
         // Compte connecté mais pas encore payé : on le laisse sur la page d'accueil, il ira
         // sur "Tarifs" et choisira de payer quand il le souhaite — jamais de redirection forcée.
-        state.site = (bootNav && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) ? bootNav.site : 'marketing';
-        window.history.replaceState({ site: state.site }, '', window.location.pathname);
+        state.site = siteFromPath() || ((bootNav && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) ? bootNav.site : 'marketing');
+        window.history.replaceState({ site: state.site }, '', pathForSite(state.site));
         NAV_SNAPSHOT_READY = true;
         render();
         return;
@@ -16082,6 +16682,7 @@ async function checkExistingSession(){
         const lastView = (bootNav && bootNav.view) || localStorage.getItem('mise_et_sure_last_view');
         if(lastView && NAV[state.role] && NAV[state.role].some(n=>n.id===lastView)) state.view = lastView;
         if(bootNav && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) state.site = bootNav.site;
+        if(siteFromPath()) state.site = siteFromPath();
         await syncRestoOperationalData(localId);
       } catch(teamErr){
         // Jeton expiré ou invalide : reste sur 'marketing', la personne devra rouvrir son lien.
@@ -16095,10 +16696,23 @@ async function checkExistingSession(){
       state.site = bootNav.site;
     }
   }
-  window.history.replaceState({ site: state.site }, '', window.location.pathname);
+  window.history.replaceState({ site: state.site }, '', pathForSite(state.site));
   NAV_SNAPSHOT_READY = true;
+  if(wantsDemo && !state.loggedIn && !ACCOUNT){ startPublicDemo(); return; }
   render();
 }
+// Simple visiteur (aucune session dans ce navigateur, rien à lire dans l'adresse) : la page
+// publique s'affiche TOUT DE SUITE, sans attendre la réponse du serveur — avant, l'écran
+// restait blanc le temps de cet aller-retour (parfois plusieurs secondes si le serveur dormait).
+(function renderPublicPageImmediately(){
+  try{
+    const q = new URLSearchParams(window.location.search);
+    if(AUTH_TOKEN || TEAM_TOKEN || q.has('token') || q.has('equipe') || q.has('checkout') || q.has('oauth') || q.has('demo')) return;
+    // « ?connexion=1 » (bouton « Se connecter » des pages fonctionnalités) : écran de connexion.
+    if(q.get('connexion') === '1'){ state.site = 'account-auth'; state.authMode = 'login'; }
+    render();
+  } catch(e){}
+})();
 checkExistingSession();
 
 // ============================================================
