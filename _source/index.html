@@ -50,10 +50,22 @@
   --gray-200:#E3E3DD;
   --gray-100:#EFEFEA;
   --urgent:#A93A2E;
+  /* Fond plein des actions destructrices (« Supprimer définitivement », toast d'alerte,
+     bandeau de démonstration) : toujours assez sombre pour porter du texte blanc. Distinct de
+     --urgent, qui sert de couleur de TEXTE et doit donc s'éclaircir en mode sombre. */
+  --urgent-solid:#A93A2E;
+  /* Petites pastilles pleines (compteurs, boutons ronds) : le fond s'inverse selon le thème,
+     sinon une pastille sombre disparaît sur une carte sombre. */
+  --badge-bg:#111111;
+  --badge-text:#ffffff;
+  /* Survol d'une ligne cliquable. Était écrit en secours « rgba(0,0,0,0.04) », un voile NOIR :
+     en mode sombre, survoler une ligne l'assombrissait encore, ce qui se lit comme « désactivé »
+     plutôt que comme « survolé ». Le voile s'éclaircit donc en mode sombre. */
+  --surface-hover:#F2F2EE;
   --urgent-tint:#F3E2DE;
   --info:#2D5F7C;
   --info-tint:#E1EBF0;
-  --good:#2E7D32;
+  --good:#2D7B31;
   --good-tint:#E3F2E4;
   /* Avertissement (ex : commande partiellement reçue) — seule teinte de statut sans paire de
      variables : elle était écrite en dur et restait jaune clair en mode sombre, seule étiquette
@@ -65,7 +77,7 @@
   --border:#E1E1DA;
   --text:#141414;
   --muted:#6B6B65;
-  --muted-2:#717169; /* assez foncé pour rester lisible (contraste AA) */
+  --muted-2:#6D6D66;
   --surface-subtle:#F1F1EC;
   --radius:10px;
   --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06);
@@ -84,7 +96,11 @@ html.theme-dark{
   --gray-300:#46463F;
   --gray-200:#2B2B27;
   --gray-100:#201F1C;
-  --urgent:#C85C4E;
+  --urgent:#D07468;
+  --urgent-solid:#B5412F;
+  --badge-bg:#EDEDE6;
+  --badge-text:#111111;
+  --surface-hover:#272723;
   --urgent-tint:#3A211D;
   --info:#7FA8C4;
   --info-tint:#1C2B33;
@@ -97,7 +113,7 @@ html.theme-dark{
   --border:#333330;
   --text:#EDEDE6;
   --muted:#A3A399;
-  --muted-2:#8A8A80;
+  --muted-2:#8D8D82;
   --surface-subtle:#26261F;
   --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
 }
@@ -544,7 +560,7 @@ tr.group-row:hover td{background:var(--gray-100);}
 .field input[type="checkbox"], .field input[type="radio"]{
   width:auto;flex-shrink:0;padding:0;
 }
-.field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--black);outline-offset:1px;border-color:var(--black);}
+.field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .zone-checklist{max-height:160px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
 .price-history-list{max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;}
@@ -668,8 +684,8 @@ tr.group-row:hover td{background:var(--gray-100);}
 select{ max-width:100%; text-overflow:ellipsis; }
 .product-filter-bar select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;max-width:100%;text-overflow:ellipsis;}
 .product-picker-row{padding:8px 6px;border-radius:6px;cursor:pointer;font-size:13.5px;overflow-wrap:break-word;max-width:100%;}
-.product-picker-row:hover{background:var(--surface-hover, rgba(0,0,0,0.04));}
-.product-picker-row.selected{background:var(--accent, #111);color:#fff;}
+.product-picker-row:hover{background:var(--surface-hover);}
+.product-picker-row.selected{background:var(--accent);color:var(--accent-text);}
 .text-alert{color:var(--urgent);font-weight:700;}
 .tag-remove{border:none;background:transparent;padding:0 0 0 4px;cursor:pointer;display:inline-flex;align-items:center;vertical-align:middle;color:inherit;opacity:0.6;}
 .tag-remove svg{width:12px;height:12px;flex-shrink:0;}
@@ -1069,7 +1085,7 @@ body:has(#inv-save-bar) #toast-zone{ bottom:96px; }
   box-shadow:0 8px 24px rgba(0,0,0,0.25);display:flex;align-items:center;gap:9px;min-width:220px;
   animation:slidein .22s ease;
 }
-.toast.alert{background:var(--urgent);}
+.toast.alert{background:var(--urgent-solid);}
 .toast.mail{background:var(--surface);color:var(--text);border:1px solid var(--black);}
 
 .notif-wrap{position:relative;}
@@ -1517,6 +1533,7 @@ const I = {
   bread:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 14c0-5.2 4-9.5 9-9.5s9 4.3 9 9.5-4 6-9 6-9-1-9-6z"/><path d="M9 10.2l1.6 3.2M13 9.2l1.6 3.6M17 10.6l1.1 2.6"/></svg>`,
   mobile:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>`,
   plug:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 0 1-10 0V8z"/><path d="M12 17v5"/></svg>`,
+  pencil:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7.5 18.5l-4 1 1-4 12-12z"/></svg>`,
 };
 function setSvgSize(svg, size){
   // Insère width/height directement sur la balise <svg> — plus fiable qu'un simple remplacement
@@ -1699,15 +1716,39 @@ function updateFavicon(logoDataUrl){
   }
   link.href = logoDataUrl || 'icon-192.png';
 }
+// Luminance relative au sens de la norme d'accessibilité (WCAG) — pas une moyenne pondérée
+// approximative : chaque composante est d'abord linéarisée, parce que l'œil ne perçoit pas la
+// clarté proportionnellement à la valeur du pixel.
+function relativeLuminance(hex){
+  const h = String(hex||'').replace('#','');
+  if(h.length!==6) return null;
+  const channel = v => {
+    const c = parseInt(v,16) / 255;
+    return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+  };
+  const r = channel(h.substring(0,2)), g = channel(h.substring(2,4)), b = channel(h.substring(4,6));
+  return 0.2126*r + 0.7152*g + 0.0722*b;
+}
+// Rapport de contraste entre deux couleurs (de 1 pour deux couleurs identiques, à 21 pour noir
+// sur blanc). Sert aussi bien à choisir une couleur de texte qu'à vérifier une lisibilité.
+function contrastRatio(hexA, hexB){
+  const a = relativeLuminance(hexA), b = relativeLuminance(hexB);
+  if(a == null || b == null) return 1;
+  return (Math.max(a,b) + 0.05) / (Math.min(a,b) + 0.05);
+}
 function accentTextColor(hex){
-  // Choisit blanc ou noir comme couleur de texte selon la vraie clarté de la couleur d'accent
-  // (par défaut ou choisie par le restaurant) — pour ne jamais se retrouver avec un texte
-  // blanc sur un fond devenu clair (ex : en mode sombre) ou l'inverse.
-  const h = (hex||'#111111').replace('#','');
-  if(h.length!==6) return '#fff';
-  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
-  const luminance = (0.299*r + 0.587*g + 0.114*b) / 255;
-  return luminance > 0.6 ? '#111111' : '#ffffff';
+  // Choisit blanc ou noir comme couleur de texte sur la couleur d'accent de l'établissement.
+  //
+  // L'ancienne version comparait une clarté approximative à un seuil fixe de 0,6. Sur un
+  // balayage de 4096 couleurs, elle se trompait pour 1158 d'entre elles (28 %) : l'autre
+  // couleur de texte aurait été plus lisible. Tous les bleus, turquoises et verts de clarté
+  // moyenne — exactement le genre de couleur qu'un restaurant choisit pour son identité —
+  // recevaient du texte blanc là où du texte noir se lisait mieux.
+  //
+  // On mesure donc les deux contrastes pour de vrai, et on garde le meilleur. Plus de seuil à
+  // deviner, et le résultat est juste pour n'importe quelle couleur choisie.
+  const candidate = (hex && String(hex).replace('#','').length===6) ? hex : '#111111';
+  return contrastRatio('#111111', candidate) >= contrastRatio('#ffffff', candidate) ? '#111111' : '#ffffff';
 }
 function financialsHidden(){
   const resto = RESTOS.find(r=>r.id===state.resto);
@@ -2161,6 +2202,25 @@ function basketTotal(supplierId){
     return a + (p ? li.qty*p.price : 0);
   }, 0);
 }
+// ============================================================
+// QUI PEUT RÉCEPTIONNER UNE LIVRAISON
+//
+// Le patron, le manager et la cuisine, comme toujours. Et un membre de la salle à qui le
+// patron a explicitement accordé la permission depuis la page Équipe : dans beaucoup
+// d'établissements, c'est la personne en salle qui est présente quand le camion arrive.
+//
+// On lit state.identity (le rôle réellement authentifié) et non state.role (l'interface
+// affichée) : quand le patron prévisualise l'interface de la salle, il doit voir exactement ce
+// que verrait un serveur autorisé, sans perdre ses propres droits au passage.
+//
+// Le serveur n'a JAMAIS accès à l'historique des réceptions — c'est géré dans viewLivraisons,
+// et la correction d'une réception déjà confirmée reste refusée côté serveur de toute façon.
+// ============================================================
+function canReceiveDeliveries(){
+  if(state.identity==='patron' || state.identity==='manager' || state.identity==='cuisine') return true;
+  const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
+  return !!(m && m.canReceiveOrders);
+}
 function canSendOrders(){
   if(state.role==='patron') return true;
   const m = TEAM.find(t=>t.id===state.loggedInEmployeeId);
@@ -2197,8 +2257,9 @@ async function sendBasket(supplierId){
     // un employé autorisé sous son plafond ; en_attente_validation sinon) — on ne le devine
     // jamais côté navigateur, pour ne pas afficher un statut different de la réalité.
     const finalStatus = data.order.status;
+    const localOrderId = 'CMD-'+nextId();
     ORDERS.unshift({
-      id:'CMD-'+nextId(), remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
+      id:localOrderId, remoteId: data.order.id, supplier:supplierId, items: parts.join(', '),
       lineItems: enrichedItems.map(li=>({productId:li.productId, name:li.name, qty:li.qty, price:li.price, tvaRate:li.tvaRate})),
       amount: Math.round(amount*100)/100, status:finalStatus, date: fmtDateShort(now), createdAt: now
     });
@@ -2212,6 +2273,12 @@ async function sendBasket(supplierId){
       toast('Commande envoyée — '+supplierName(supplierId));
     } else {
       toast('Commande envoyée pour validation — '+supplierName(supplierId));
+    }
+    // Le patron est prévenu dès qu'une commande attend sa décision. Volontairement sans
+    // montant : la notification doit rester lisible même quand le volet financier est masqué,
+    // et le détail est de toute façon à un clic dans la page Commandes.
+    if(finalStatus==='en_attente_validation'){
+      notifyByEmail('patron', `commande ${localOrderId} en attente de votre validation — ${supplierName(supplierId)}.`, 'commandes');
     }
     render();
   } catch(err){
@@ -2534,6 +2601,9 @@ const NAV = {
     {id:'accueil', label:'Accueil salle', icon:I.tray},
     {id:'signaler', label:'Signaler un manque', icon:I.warn},
     {id:'stocks', label:'Catalogue', icon:I.doc},
+    // N'apparaît que pour un serveur à qui le patron a accordé la réception des livraisons
+    // (voir le filtre du menu plus bas) — invisible pour tous les autres.
+    {id:'livraisons', label:'Livraisons', icon:I.truck},
     {id:'haccp', label:'Suivi HACCP', icon:I.thermometer},
     {id:'inventaire', label:'Inventaire', icon:I.box},
     {id:'demandes', label:'Mes demandes', icon:I.clock},
@@ -2616,7 +2686,7 @@ async function notifyByEmail(roleKey, message, eventKey){
       body:{ role: roleKey, message },
     });
     if(data.sent){
-      toast(`<b>Email envoyé</b> à ${escapeHtml(maskEmail(cfg.email))} — ${message}`, 'mail');
+      toast(`<b>Email envoyé</b> à ${escapeHtml(maskEmail(cfg.email))} — ${escapeHtml(message)}`, 'mail');
     } else if(data.simulated){
       // Le serveur n'a pas de clé d'envoi : rien n'est parti. Le dire franchement plutôt que
       // d'afficher « Email envoyé », qui laisserait croire le problème réglé.
@@ -2626,7 +2696,7 @@ async function notifyByEmail(roleKey, message, eventKey){
     // Une notification manquée ne doit jamais bloquer l'action en cours (approbation d'une
     // demande, envoi d'une commande...) — on l'indique, avec la raison exacte renvoyée par le
     // serveur, pour qu'on sache quoi corriger.
-    toast(`Email non envoyé — ${err.message}`, 'alert');
+    toast(`Email non envoyé — ${escapeHtml(err.message)}`, 'alert');
   }
 }
 // Accessibilité, appliquée après chaque affichage : relie chaque intitulé de champ à son champ
@@ -2800,7 +2870,7 @@ function startPublicDemo(){
   d.team = [
     {id:'t1', remoteId:1, name:'Camille Bernard', role:'manager', shift:'10h – 18h', canOrderDirectly:true, orderSpendingLimit:200, status:'actif'},
     {id:'t2', remoteId:2, name:'Yohan Fontaine', role:'cuisine', shift:'8h – 16h', canOrderDirectly:true, orderSpendingLimit:80, status:'actif'},
-    {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', shift:'17h – 23h', canOrderDirectly:false, orderSpendingLimit:null, status:'actif'},
+    {id:'t3', remoteId:3, name:'Léa Petit', role:'salle', shift:'17h – 23h', canOrderDirectly:false, orderSpendingLimit:null, status:'actif', canReceiveOrders:true},
   ];
   // Signalements de manque (REQUESTS) : la fonctionnalité la plus utilisée au quotidien par la
   // cuisine et la salle. Sans ces données, l'accueil Cuisine et la file de validation du patron
@@ -3667,7 +3737,7 @@ function openAdminDeleteUserModal(userId, email){
     <h3 style="color:var(--urgent);">Supprimer ce compte ?</h3>
     <p class="small muted" style="margin-bottom:16px;">Supprime immédiatement et définitivement le compte <b>${escapeHtml(email)}</b> et tous ses établissements — contrairement à la suppression en libre-service, aucun délai de grâce ici. Réservé aux cas exceptionnels.</p>
     <div class="field"><label>Votre mot de passe administrateur</label><input id="admin-confirm-password" type="password" autocomplete="current-password" placeholder="Confirmez avec votre mot de passe"></div>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmAdminDeleteUser(${userId})">Je confirme, supprimer définitivement</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmAdminDeleteUser(${userId})">Je confirme, supprimer définitivement</button>
   `);
 }
 async function confirmAdminDeleteUser(userId){
@@ -3709,7 +3779,7 @@ function openDemoteAdminModal(userId, email){
     <h3>Retirer le statut administrateur ?</h3>
     <p class="small muted" style="margin-bottom:16px;">Retire à <b>${escapeHtml(email)}</b> l'accès au panneau administrateur — le reste de son compte (forfait, établissements, données) n'est pas affecté.</p>
     <div class="field"><label>Votre mot de passe administrateur</label><input id="admin-confirm-password" type="password" autocomplete="current-password" placeholder="Confirmez avec votre mot de passe"></div>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmDemoteAdmin(${userId})">Je confirme, retirer le statut</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmDemoteAdmin(${userId})">Je confirme, retirer le statut</button>
   `);
 }
 async function confirmDemoteAdmin(userId){
@@ -3776,6 +3846,15 @@ async function attemptLogin(){
     }
     try{
       const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team-login`, { method:'POST', body:{ username: userVal, password: passVal } });
+      // La réponse de connexion porte les permissions de cette personne. On les applique à
+      // son entrée locale AVANT tout le reste — y compris avant le changement de mot de passe
+      // imposé à la première connexion, sinon ses droits (réception, commande directe)
+      // n'apparaissaient qu'après un rechargement de la page.
+      const myEntry = TEAM.find(t=>t.id===employeeId);
+      if(myEntry && data.member){
+        myEntry.canOrderDirectly = !!data.member.can_order_directly;
+        myEntry.canReceiveOrders = !!data.member.can_receive_orders;
+      }
       if(data.mustChangePassword){
         // On ne rentre PAS dans le tableau de bord tout de suite : la session serveur est déjà
         // valide (le jeton d'équipe est stocké), mais on impose de choisir un nouveau mot de
@@ -4351,7 +4430,7 @@ function goToNotification(view){ state.notifOpen = false; setView(view); }
 ============================================================ */
 function renderShell(){
   const restoForNav = RESTOS.find(r=>r.id===state.resto);
-  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)) && !(n.id==='recettes' && restoForNav && restoForNav.recipesEnabled===false) && !(n.id==='inventaire' && !(restoForNav && restoForNav.stockCountsEnabled)));
+  const nav = NAV[state.role].filter(n => !(financialsHidden() && (n.id==='stats' || n.id==='recettes')) && !(soloModeEnabled() && ['equipe','demandes','multi','carte-fournisseurs'].includes(n.id)) && !(n.id==='haccp' && !(restoForNav && restoForNav.haccpEnabled)) && !(n.id==='recettes' && restoForNav && restoForNav.recipesEnabled===false) && !(n.id==='inventaire' && !(restoForNav && restoForNav.stockCountsEnabled)) && !(n.id==='livraisons' && state.role==='salle' && !canReceiveDeliveries()));
   const isOwnSpace = state.role === state.identity;
   const loggedInMember = state.loggedInEmployeeId ? TEAM.find(t=>t.id===state.loggedInEmployeeId) : null;
   const meta = (isOwnSpace && loggedInMember)
@@ -4441,7 +4520,7 @@ function renderShell(){
         <div class="notif-wrap">
           <button class="btn btn-ghost btn-sm" style="position:relative" onclick="toggleNotifPanel()" title="Notifications" aria-label="Notifications">
             ${I.bell}
-            ${getNotificationsForRole(state.role).length>0?`<span style="position:absolute;top:-4px;right:-4px;background:var(--black);color:#fff;width:16px;height:16px;border-radius:50%;font-size:9.5px;display:flex;align-items:center;justify-content:center;">${getNotificationsForRole(state.role).length}</span>`:''}
+            ${getNotificationsForRole(state.role).length>0?`<span style="position:absolute;top:-4px;right:-4px;background:var(--badge-bg);color:var(--badge-text);width:16px;height:16px;border-radius:50%;font-size:9.5px;display:flex;align-items:center;justify-content:center;">${getNotificationsForRole(state.role).length}</span>`:''}
           </button>
           ${state.notifOpen ? renderNotifPanel() : ''}
         </div>
@@ -4694,7 +4773,7 @@ function buildAIInsights(){
   const topId = Object.keys(freq).sort((a,b)=>freq[b]-freq[a])[0];
   if(topId){
     const p = PRODUCTS.find(x=>x.id===topId);
-    if(p) insights.push(`<b>${escapeHtml(p.name)}</b> est le produit le plus commandé, avec ${freq[topId]} ${escapeHtml(p.unit)} au total sur votre historique.`);
+    if(p) insights.push(`<b>${escapeHtml(p.name)}</b> est le produit le plus commandé, avec ${freq[topId]} ${escapeHtml(p.unit||'')} au total sur votre historique.`);
   }
   if(SUPPLIERS.length){
     const bySpend = SUPPLIERS.map(s=>({s, spend:supplierSpend(s.id)})).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend)[0];
@@ -4970,7 +5049,7 @@ function ticketDemande(r, viewerRole){
   const myMember = TEAM.find(t=>t.id===state.loggedInEmployeeId);
   const isMine = (viewerRole==='cuisine' || viewerRole==='salle') && myMember && r.createdByMemberId === myMember.remoteId && r.status==='attente';
   let stateTag = '';
-  if(r.status==='approuvee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-subtle">${iconXs(I.check)} Approuvée${r.qty?' · '+r.qty+' '+r.unit+' commandé'+(r.qty>1?'s':''):''}</span></div>`;
+  if(r.status==='approuvee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-subtle">${iconXs(I.check)} Approuvée${r.qty?' · '+r.qty+' '+escapeHtml(r.unit||'')+' commandé'+(r.qty>1?'s':''):''}</span></div>`;
   if(r.status==='refusee') stateTag = `<div style="margin-top:8px;"><span class="tag tag-red">${iconXs(I.x)} Refusée</span></div>`;
   if(r.status==='attente' && !canAct && !isMine) stateTag = `<div style="margin-top:8px;"><span class="tag tag-neutral">${iconXs(I.clock)} En attente</span></div>`;
   return `
@@ -5388,8 +5467,8 @@ function viewStocks(){
             <td data-label="Département"><span class="tag ${deptTag(p.department)}">${deptLabel(p.department)}</span></td>
             <td data-label="Fournisseur" class="muted">${supplierName(p.supplier)}</td>
             <td data-label="Conditionnement" class="muted small">${escapeHtml(p.packaging||'—')}</td>
-            <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${escapeHtml(p.unit)}</td>
-            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${fmtEUR(p.price||0)} HT / ${escapeHtml(p.unit)}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
+            <td data-label="Qté de commande" class="mono">${p.qtyCommande} ${escapeHtml(p.unit||'')}</td>
+            ${financialsHidden()?'':`<td data-label="Prix d'achat" class="mono">${fmtEUR(p.price||0)} HT / ${escapeHtml(p.unit||'')}<div class="small muted" style="font-family:'Inter',sans-serif;">TVA ${tvaRateLabel(p.tvaRate??5.5)}</div></td>`}
             <td><div class="flex gap8">
               <button class="btn btn-ghost btn-sm" onclick="editProduct('${p.id}')">Modifier</button>
               <button class="btn btn-ghost btn-sm" onclick="duplicateProduct('${p.id}')" title="Dupliquer pour créer un produit similaire" aria-label="Dupliquer pour créer un produit similaire">${iconXs(I.copy)}</button>
@@ -5816,7 +5895,7 @@ function deleteRecipe(id){
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Supprimer « ${escapeHtml(r.name)} » ?</h3>
     <p class="small muted" style="margin-bottom:16px;">Cette fiche et tous ses ingrédients seront définitivement supprimés.</p>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmDeleteRecipe('${id}')">Supprimer définitivement</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmDeleteRecipe('${id}')">Supprimer définitivement</button>
   `);
 }
 async function confirmDeleteRecipe(id){
@@ -6206,12 +6285,13 @@ function viewHaccpTemperatures(role){
             ${collapseToggleHTML('haccp-equipement-'+e.id, logs.length, true)}
           </div>
           ${isSectionCollapsed('haccp-equipement-'+e.id, true) ? '' : `<table class="stack-mobile" style="margin-top:8px;">
-          <tr><th>Température</th><th>Statut</th><th>Relevé par</th><th>Quand</th></tr>
+          <tr><th>Température</th><th>Statut</th><th>Relevé par</th><th>Quand</th><th></th></tr>
           ${logs.map(l=>`<tr class="tr-hover">
             <td data-label="Température" class="mono">${l.temperature}°C</td>
-            <td data-label="Statut">${l.inRange ? `<span class="tag tag-subtle">${iconXs(I.check)} Conforme</span>` : `<span class="tag tag-red">${iconXs(I.alertTriangle)} Hors seuils</span>`}</td>
+            <td data-label="Statut">${l.inRange ? `<span class="tag tag-subtle">${iconXs(I.check)} Conforme</span>` : `<span class="tag tag-red">${iconXs(I.alertTriangle)} Hors seuils</span>`}${haccpCorrectionMarkHTML(l)}</td>
             <td data-label="Relevé par" class="muted small">${escapeHtml(l.loggedByName||'—')}</td>
             <td data-label="Quand" class="muted small">${fmtDateLong(l.createdAt)} à ${fmtTime(l.createdAt)}</td>
+            <td style="text-align:right;white-space:nowrap;">${canEditHaccpTempLog(l, role) ? `<button class="btn btn-ghost btn-sm" onclick="openEditHaccpTempModal('${l.id}')" title="Corriger ce relevé">${iconXs(I.pencil)} Corriger</button>` : ''}</td>
           </tr>`).join('')}
         </table>`}` : `<div class="small muted">Aucun relevé pour cet équipement pour le moment.</div>`}
       </div>`;
@@ -6437,6 +6517,82 @@ async function submitHaccpTemperatureLog(){
     closeModal();
     render();
   } catch(err){ toast(err.message, 'alert'); }
+}
+// ============================================================
+// CORRIGER UN RELEVÉ DÉJÀ ENREGISTRÉ
+// Une faute de frappe (40 au lieu de 4) faussait durablement l'historique, les alertes et les
+// statistiques, sans aucun moyen de la rattraper. La correction est donc libre et immédiate :
+// deux clics, pas de demande à faire à personne.
+// Mais elle laisse une trace visible — valeur saisie à l'origine, auteur, date. C'est volontaire
+// et c'est dans l'intérêt du restaurateur : devant un contrôle, un relevé corrigé ouvertement est
+// plus crédible qu'un historique réécrit en silence. La date et l'heure du relevé ne changent
+// jamais : on corrige une valeur, on ne déplace pas un relevé dans le temps.
+// ============================================================
+function canEditHaccpTempLog(log, role){
+  if(CAN_CONFIGURE_HACCP_ROLES.includes(role)) return true;
+  // Un employé rattrape sa propre erreur de saisie dans la journée, sans déranger le patron.
+  // Au-delà, c'est au patron ou au manager de trancher : plus personne ne se souvient de la
+  // valeur réelle d'un relevé d'il y a trois semaines.
+  const sameAuthor = (log.loggedByName||'') !== '' && (log.loggedByName||'') === currentActorName();
+  const ageHours = (Date.now() - new Date(log.createdAt).getTime()) / 3600000;
+  return sameAuthor && ageHours <= 24;
+}
+function haccpCorrectionMarkHTML(log){
+  if(!log.correctedAt) return '';
+  const details = [`Corrigé le ${fmtDateLong(log.correctedAt)} à ${fmtTime(log.correctedAt)}`];
+  if(log.correctedBy) details.push(`par ${log.correctedBy}`);
+  const origin = log.originalTemperature != null ? ` — valeur saisie à l'origine : ${log.originalTemperature}°C` : '';
+  return ` <span class="tag tag-subtle" title="${escapeHtml(details.join(' ') + origin)}">corrigé</span>`;
+}
+function openEditHaccpTempModal(logId){
+  const log = HACCP_TEMP_LOGS.find(l=>l.id===logId); if(!log) return;
+  const eq = HACCP_EQUIPMENT.find(e=>e.id===log.equipmentId);
+  openModal(`
+    <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
+    <h3>Corriger le relevé</h3>
+    <div class="modal-sub">${escapeHtml(log.equipmentName || (eq ? eq.name : 'Équipement'))} — relevé du ${fmtDateLong(log.createdAt)} à ${fmtTime(log.createdAt)}${log.loggedByName ? ` par ${escapeHtml(log.loggedByName)}` : ''}.</div>
+    <div class="field"><label>Température relevée (°C)</label>
+      <input id="haccp-edit-temp" type="number" step="0.1" value="${log.temperature}">
+      ${eq ? `<div class="small muted" style="margin-top:4px;">Seuils ${eq.minTemp}° à ${eq.maxTemp}°</div>` : ''}
+    </div>
+    <div class="field"><label>Note (facultatif)</label>
+      <input id="haccp-edit-note" value="${escapeHtml(log.note||'')}" placeholder="Ex : erreur de saisie, le relevé réel était 4°C">
+    </div>
+    ${log.originalTemperature != null ? `<div class="small muted" style="margin-bottom:10px;">Ce relevé a déjà été corrigé. Valeur saisie à l'origine : ${log.originalTemperature}°C.</div>` : ''}
+    <div class="small muted" style="margin:4px 0 14px;">La date et l'heure du relevé ne changent pas. La valeur d'origine est conservée, pour que l'historique reste sincère.</div>
+    <button class="btn btn-primary btn-block" id="haccp-edit-save" onclick="saveEditedHaccpTemp('${log.id}')">Enregistrer la correction</button>
+  `);
+}
+async function saveEditedHaccpTemp(logId){
+  const log = HACCP_TEMP_LOGS.find(l=>l.id===logId); if(!log) return;
+  const input = document.getElementById('haccp-edit-temp');
+  const temperature = parseFloat(String(input ? input.value : '').replace(',','.'));
+  const note = ((document.getElementById('haccp-edit-note')||{}).value || '').trim();
+  if(Number.isNaN(temperature)){ toast('Merci de renseigner la température relevée', 'alert'); return; }
+  // Rien n'a changé : inutile de marquer le relevé comme corrigé pour une ouverture par curiosité.
+  if(temperature === log.temperature && note === String(log.note||'').trim()){ closeModal(); return; }
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  const btn = document.getElementById('haccp-edit-save'); if(btn) btn.disabled = true;
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/haccp/temperature-logs/${log.remoteId}`, {
+      method:'PATCH', body:{ temperature, note, correctedBy: currentActorName() },
+    });
+    const l = data.temperatureLog;
+    // On modifie l'objet existant en place : HACCP_TEMP_LOGS et les données de l'établissement
+    // partagent le même tableau, donc tout reste cohérent sans resynchroniser.
+    log.temperature = parseFloat(l.temperature);
+    log.inRange = l.in_range;
+    log.note = l.note;
+    log.originalTemperature = l.original_temperature != null ? parseFloat(l.original_temperature) : null;
+    log.correctedAt = l.corrected_at ? new Date(l.corrected_at) : new Date();
+    log.correctedBy = l.corrected_by || '';
+    closeModal();
+    toast(log.inRange ? 'Relevé corrigé — conforme' : 'Relevé corrigé — hors seuils, à surveiller', log.inRange ? undefined : 'alert');
+    render();
+  } catch(err){
+    if(btn) btn.disabled = false;
+    toast(err.message, 'alert');
+  }
 }
 // ============================================================
 // RELEVÉ GROUPÉ DES TEMPÉRATURES
@@ -6895,7 +7051,7 @@ function sendAccountingExportToAccountant(period){
       } else if(data.simulated){
         toast(data.reason || "L'envoi d'emails n'est pas configuré sur le serveur.", 'alert');
       }
-    } catch(err){ toast(`Export non envoyé — ${err.message}`, 'alert'); }
+    } catch(err){ toast(`Export non envoyé — ${escapeHtml(err.message)}`, 'alert'); }
   });
 }
 // Rappel en début de mois, une fois le mois précédent terminé. Volontairement une suggestion
@@ -7005,7 +7161,7 @@ function renderBasketCard(supplierId, role){
           const p = PRODUCTS.find(x=>x.id===li.productId);
           return `<tr class="tr-hover">
             <td>${escapeHtml(p?p.name:'—')}</td>
-            <td><div class="flex center gap8"><input type="number" min="1" step="1" value="${Math.round(li.qty)}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;" onchange="updateBasketLineQty('${supplierId}','${li.productId}', this.value)"><span class="small muted">${p?p.unit:''}</span></div></td>
+            <td><div class="flex center gap8"><input type="number" min="1" step="1" value="${Math.round(li.qty)}" style="width:64px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;" onchange="updateBasketLineQty('${supplierId}','${li.productId}', this.value)"><span class="small muted">${escapeHtml(p?p.unit:'')}</span></div></td>
             <td><button class="btn btn-ghost btn-sm" onclick="removeBasketLine('${supplierId}','${li.productId}')" title="Retirer" aria-label="Retirer">${iconXs(I.x)}</button></td>
           </tr>`;
         }).join('')}
@@ -7780,7 +7936,7 @@ function initSupplierMapNow(){
     if(state.mapProducersOnly && !s.isProducer) return; // filtre "producteurs uniquement" actif
     const alreadyKnown = SUPPLIERS.some(k=>(k.name||'').toLowerCase().trim() === (s.name||'').toLowerCase().trim());
     if(alreadyKnown) return; // évite un doublon visuel si détecté par les deux sources
-    const badge = s.isProducer ? '<span style="background:#2F9E44;color:#fff;font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
+    const badge = s.isProducer ? '<span style="background:var(--good-tint);color:var(--good);font-size:10.5px;padding:1px 7px;border-radius:10px;font-weight:600;">Petit producteur</span><br>' : '';
     const icon = createMapPin(s.isProducer ? '#2F9E44' : '#E08A2E', s.isProducer ? 26 : 22);
     const contactLines = [];
     if(s.address) contactLines.push(`📍 ${escapeHtml(s.address)}`);
@@ -7958,7 +8114,7 @@ function viewEquipe(){
     <div class="section-head"><div><h2>Autorisation de commande directe</h2><div class="sub">Ces personnes peuvent envoyer une commande au fournisseur sans attendre la validation du patron</div></div></div>
     <div class="card">
       ${TEAM.length ? `<table class="stack-mobile">
-        <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th><th>Plafond avant validation</th></tr>
+        <tr><th>Nom</th><th>Rôle</th><th>Peut commander directement</th><th>Plafond avant validation</th><th>Peut réceptionner les livraisons</th></tr>
         ${TEAM.map(t=>`<tr class="tr-hover">
           <td data-label="Nom" style="font-weight:600;">${escapeHtml(t.name)}</td>
           <td data-label="Rôle" class="muted">${escapeHtml(t.role)}</td>
@@ -7970,6 +8126,11 @@ function viewEquipe(){
             </div>
             ${t.canOrderDirectly ? `<div class="small muted" style="margin-top:2px;">${t.orderSpendingLimit!=null ? 'Au-delà, repasse par votre validation' : 'Aucune limite — commande toujours validée automatiquement'}</div>` : ''}
           </td>
+          <td data-label="Peut réceptionner les livraisons">
+            ${receptionIsImplicit(t.role) ? `<span class="small muted">Inclus dans son rôle</span>` : `
+              <label class="flex center gap8" style="cursor:pointer;"><input type="checkbox" ${t.canReceiveOrders?'checked':''} onchange="toggleCanReceiveOrders('${t.id}', this.checked)"> ${t.canReceiveOrders?'Autorisé':'Non autorisé'}</label>
+              ${t.canReceiveOrders ? `<div class="small muted" style="margin-top:2px;">Voit les livraisons à réceptionner, pas l'historique</div>` : ''}`}
+          </td>
         </tr>`).join('')}
       </table>` : emptyState('Aucun employé pour le moment')}
     </div>
@@ -7980,6 +8141,32 @@ function viewEquipe(){
       `).join('')}
     </div>
   `;
+}
+// Le manager et la cuisine réceptionnent déjà de par leur poste : proposer une case à cocher
+// pour eux laisserait croire qu'on peut leur retirer ce droit ici, ce qui n'est pas le cas.
+function receptionIsImplicit(role){
+  // Les deux écritures circulent dans l'application : le poste tel qu'il est enregistré
+  // ("Manager", "Chef de partie"...) pour les données venues du serveur, et l'identité
+  // abrégée ("manager", "cuisine") dans la démonstration. On accepte les deux plutôt que de
+  // laisser apparaître une case à cocher trompeuse d'un côté ou de l'autre.
+  return ['Manager','Chef de partie','Commis de cuisine'].includes(role)
+      || ['manager','cuisine'].includes(String(role||'').toLowerCase());
+}
+async function toggleCanReceiveOrders(id, checked){
+  const t = TEAM.find(x=>x.id===id); if(!t) return;
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  try{
+    const data = await apiRequest(`/api/restaurants/${resto.remoteId}/team/${t.remoteId}`, {
+      method:'PATCH', body:{ canReceiveOrders: checked },
+    });
+    t.canReceiveOrders = !!data.member.can_receive_orders;
+    toast(checked
+      ? `${escapeHtml(t.name)} peut désormais réceptionner les livraisons`
+      : `${escapeHtml(t.name)} ne peut plus réceptionner les livraisons`);
+    render();
+  } catch(err){
+    toast(err.message, 'alert');
+  }
 }
 async function toggleCanOrderDirectly(id, checked){
   const t = TEAM.find(x=>x.id===id); if(!t) return;
@@ -8154,6 +8341,7 @@ async function syncTeamFromServer(localId){
       id: 't'+m.id, remoteId: m.id, name: m.name, role: m.role, shift: m.shift,
       status: m.status, username: m.username, photoDataUrl: m.photo_url, theme: m.theme,
       inviteToken: m.invite_token, canOrderDirectly: !!m.can_order_directly,
+      canReceiveOrders: !!m.can_receive_orders,
       orderSpendingLimit: m.order_spending_limit != null ? parseFloat(m.order_spending_limit) : null,
     }));
     if(state.resto === localId) TEAM = d.team;
@@ -8279,6 +8467,10 @@ async function syncHaccpFromServer(localId){
       id:'tl'+l.id, remoteId:l.id, equipmentId:'eq'+l.equipment_id, equipmentName:l.equipment_name,
       minTemp:parseFloat(l.min_temp), maxTemp:parseFloat(l.max_temp), temperature:parseFloat(l.temperature),
       inRange:l.in_range, note:l.note, loggedByName:l.logged_by_name, createdAt:new Date(l.created_at),
+      // Trace d'une correction éventuelle — un relevé corrigé reste identifiable comme tel.
+      originalTemperature: l.original_temperature != null ? parseFloat(l.original_temperature) : null,
+      correctedAt: l.corrected_at ? new Date(l.corrected_at) : null,
+      correctedBy: l.corrected_by || '',
     }));
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncHaccpFromServer —', err); }
   try{
@@ -8896,7 +9088,7 @@ function openDeleteAccountModal(){
       Cette action supprime votre compte et <b>tous</b> les établissements qui lui sont rattachés — produits, fournisseurs, commandes, équipe, tout l'historique. Un délai de grâce de 30 jours s'applique : rien n'est perdu tant que vous n'aurez pas laissé ce délai s'écouler sans annuler.
     </p>
     <div class="field"><label>Confirmez avec votre mot de passe</label><input id="delete-account-password" type="password" placeholder="Votre mot de passe" autofocus></div>
-    <button class="btn btn-block" style="background:var(--urgent);color:#fff;" onclick="confirmDeleteAccount()">Je confirme, supprimer mon compte</button>
+    <button class="btn btn-block" style="background:var(--urgent-solid);color:#fff;" onclick="confirmDeleteAccount()">Je confirme, supprimer mon compte</button>
   `);
 }
 async function confirmDeleteAccount(){
@@ -9304,6 +9496,7 @@ function gatherAllRestaurantData(resto){
     equipe: TEAM.map(t => ({
       nom: t.name, role: t.role, horaires: t.shift||null, statut: t.status,
       peut_commander_directement: !!t.canOrderDirectly, plafond_commande_avant_validation: t.orderSpendingLimit ?? null,
+      peut_receptionner_les_livraisons: receptionIsImplicit(t.role) ? true : !!t.canReceiveOrders,
     })),
     historique_commandes: ORDERS.map(o => ({
       reference: o.id, fournisseur: (SUPPLIERS.find(s=>s.id===o.supplier)||{}).name || null,
@@ -9316,6 +9509,11 @@ function gatherAllRestaurantData(resto){
       haccp_releves_temperature: HACCP_TEMP_LOGS.map(l => ({
         equipement: l.equipmentName, temperature: l.temperature, conforme: l.inRange,
         note: l.note||null, releve_par: l.loggedByName||null, date: l.createdAt.toISOString(),
+        // Une correction est exportée telle quelle : l'export doit dire la même chose que l'écran.
+        corrige: l.correctedAt ? true : false,
+        temperature_saisie_a_l_origine: l.originalTemperature != null ? l.originalTemperature : null,
+        corrige_par: l.correctedBy || null,
+        corrige_le: l.correctedAt ? new Date(l.correctedAt).toISOString() : null,
       })),
       haccp_taches_nettoyage: HACCP_CLEANING_TASKS.map(t => ({ nom: t.name, frequence: t.frequency, moment: t.moment||'journee' })),
       haccp_nettoyages_effectues: HACCP_CLEANING_LOGS.map(l => ({
@@ -9358,7 +9556,7 @@ function buildDataExportDocumentHTML(){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city || ''}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -10250,14 +10448,19 @@ function viewManagerDemandes(){
     </div>
   `;
 }
-function viewLivraisons(){
+function viewLivraisons(viewerRole){
+  // La salle ne voit QUE ce qui reste à réceptionner. Pas l'historique, pas les bons de
+  // livraison archivés, pas les réceptions déjà enregistrées : la permission ouvre un geste
+  // précis (constater ce qui arrive), pas la comptabilité des achats de l'établissement.
+  const role = viewerRole || state.role;
+  const restricted = role === 'salle';
   const awaiting = ORDERS.filter(o=>o.status==='validee' || o.status==='partiellement_recue');
   // 20 et non 5 : c'est ici que la cuisine et le manager retrouvent une réception passée pour
   // revoir ce qui avait été livré et relire le bon de livraison photographié. Cinq lignes ne
   // couvrent pas une semaine de service.
-  const recent = ORDERS.filter(o=>o.status==='livree' || o.status==='partiellement_recue').slice(0,20);
+  const recent = restricted ? [] : ORDERS.filter(o=>o.status==='livree' || o.status==='partiellement_recue').slice(0,20);
   return `
-    <div class="section-head" style="margin-top:0;"><div><h2>Livraisons</h2><div class="sub">Réceptionnez les commandes validées par le patron</div></div></div>
+    <div class="section-head" style="margin-top:0;"><div><h2>Livraisons</h2><div class="sub">${restricted ? 'Les commandes qui restent à réceptionner' : 'Réceptionnez les commandes validées par le patron'}</div></div></div>
     <div class="card">
       <div class="card-title">En attente de réception</div>
       <table>
@@ -10266,6 +10469,12 @@ function viewLivraisons(){
         ${awaiting.length===0?`<tr><td colspan="6"><div class="empty">${I.check}<div>Aucune livraison en attente</div></div></td></tr>`:''}
       </table>
     </div>
+    ${restricted ? `
+    <div class="small muted" style="margin-top:14px;line-height:1.7;">
+      Une fois une livraison confirmée, elle quitte cette liste : vous voyez ici ce qui reste à
+      faire, rien d'autre. L'historique des réceptions et les bons de livraison archivés restent
+      consultables par le patron, le manager et la cuisine.
+    </div>` : `
     <div class="section-head"><div><h2>Réceptions récentes</h2><div class="sub">Ouvrez une réception pour revoir ce qui a été livré et le bon de livraison photographié</div></div></div>
     <div class="card">
       <table>
@@ -10273,7 +10482,7 @@ function viewLivraisons(){
         ${recent.map(o=>`<tr class="tr-hover row-clickable" role="button" tabindex="0" title="Voir le détail de la réception" aria-label="Commande ${o.id} — voir le détail" onclick="openOrderRowDetail(event, '${o.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderDocumentModal('${o.id}');}"><td class="mono">${o.id}</td><td>${orderVendorLabel(o)}</td><td class="muted small">${escapeHtml(o.items)}</td>${financialsHidden()?'':`<td class="mono">${fmtEUR(o.amount)}</td>`}<td>${orderStatusTag(o)}</td><td><button class="btn btn-ghost btn-sm" onclick="openOrderDocumentModal('${o.id}')">${iconXs(I.doc)} Voir le détail</button></td></tr>`).join('')}
         ${recent.length===0?`<tr><td colspan="6"><div class="empty">Aucune réception récente</div></td></tr>`:''}
       </table>
-    </div>
+    </div>`}
   `;
 }
 
@@ -10330,7 +10539,7 @@ function viewCuisineAccueil(){
 function catalogCard(p){
   return `<div class="card">
     <div style="font-weight:700;">${escapeHtml(p.name)}</div>
-    <div class="small muted" style="margin-top:4px;">Unité : ${escapeHtml(p.unit)} · commande standard ${p.qtyCommande} ${escapeHtml(p.unit)}</div>
+    <div class="small muted" style="margin-top:4px;">Unité : ${escapeHtml(p.unit||'')} · commande standard ${p.qtyCommande} ${escapeHtml(p.unit||'')}</div>
   </div>`;
 }
 function viewCuisineStocks(){
@@ -10370,6 +10579,10 @@ function viewDemandesList(role){
 ============================================================ */
 function viewSalleAccueil(){
   const mine = REQUESTS.filter(r=>r.from==='Salle');
+  // Raccourci vers les livraisons, uniquement pour un serveur autorisé et seulement s'il reste
+  // vraiment quelque chose à réceptionner.
+  const deliveriesWaiting = ORDERS.filter(o=>o.status==='validee' || o.status==='partiellement_recue').length;
+  const showDeliveriesTile = canReceiveDeliveries() && deliveriesWaiting > 0;
   const restoForTile = RESTOS.find(r=>r.id===state.resto);
   const showHaccpTempTile = restoForTile && restoForTile.haccpEnabled && HACCP_EQUIPMENT.length>0;
   const showHaccpCleaningTile = restoForTile && restoForTile.haccpEnabled && HACCP_CLEANING_TASKS.length>0;
@@ -10407,6 +10620,12 @@ function viewSalleAccueil(){
         <div class="tile-icon">${I.check}</div>
         <div class="tile-label">Nettoyage du jour</div>
         <div class="tile-sub">Cochez ce qui vient d'être fait</div>
+      </button>` : ''}
+      ${showDeliveriesTile ? `
+      <button class="tile" onclick="setView('livraisons')">
+        <div class="tile-icon">${I.truck}</div>
+        <div class="tile-label">Livraison${deliveriesWaiting>1?'s':''} à réceptionner</div>
+        <div class="tile-sub">${deliveriesWaiting} en attente</div>
       </button>` : ''}
     </div>
     <div class="section-head" style="margin-top:0;"><div><h2>Mes dernières demandes</h2></div></div>
@@ -10495,6 +10714,10 @@ function toggleReceiveLine(id, idx){
 // rester figé pour toujours — sans cela, la seule issue était de vivre avec un chiffre faux
 // dans l'historique et les statistiques.
 function openReceiveOrderModal(id, correcting){
+  if(!canReceiveDeliveries()){
+    toast("Vous n'avez pas l'autorisation de réceptionner une livraison — demandez au patron", 'alert');
+    return;
+  }
   const o = ORDERS.find(x=>x.id===id); if(!o) return;
   if(correcting){
     // Corriger touche aux montants déjà enregistrés : c'est un acte de gestion, réservé au
@@ -10502,7 +10725,9 @@ function openReceiveOrderModal(id, correcting){
     if(!['patron','manager'].includes(state.role)){ toast('Seuls le patron et le manager peuvent corriger une réception','alert'); return; }
     if(!['livree','partiellement_recue'].includes(o.status)){ toast("Cette commande n'a pas encore été réceptionnée", 'alert'); return; }
   } else {
-    if(!['manager','cuisine','patron'].includes(state.role)){ toast('Seuls le patron, le manager et la cuisine peuvent confirmer une réception','alert'); return; }
+    // Qui peut réceptionner est déjà vérifié en tête de fonction (canReceiveDeliveries) : patron,
+    // manager, cuisine, et un membre de la salle si le patron l'y a autorisé. L'ancienne liste
+    // fixe de rôles bloquait encore ce dernier cas, même autorisé.
     if(!['validee','partiellement_recue'].includes(o.status)){ toast("Cette commande doit d'abord être validée", 'alert'); return; }
   }
   const hideFin = financialsHidden();
@@ -10811,10 +11036,12 @@ async function confirmValidateDemande(id){
         method:'POST',
         body:{ supplierId: supplierObj?supplierObj.remoteId:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', orderDate: fmtDateShort(now) },
       });
-      ORDERS.unshift({id:'CMD-'+nextId(), remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
+      const newOrderId = 'CMD-'+nextId();
+      ORDERS.unshift({id:newOrderId, remoteId:data.order.id, supplier: supplierObj?supplierObj.id:null, items: r.item+' × '+qty+' '+r.unit, lineItems:fallbackLineItems, amount: Math.round(qty*estimatedPrice*100)/100, status:'en_attente_validation', date: fmtDateShort(now), createdAt: now});
       toast('Demande approuvée — commande fournisseur créée');
+      notifyByEmail('patron', `commande ${newOrderId} en attente de votre validation — issue de la demande ${r.id}.`, 'commandes');
     }
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${escapeHtml(r.item)}) a été approuvée.`, 'decision');
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été approuvée.`, 'decision');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -10828,7 +11055,7 @@ async function refuseDemande(id){
     await apiRequest(`/api/restaurants/${resto.remoteId}/requests/${r.remoteId}`, { method:'PATCH', body:{ status:'refusee' } });
     r.status = 'refusee';
     toast('Demande refusée', 'alert');
-    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${escapeHtml(r.item)}) a été refusée.`, 'decision');
+    notifyByEmail(r.from==='Cuisine'?'cuisine':'salle', `votre demande ${r.id} (${r.item}) a été refusée.`, 'decision');
     render();
   } catch(err){
     toast(err.message, 'alert');
@@ -10900,8 +11127,8 @@ function quickOrder(productId){
   openModal(`
     <button class="modal-close" onclick="closeModal()" aria-label="Fermer" title="Fermer">${iconSm(I.x)}</button>
     <h3>Commander « ${escapeHtml(p.name)} »</h3>
-    <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${fmtEUR(p.price||0)} / ${escapeHtml(p.unit)}`}</div>
-    <div class="field"><label>Quantité (${escapeHtml(p.unit)})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
+    <div class="modal-sub">${supplierName(p.supplier)}${financialsHidden() ? '' : ` · ${fmtEUR(p.price||0)} / ${escapeHtml(p.unit||'')}`}</div>
+    <div class="field"><label>Quantité (${escapeHtml(p.unit||'')})</label><input id="qo-qty" type="number" min="1" step="1" value="${Math.round(p.qtyCommande)}"></div>
     <button class="btn btn-primary btn-block" onclick="confirmQuickOrder('${p.id}')">Ajouter au panier</button>
   `);
 }
@@ -10944,7 +11171,7 @@ async function submitSignal(from, urgent){
     const recipient = from==='Cuisine' ? 'patron' : 'manager';
     toast(urgent ? `Commande urgente signalée au ${recipient}` : `Demande envoyée au ${recipient}`);
     if(urgent){
-      if(from==='Salle') notifyByEmail('manager', `commande urgente signalée : ${item} (par ${author}).`, 'demandes');
+      notifyByEmail('manager', `commande urgente signalée en ${from.toLowerCase()} : ${item} (par ${author}).`, 'demandes');
       notifyByEmail('patron', `commande urgente signalée : ${item} (par ${author}).`, 'urgent');
     } else {
       notifyByEmail(recipient, `nouvelle demande : ${item} (par ${author}).`, 'demande_normale');
@@ -11677,7 +11904,7 @@ function handleDocumentScan(input, prefix){
       preview.innerHTML = `
         <div style="position:relative;display:inline-block;">
           <img src="${scanned}" alt="Document scanné" style="width:110px;height:110px;border-radius:8px;object-fit:cover;border:1px solid var(--border);">
-          <button type="button" onclick="clearDocumentScan('${prefix}')" title="Retirer" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--black);color:#fff;border:none;cursor:pointer;font-size:13px;line-height:1;">×</button>
+          <button type="button" onclick="clearDocumentScan('${prefix}')" title="Retirer" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:var(--badge-bg);color:var(--badge-text);border:none;cursor:pointer;font-size:13px;line-height:1;">×</button>
         </div>
         <div class="small muted" style="margin-top:6px;">Document scanné — pas assez lisible ? Reprenez la photo ci-dessous.</div>
       `;
@@ -12108,13 +12335,13 @@ function editProduct(id){
     <div class="field"><label>Catégorie</label><select id="ep-cat" onchange="onNewProductCategoryChange(this)">${CATEGORIES.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===p.cat?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}<option value="__new__">+ Nouvelle catégorie…</option></select></div>
     <div class="field">
       <label>Unité de commande</label>
-      <input id="ep-unit" value="${escapeHtml(p.unit)}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
+      <input id="ep-unit" value="${escapeHtml(p.unit||'')}" list="unit-suggestions" oninput="updatePriceLabel('ep')">
       <div class="small muted" style="margin-top:4px;">Comment vous commandez ce produit : au kilo, au litre, à la pièce, au carton, à la caisse…</div>
     </div>
     <datalist id="unit-suggestions"><option value="Kg"><option value="Litre"><option value="Pièce"><option value="Carton"><option value="Caisse"><option value="Bouteille"><option value="Sac"><option value="Botte"><option value="Sachet"></datalist>
     ${financialsHidden() ? '' : `
     <div class="field-row">
-      <div class="field"><label id="ep-price-label">Prix par ${p.unit || 'unité'} — HT (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>
+      <div class="field"><label id="ep-price-label">Prix par ${escapeHtml(p.unit || 'unité')} — HT (€)</label><input id="ep-price" type="number" step="0.01" value="${p.price}"></div>
       <div class="field"><label>Taux de TVA</label><select id="ep-tva">${TVA_RATES.map(t=>`<option value="${t.value}" ${Math.abs((p.tvaRate??5.5)-t.value)<0.01?'selected':''}>${escapeHtml(t.label)}</option>`).join('')}</select></div>
     </div>
     `}
@@ -12447,7 +12674,7 @@ function buildOrderDocumentHTML(o){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -12474,7 +12701,7 @@ function buildOrderDocumentHTML(o){
       <table class="invoice-table">
         <thead><tr><th>Article</th><th>Qté</th>${financialsHidden()?'':'<th>Prix unit. HT</th><th>TVA</th><th>Total HT</th>'}</tr></thead>
         <tbody>
-          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${escapeHtml(l.unit)}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${fmtEURRaw(l.total||0)}</td>`}</tr>`).join('')}
+          ${lines.map(l=>`<tr><td>${escapeHtml(l.name)}</td><td>${l.qty} ${escapeHtml(l.unit||'')}</td>${financialsHidden()?'':`<td>${fmtEUR(l.price||0)}</td><td>${tvaRateLabel(l.tvaRate)}</td><td>${fmtEURRaw(l.total||0)}</td>`}</tr>`).join('')}
         </tbody>
       </table>
       ${financialsHidden() ? '' : `
@@ -12712,7 +12939,7 @@ function buildHistoryDocumentHTML(period){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -12791,7 +13018,7 @@ function buildHaccpReportHTML(period){
       <div class="invoice-head">
         <div>
           <div class="invoice-resto-name">${escapeHtml(resto.name)}</div>
-          <div class="invoice-resto-meta">${fullAddress(resto) || resto.city}</div>
+          <div class="invoice-resto-meta">${escapeHtml(fullAddress(resto) || resto.city || '')}</div>
           ${resto.siret ? `<div class="invoice-resto-meta">SIRET : ${escapeHtml(resto.siret)}</div>` : ''}
         </div>
         <div class="invoice-doctype">
@@ -13283,7 +13510,7 @@ function editEmployee(id){
     <div class="field"><label>Nom complet</label><input id="ee-name" value="${escapeHtml(t.name)}"></div>
     <div class="field-row">
       <div class="field"><label>Rôle</label><select id="ee-role">${roles.map(r=>`<option ${t.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
-      <div class="field"><label>Horaires</label><input id="ee-shift" value="${escapeHtml(t.shift)}"></div>
+      <div class="field"><label>Horaires</label><input id="ee-shift" value="${escapeHtml(t.shift||'')}"></div>
     </div>
     <div class="field"><label>Statut</label><select id="ee-status"><option value="actif" ${t.status==='actif'?'selected':''}>En service</option><option value="repos" ${t.status==='repos'?'selected':''}>Repos</option></select></div>
     <div class="field"><label>Identifiant</label><input id="ee-username" value="${escapeHtml(t.username||'')}"></div>
@@ -13432,6 +13659,9 @@ function renderContent(){
   if(role==='salle'){
     if(view==='accueil') return viewSalleAccueil();
     if(view==='signaler'){ openSignalModal('Salle', false); return viewSalleAccueil(); }
+    // Second verrou : même si la vue était atteinte autrement que par le menu (dernière vue
+    // mémorisée, permission retirée entre-temps), on ne l'affiche pas sans la permission.
+    if(view==='livraisons') return canReceiveDeliveries() ? viewLivraisons() : viewSalleAccueil();
     if(view==='stocks') return viewSalleStocks();
     if(view==='demandes') return viewDemandesList('salle');
   }
@@ -13862,7 +14092,7 @@ function siteNav(active){
   return `
     <header class="site-nav">
       <button class="site-nav-brand" onclick="goToSite('marketing')">
-        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--black);color:#fff;"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
+        <div class="brand-mark" style="width:30px;height:30px;font-size:14px;background:var(--badge-bg);color:var(--badge-text);"><img src="mark-white-transparent.png" alt="Mise &amp; Sûre" onerror="this.outerHTML='M';"></div>
         <span>Mise &amp; Sûre</span>
       </button>
       <nav class="site-nav-links">
@@ -15436,14 +15666,14 @@ function renderBanner(){
   if(ACCOUNT && ACCOUNT.pending_deletion_at){
     const deletionDate = new Date(ACCOUNT.pending_deletion_at);
     const daysLeft = Math.max(0, Math.ceil((deletionDate - new Date()) / (1000*60*60*24)));
-    html += `<div class="demo-banner" style="background:var(--urgent);">
+    html += `<div class="demo-banner" style="background:var(--urgent-solid);">
       ${iconXs(I.alertTriangle)} <span><b>Suppression de compte demandée</b> — votre compte et tous vos établissements seront définitivement supprimés dans ${daysLeft} jour${daysLeft>1?'s':''} (le ${fmtDateLong(deletionDate)}). <a href="#" onclick="cancelAccountDeletion();return false;" style="color:#fff;text-decoration:underline;font-weight:700;">Annuler la suppression</a></span>
     </div>`;
   }
   // Prélèvement échoué : l'accès est maintenu pendant que Stripe réessaie (délai de grâce), mais
   // le patron doit le savoir tout de suite, avec le bouton pour corriger.
   if(ACCOUNT && ACCOUNT.stripe_subscription_status==='past_due' && state.identity==='patron' && !state.isDemoMode){
-    html += `<div class="demo-banner" style="background:var(--urgent);">
+    html += `<div class="demo-banner" style="background:var(--urgent-solid);">
       ${iconXs(I.alertTriangle)} <span><b>Le dernier paiement de votre abonnement a échoué.</b> Votre accès est maintenu quelques jours, le temps de mettre à jour votre moyen de paiement. <a href="#" onclick="openBillingPortal();return false;" style="color:#fff;text-decoration:underline;font-weight:700;">Mettre à jour ma carte</a></span>
     </div>`;
   }
@@ -15452,7 +15682,7 @@ function renderBanner(){
   const trialLeft = trialDaysLeft();
   if(trialLeft!==null && state.identity==='patron' && !state.isDemoMode){
     const endLabel = fmtDateLong(new Date(ACCOUNT.stripe_trial_end));
-    html += `<div class="demo-banner" style="${trialLeft<=3 ? 'background:var(--urgent);' : 'background:var(--accent);color:var(--accent-text);'}">
+    html += `<div class="demo-banner" style="${trialLeft<=3 ? 'background:var(--urgent-solid);' : 'background:var(--accent);color:var(--accent-text);'}">
       ${iconXs(I.clock)} <span><b>Essai gratuit : ${trialLeft===0 ? 'dernier jour' : `encore ${trialLeft} jour${trialLeft>1?'s':''}`}</b> (jusqu'au ${endLabel}). Ajoutez votre carte pour continuer sans interruption — sinon l'essai s'arrête simplement, sans aucun prélèvement. <a href="#" onclick="openBillingPortal();return false;" style="color:inherit;text-decoration:underline;font-weight:700;">Ajouter ma carte</a></span>
     </div>`;
   }
@@ -15776,6 +16006,8 @@ async function checkExistingSession(){
         d.team = [{
           id: localEmployeeId, remoteId: data.member.id, name: data.member.name,
           role: data.member.role, photoDataUrl: data.member.photo_url,
+          canOrderDirectly: !!data.member.can_order_directly,
+          canReceiveOrders: !!data.member.can_receive_orders,
         }];
         state.resto = localId;
         loadRestoData(localId);
