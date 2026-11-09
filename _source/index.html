@@ -1730,6 +1730,7 @@ function demoInterceptRequest(path, options){
       hide_financials: keep(body.hideFinancials, resto.hideFinancials), solo_mode: keep(body.soloMode, resto.soloMode),
       haccp_enabled: keep(body.haccpEnabled, resto.haccpEnabled), recipes_enabled: keep(body.recipesEnabled, resto.recipesEnabled),
       stock_counts_enabled: keep(body.stockCountsEnabled, resto.stockCountsEnabled),
+      allergens_enabled: keep(body.allergensEnabled, resto.allergensEnabled !== false),
     } });
   }
 
@@ -5829,7 +5830,7 @@ function viewRecipes(){
     <div class="section-head" style="margin-top:0;">
       <div><h2>Fiches techniques</h2><div class="sub">Le coût de revient réel de chaque plat, calculé à partir de vos prix fournisseurs actuels</div></div>
       <div class="flex gap8" style="flex-wrap:wrap;">
-        ${RECIPES.length ? `<button class="btn btn-ghost" onclick="openAllergenSheetModal()" title="Tableau des 14 allergènes de chaque plat, à afficher en salle">🖨️ Fiche allergènes</button>` : ''}
+        ${RECIPES.length && allergensModuleEnabled() ? `<button class="btn btn-ghost" onclick="openAllergenSheetModal()" title="Tableau des 14 allergènes de chaque plat, à afficher en salle">🖨️ Fiche allergènes</button>` : ''}
         <button class="btn btn-primary" onclick="openNewRecipeModal()">${iconSm(I.plus)} Ajouter une fiche</button>
       </div>
     </div>
@@ -8746,6 +8747,7 @@ async function syncRestaurantInfoFromServer(localId){
     resto.haccpEnabled = data.restaurant.haccp_enabled;
     resto.recipesEnabled = data.restaurant.recipes_enabled;
     resto.stockCountsEnabled = data.restaurant.stock_counts_enabled;
+    resto.allergensEnabled = data.restaurant.allergens_enabled !== false;
     applyAppearance(resto);
   } catch(err){ console.error('Mise & Sûre : échec de synchronisation dans syncRestaurantInfoFromServer —', err); }
 }
@@ -8807,6 +8809,26 @@ const ALLERGENS = [
   { code:'lupin', label:'Lupin', short:'Lupin', icon:'🌼', detail:'' },
   { code:'mollusques', label:'Mollusques', short:'Mollusques', icon:'🦪', detail:'moules, huîtres, calamars…' },
 ];
+// Module allergènes : activé par défaut, désactivable dans Paramètres → Fonctionnalités. Désactivé,
+// il disparaît partout (cases sur les produits, allergènes des plats, fiche imprimable) ; les
+// allergènes déjà cochés restent enregistrés et réapparaissent si on le réactive.
+function allergensModuleEnabled(){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  return !resto || resto.allergensEnabled !== false;
+}
+async function toggleAllergensEnabled(checked){
+  const resto = RESTOS.find(r=>r.id===state.resto);
+  if(!resto) return;
+  try{
+    if(state.isDemoMode || !resto.remoteId){ resto.allergensEnabled = checked; }
+    else {
+      const data = await apiRequest(`/api/restaurants/${resto.remoteId}`, { method:'PATCH', body:{ allergensEnabled: checked } });
+      resto.allergensEnabled = data.restaurant.allergens_enabled !== false;
+    }
+    toast(checked ? 'Allergènes activés — sur vos produits et vos fiches techniques' : 'Allergènes désactivés — ils n\'apparaissent plus nulle part');
+    render();
+  } catch(err){ toast(err.message, 'alert'); }
+}
 function allergenLabel(code){ const a = ALLERGENS.find(x=>x.code===code); return a ? a.label : code; }
 // Allergènes d'une fiche technique : réunion de ceux de ses produits et de ses sous-recettes.
 function recipeAllergens(recipeId, visited){
@@ -8836,6 +8858,7 @@ function recipeIngredientsWithoutAllergenInfo(recipeId, visited){
   return Array.from(new Set(out));
 }
 function recipeAllergenLineHTML(recipe){
+  if(!allergensModuleEnabled()) return '';
   const codes = recipeAllergens(recipe.id);
   const missing = recipeIngredientsWithoutAllergenInfo(recipe.id);
   if(!codes.size && !missing.length) return `<div class="small muted" style="margin-top:4px;">Allergènes : aucun</div>`;
@@ -8929,6 +8952,7 @@ function allergenBadgesHTML(codes){
 }
 // Bloc de cases à cocher dans les fenêtres de création / modification d'un produit.
 function allergenChecklistHTML(prefix, selected, checked){
+  if(!allergensModuleEnabled()) return '';
   selected = selected || [];
   return `
     <details class="field allergen-picker" ${selected.length ? 'open' : ''}>
@@ -8941,6 +8965,9 @@ function allergenChecklistHTML(prefix, selected, checked){
     </details>`;
 }
 function readAllergenChecklist(prefix){
+  // Module désactivé (aucune case affichée) : on n'envoie rien, pour ne pas effacer les
+  // allergènes déjà enregistrés sur le produit.
+  if(!document.querySelector(`.${prefix}-allergen-chk`)) return { codes: undefined, checked: undefined };
   const codes = Array.from(document.querySelectorAll(`.${prefix}-allergen-chk:checked`)).map(el=>el.value);
   const confirmEl = document.getElementById(`${prefix}-allergens-checked`);
   return { codes, checked: codes.length > 0 || !!(confirmEl && confirmEl.checked) };
@@ -9313,6 +9340,13 @@ function viewParametres(){
             <div class="small muted">Un relevé simple de stock — quantité, date, qui l'a fait. Pas de décompte automatique ni de rapprochement théorique.</div>
           </div>
           <input type="checkbox" id="stock-counts-toggle" aria-label="Activer l'inventaire" ${resto.stockCountsEnabled?'checked':''} onchange="toggleStockCountsEnabled(this.checked)">
+        </div>
+        <div class="feature-toggle-row">
+          <div>
+            <div class="feature-toggle-title">Allergènes</div>
+            <div class="small muted">Les 14 allergènes cochés sur vos produits, repris automatiquement dans vos fiches techniques et dans la fiche allergènes à imprimer. Désactivé, tout disparaît (les allergènes déjà saisis sont gardés).</div>
+          </div>
+          <input type="checkbox" id="allergens-toggle" aria-label="Activer les allergènes" ${resto.allergensEnabled!==false?'checked':''} onchange="toggleAllergensEnabled(this.checked)">
         </div>
         <div class="feature-toggle-row">
           <div>
