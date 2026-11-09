@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Logiciel HACCP pour restaurant — relevés et traçabilité</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Relevés de température, plan de nettoyage, numéros de lot : tenez votre HACCP sur téléphone, sans classeur papier. Prêt pour le contrôle sanitaire. Essai gratuit.">
+<link rel="canonical" href="https://misesure.fr/haccp/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://misesure.fr/haccp/">
+<meta property="og:site_name" content="Mise & Sûre">
+<meta property="og:title" content="Logiciel HACCP pour restaurant — relevés et traçabilité">
+<meta property="og:description" content="Relevés de température, plan de nettoyage, numéros de lot : tenez votre HACCP sur téléphone, sans classeur papier. Prêt pour le contrôle sanitaire. Essai gratuit.">
+<meta property="og:image" content="https://misesure.fr/mkt-haccp.webp">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Le suivi HACCP numérique est-il accepté lors d'un contrôle ?","acceptedAnswer":{"@type":"Answer","text":"Oui. La réglementation impose de pouvoir prouver vos autocontrôles, pas d'utiliser du papier. Un registre numérique daté, avec l'auteur de chaque relevé et l'historique des corrections, répond à cette exigence."}},{"@type":"Question","name":"Faut-il un thermomètre connecté ?","acceptedAnswer":{"@type":"Answer","text":"Non. Vos thermomètres actuels suffisent : la personne lit la température et la saisit en quelques secondes. Mise & Sûre s'occupe de la date, de l'auteur et de l'alerte en cas d'anomalie."}},{"@type":"Question","name":"Le module HACCP est-il en option ?","acceptedAnswer":{"@type":"Answer","text":"Non, il est inclus dans tous les forfaits. Il est désactivé par défaut : vous l'activez dans les paramètres seulement si vous en avez besoin."}}]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Mise & Sûre","item":"https://misesure.fr/"},{"@type":"ListItem","position":2,"name":"Suivi HACCP","item":"https://misesure.fr/haccp/"}]}]}</script>
+<style>
+  :root{ --ink:#141414; --paper:#FAFAF7; --surface:#FFFFFF; --muted:#5E5E58; --border:#E3E3DD; --soft:#F2F2EE; --alert:#A93A2E; }
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif; font-size:16px; line-height:1.6; }
+  a{ color:inherit; }
+  .wrap{ max-width:1080px; margin:0 auto; padding:0 20px; }
+  header{ border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:5; }
+  header .wrap{ display:flex; align-items:center; justify-content:space-between; gap:12px; height:62px; }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:700; text-decoration:none; font-size:16px; white-space:nowrap; }
+  .brand img{ width:30px; height:30px; border-radius:8px; background:var(--ink); }
+  nav.top{ display:flex; gap:6px; align-items:center; }
+  .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:11px 18px; border-radius:10px; font-weight:600; font-size:15px; text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:#fff; white-space:nowrap; }
+  .btn.ghost{ background:transparent; color:var(--ink); border-color:var(--border); }
+  .btn.sm{ padding:8px 12px; font-size:14px; }
+  .hide-sm{ }
+  .hero{ padding-top:64px; padding-bottom:36px; text-align:center; }
+  .kicker{ display:inline-block; font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); background:var(--soft); border:1px solid var(--border); border-radius:30px; padding:5px 12px; margin-bottom:18px; }
+  h1{ font-family:Fraunces,Georgia,serif; font-size:clamp(30px,5vw,46px); line-height:1.12; margin:0 auto 18px; max-width:820px; }
+  .intro{ font-size:18px; color:var(--muted); max-width:720px; margin:0 auto 28px; }
+  .cta{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  .trial{ font-size:13.5px; color:var(--muted); margin-top:12px; }
+  .shot{ margin:40px auto 0; max-width:960px; border-radius:14px; border:1px solid var(--border); background:var(--surface); box-shadow:0 18px 50px rgba(0,0,0,.08); overflow:hidden; }
+  .shot img{ display:block; width:100%; height:auto; }
+  section{ padding:44px 0; }
+  h2{ font-family:Fraunces,Georgia,serif; font-size:clamp(24px,3.4vw,32px); line-height:1.2; margin:0 0 22px; text-align:center; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:22px; }
+  .card .ic{ font-size:26px; line-height:1; margin-bottom:12px; }
+  .card h3{ margin:0 0 8px; font-size:17px; }
+  .card p{ margin:0; color:var(--muted); font-size:15px; }
+  ol.steps{ list-style:none; counter-reset:s; padding:0; margin:0 auto; max-width:760px; display:grid; gap:12px; }
+  ol.steps li{ counter-increment:s; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px 16px 62px; position:relative; }
+  ol.steps li::before{ content:counter(s); position:absolute; left:18px; top:50%; transform:translateY(-50%); width:30px; height:30px; border-radius:50%; background:var(--ink); color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .faq{ max-width:780px; margin:0 auto; }
+  details{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:10px; }
+  summary{ font-weight:600; cursor:pointer; }
+  details p{ margin:10px 0 0; color:var(--muted); }
+  .final{ text-align:center; background:var(--ink); color:#fff; border-radius:18px; padding:42px 24px; margin:10px 0 50px; }
+  .final h2{ color:#fff; }
+  .final p{ color:#CFCFC8; margin:0 0 22px; }
+  .final .btn{ background:#fff; color:var(--ink); border-color:#fff; }
+  .final .btn.ghost{ background:transparent; color:#fff; border-color:#5a5a55; }
+  .related{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .related a{ text-decoration:none; border:1px solid var(--border); background:var(--surface); border-radius:30px; padding:9px 16px; font-weight:600; font-size:14.5px; }
+  footer{ border-top:1px solid var(--border); padding:26px 0 40px; font-size:13px; color:var(--muted); text-align:center; }
+  footer nav{ display:flex; gap:16px; flex-wrap:wrap; justify-content:center; margin-top:10px; }
+  .alg-demo{ overflow-x:auto; margin:36px auto 0; max-width:1000px; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow:0 18px 50px rgba(0,0,0,.08); }
+  .alg-demo table{ border-collapse:collapse; width:100%; font-size:12.5px; min-width:760px; }
+  .alg-demo th, .alg-demo td{ border:1px solid var(--border); padding:6px 4px; text-align:center; }
+  .alg-demo th{ background:var(--soft); font-weight:600; font-size:11px; vertical-align:bottom; }
+  .alg-demo th span{ display:block; font-size:16px; }
+  .alg-demo td:first-child, .alg-demo th:first-child{ text-align:left; font-weight:600; padding-left:8px; }
+  .alg-demo td.y{ background:#FBE3DE; color:var(--alert); font-weight:700; }
+  @media (max-width:640px){ .hide-sm{ display:none; } .hero{ padding-top:40px; } header .wrap{ height:56px; } .btn.sm{ padding:8px 10px; font-size:13.5px; } .brand{ font-size:15px; } }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <a class="brand" href="/"><img src="/mark-white-transparent.png" alt="" width="30" height="30">Mise &amp; Sûre</a>
+  <nav class="top" aria-label="Navigation principale">
+    <a class="btn ghost sm hide-sm" href="/tarifs/">Tarifs</a>
+    <a class="btn ghost sm" href="/?connexion=1">Se connecter</a>
+    <a class="btn sm" href="/tarifs/">Essai gratuit</a>
+  </nav>
+</div></header>
+<main>
+  <div class="wrap hero">
+    <div class="kicker">Suivi HACCP</div>
+    <h1>Votre HACCP sur téléphone, prêt pour le contrôle sanitaire</h1>
+    <p class="intro">Fini le classeur de relevés taché et incomplet. Chaque relevé de température, chaque nettoyage et chaque numéro de lot est daté, signé et rangé automatiquement — consultable en deux clics le jour où l'inspecteur passe.</p>
+    <div class="cta">
+      <a class="btn" href="/tarifs/">Essayer gratuitement 14 jours</a>
+      <a class="btn ghost" href="/?demo=1">Voir la démo</a>
+    </div>
+    <div class="trial">Sans carte bancaire · sans engagement · inclus dans tous les forfaits</div>
+    <div class="shot"><img src="/mkt-haccp.webp" alt="Écran de suivi HACCP de Mise &amp; Sûre : relevés de température des frigos" width="1200" height="750" decoding="async" fetchpriority="high"></div>
+  </div>
+  <section><div class="wrap">
+    <h2>Ce que ça change au quotidien</h2>
+    <div class="grid"><div class="card"><div class="ic" aria-hidden="true">🌡️</div><h3>Relevés de température</h3><p>Frigos, chambres froides, congélateurs : saisie en 5 secondes, alerte immédiate si une température sort des seuils que vous avez fixés.</p></div><div class="card"><div class="ic" aria-hidden="true">🧽</div><h3>Plan de nettoyage</h3><p>Tâches quotidiennes, hebdomadaires ou mensuelles, cochées par l'équipe. Vous voyez d'un coup d'œil ce qui a été fait, et par qui.</p></div><div class="card"><div class="ic" aria-hidden="true">🏷️</div><h3>Traçabilité des lots</h3><p>Le numéro de lot est noté à la réception de chaque livraison : en cas de rappel produit, vous retrouvez tout instantanément.</p></div><div class="card"><div class="ic" aria-hidden="true">✍️</div><h3>Historique sincère</h3><p>Une correction garde la valeur d'origine, l'auteur et la date. C'est exactement ce qu'attend un contrôleur.</p></div></div>
+  </div></section>
+  <section><div class="wrap">
+    <h2>Comment ça marche</h2>
+    <ol class="steps"><li>Ajoutez vos équipements froids avec leurs seuils (ex. 0 à 4 °C).</li><li>L'équipe fait ses relevés et coche le nettoyage depuis son téléphone.</li><li>Le jour du contrôle, vous montrez l'historique complet, daté et signé.</li></ol>
+  </div></section>
+  <section><div class="wrap faq">
+    <h2>Questions fréquentes</h2>
+    <details><summary>Le suivi HACCP numérique est-il accepté lors d'un contrôle ?</summary><p>Oui. La réglementation impose de pouvoir prouver vos autocontrôles, pas d'utiliser du papier. Un registre numérique daté, avec l'auteur de chaque relevé et l'historique des corrections, répond à cette exigence.</p></details><details><summary>Faut-il un thermomètre connecté ?</summary><p>Non. Vos thermomètres actuels suffisent : la personne lit la température et la saisit en quelques secondes. Mise &amp; Sûre s'occupe de la date, de l'auteur et de l'alerte en cas d'anomalie.</p></details><details><summary>Le module HACCP est-il en option ?</summary><p>Non, il est inclus dans tous les forfaits. Il est désactivé par défaut : vous l'activez dans les paramètres seulement si vous en avez besoin.</p></details>
+  </div></section>
+  <div class="wrap">
+    <div class="final">
+      <h2>Essayez Mise &amp; Sûre avec votre vrai catalogue</h2>
+      <p>14 jours gratuits, sans carte bancaire. Commandes, coût de revient, HACCP, allergènes et inventaire au même endroit.</p>
+      <div class="cta"><a class="btn" href="/tarifs/">Commencer l'essai gratuit</a><a class="btn ghost" href="/">Découvrir Mise &amp; Sûre</a></div>
+    </div>
+    <h2 style="font-size:22px;">Aussi dans Mise &amp; Sûre</h2><div class="related" style="margin-bottom:46px;"><a href="/fiche-technique/">Fiches techniques</a><a href="/allergenes/">Fiche allergènes</a><a href="/inventaire/">Inventaire</a></div>
+  </div>
+</main>
+<footer><div class="wrap">
+  Mise &amp; Sûre — logiciel de gestion pour restaurants
+  <nav aria-label="Pages">
+    <a href="/haccp/">Suivi HACCP</a><a href="/fiche-technique/">Fiches techniques</a><a href="/allergenes/">Fiche allergènes</a><a href="/commandes-fournisseurs/">Commandes fournisseurs</a><a href="/inventaire/">Inventaire</a>
+    <a href="/tarifs/">Tarifs</a><a href="/mentions-legales/">Mentions légales</a><a href="/confidentialite/">Confidentialité</a><a href="/cgu/">CGU/CGV</a>
+  </nav>
+</div></footer>
+</body>
+</html>
