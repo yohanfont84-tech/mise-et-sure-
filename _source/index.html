@@ -3305,6 +3305,9 @@ async function loadAdminTabData(tab){
       const data = await apiRequest('/api/admin/support-questions');
       state.adminQuestions = data.questions;
     }
+    if(tab==='parrainages' && !state.adminReferrals){
+      state.adminReferrals = await apiRequest('/api/admin/referrals');
+    }
     if(tab==='journal' && !state.adminActivity){
       const t = state.adminActivityType;
       const data = await apiRequest('/api/admin/activity-log' + (t ? `?type=${encodeURIComponent(t)}` : ''));
@@ -15152,6 +15155,7 @@ function renderAdminPage(){
           <button class="${tab==='clients'?'active':''}" onclick="setAdminTab('clients')">Clients</button>
           <button class="${tab==='aide'?'active':''}" onclick="setAdminTab('aide')">Centre d'aide${openQ>0 ? ` <span class="tag tag-red" style="margin-left:4px;">${openQ}</span>` : ''}</button>
           <button class="${tab==='journal'?'active':''}" onclick="setAdminTab('journal')">Journal d'activité</button>
+          <button class="${tab==='parrainages'?'active':''}" onclick="setAdminTab('parrainages')">🎁 Parrainages</button>
           ${isOwnerAccount() ? `<button class="${tab==='banking'?'active':''}" onclick="setAdminTab('banking')">${bankingUnlocked() ? '🔓' : '🔒'} Banking</button>` : ''}
         </div>
         ${state.adminError ? `<div class="login-error" style="margin-bottom:16px;">${escapeHtml(state.adminError)}</div>` : ''}
@@ -15160,6 +15164,7 @@ function renderAdminPage(){
         ${tab==='clients' ? renderAdminClients() : ''}
         ${tab==='aide' ? renderAdminSupport() : ''}
         ${tab==='journal' ? renderAdminActivityLog() : ''}
+        ${tab==='parrainages' ? renderAdminReferrals() : ''}
         ${tab==='banking' && isOwnerAccount() ? renderAdminBanking() : ''}
       </div>
     </div>
@@ -15805,6 +15810,87 @@ const ADMIN_EVENT_LABELS = {
   promotion_admin:'Promotion administrateur', retrait_admin:'Retrait administrateur',
   cloture_support:'Discussion close', reouverture_support:'Discussion rouverte',
 };
+// ---- Parrainages : suivi et contrôle anti-fraude ----
+const ADMIN_REFERRAL_STATUS = {
+  attente_delai: { label:'⏳ Délai de 30 jours', tone:'' },
+  en_attente: { label:'⏳ Délai de 30 jours', tone:'' },
+  attente_parrain: { label:'⏳ Parrain pas encore abonné', tone:'' },
+  en_cours: { label:'… Vérification en cours', tone:'' },
+  credite: { label:'✅ Crédité', tone:'good' },
+  bloque: { label:'⛔ Bloqué', tone:'bad' },
+  annule: { label:'↩️ Crédit annulé', tone:'bad' },
+};
+function renderAdminReferrals(){
+  const d = state.adminReferrals;
+  if(!d) return `<div class="card"><div class="small muted">Chargement…</div></div>`;
+  const list = d.referrals || [];
+  const count = st => list.filter(r => r.status===st).length;
+  const credited = list.filter(r=>r.status==='credite').reduce((a,r)=>a+(r.amount_cents||0),0);
+  const owner = isOwnerAccount();
+  const who = (first, last, email) => `${escapeHtml(((first||'')+' '+(last||'')).trim() || '—')}<div class="small muted">${escapeHtml(email||'')}</div>`;
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="flex between center" style="flex-wrap:wrap;gap:10px;">
+        <div>
+          <div class="card-title" style="margin:0;">🎁 Parrainages</div>
+          <div class="small muted" style="margin-top:4px;max-width:680px;">Un mois n'est crédité qu'après ${d.delayDays||30} jours de paiement réel du filleul, plafonné à ce qu'il paie. Bloqué automatiquement si même carte bancaire, mêmes coordonnées, remboursement ou résiliation. Vérification automatique toutes les 6 heures.</div>
+        </div>
+        ${owner ? `<button class="btn btn-ghost btn-sm" onclick="adminProcessReferrals()">Vérifier maintenant</button>` : ''}
+      </div>
+      <div class="flex gap8" style="flex-wrap:wrap;margin-top:12px;">
+        <span class="tag tag-neutral">${d.referredWithoutPayment||0} filleul${(d.referredWithoutPayment||0)>1?'s':''} pas encore payant${(d.referredWithoutPayment||0)>1?'s':''}</span>
+        <span class="tag tag-neutral">${count('attente_delai')+count('en_attente')} en délai</span>
+        <span class="tag tag-neutral">${count('attente_parrain')} en attente du parrain</span>
+        <span class="tag tag-neutral">${count('credite')} crédité${count('credite')>1?'s':''} · ${fmtEurPrecise(credited/100)}</span>
+        <span class="tag ${count('bloque')?'tag-red':'tag-neutral'}">${count('bloque')} bloqué${count('bloque')>1?'s':''}</span>
+      </div>
+    </div>
+    <div class="card">
+      ${list.length ? `<table class="stack-mobile">
+        <tr><th>Parrain</th><th>Filleul</th><th>Statut</th><th>Montant</th><th>Dates</th>${owner?'<th></th>':''}</tr>
+        ${list.map(r => {
+          const st = ADMIN_REFERRAL_STATUS[r.status] || { label: r.status, tone:'' };
+          return `<tr>
+            <td data-label="Parrain">${who(r.referrer_first_name, r.referrer_last_name, r.referrer_email)}</td>
+            <td data-label="Filleul">${who(r.referee_first_name, r.referee_last_name, r.referee_email)}<div class="small muted">${escapeHtml(r.referee_plan||'')}${r.referee_subscription_status ? ' · '+escapeHtml(r.referee_subscription_status) : ''}</div></td>
+            <td data-label="Statut"><span class="${st.tone==='bad'?'text-alert':''}" style="font-weight:600;">${st.label}</span>${r.block_reason ? `<div class="small muted">${escapeHtml(r.block_reason)}</div>` : ''}${r.admin_approved ? '<div class="small muted">Validé à la main</div>' : ''}</td>
+            <td data-label="Montant" class="mono">${r.amount_cents ? fmtEurPrecise(r.amount_cents/100) : '—'}${r.referee_paid_cents ? `<div class="small muted">filleul : ${fmtEurPrecise(r.referee_paid_cents/100)}</div>` : ''}</td>
+            <td data-label="Dates" class="small">1er paiement : ${new Date(r.created_at).toLocaleDateString('fr-FR')}${r.eligible_at && !['credite','annule','bloque'].includes(r.status) ? `<br>Échéance : ${new Date(r.eligible_at).toLocaleDateString('fr-FR')}` : ''}${r.credited_at ? `<br>Crédité : ${new Date(r.credited_at).toLocaleDateString('fr-FR')}` : ''}</td>
+            ${owner ? `<td data-label="Actions"><div class="flex gap8" style="flex-wrap:wrap;">
+              ${!['credite','annule','bloque','en_cours'].includes(r.status) ? `<button class="btn btn-ghost btn-sm" onclick="adminReferralAction(${r.id},'block')">Bloquer</button>` : ''}
+              ${r.status==='bloque' ? `<button class="btn btn-ghost btn-sm" onclick="adminReferralAction(${r.id},'approve')" title="Cas légitime : saute les contrôles carte/coordonnées (le filleul doit toujours être abonné)">Valider quand même</button>` : ''}
+              ${r.status==='credite' ? `<button class="btn btn-ghost btn-sm" onclick="adminReferralAction(${r.id},'cancel')">Annuler le crédit</button>` : ''}
+            </div></td>` : ''}
+          </tr>`;
+        }).join('')}
+      </table>` : emptyState("Aucun parrainage avec paiement pour le moment.")}
+    </div>`;
+}
+async function adminReloadReferrals(){
+  state.adminReferrals = await apiRequest('/api/admin/referrals');
+  render();
+}
+async function adminProcessReferrals(){
+  try{
+    const r = await apiRequest('/api/admin/referrals/process', { method:'POST' });
+    toast(r.traitees ? `${r.traitees} parrainage${r.traitees>1?'s':''} vérifié${r.traitees>1?'s':''} : ${r.credite||0} crédité${(r.credite||0)>1?'s':''}, ${r.bloque||0} bloqué${(r.bloque||0)>1?'s':''}` : 'Rien à vérifier pour le moment');
+    await adminReloadReferrals();
+  } catch(err){ toast(err.message, 'alert'); }
+}
+async function adminReferralAction(id, action){
+  const messages = {
+    block: 'Bloquer ce parrainage ? Le parrain ne recevra pas ce mois offert.',
+    approve: 'Valider quand même ce parrainage ? Les contrôles carte bancaire et coordonnées seront ignorés (le filleul doit toujours être abonné, et le crédit reste plafonné à ce qu\'il paie).',
+    cancel: 'Annuler ce mois offert ? Le montant sera retiré du crédit Stripe du parrain.',
+  };
+  if(!confirm(messages[action])) return;
+  try{
+    const body = action==='block' ? { reason: prompt('Raison (facultatif) :') || '' } : {};
+    await apiRequest(`/api/admin/referrals/${id}/${action}`, { method:'POST', body });
+    toast(action==='block' ? 'Parrainage bloqué' : action==='approve' ? 'Parrainage validé' : 'Crédit annulé');
+    await adminReloadReferrals();
+  } catch(err){ toast(err.message, 'alert'); }
+}
 function renderAdminActivityLog(){
   const activity = state.adminActivity;
   const type = state.adminActivityType || '';
@@ -16453,7 +16539,8 @@ function viewReferralTab(){
   return `
     <div class="card" style="margin-bottom:18px;">
       <div class="card-title">🎁 Invite un restaurateur, gagne 1 mois offert</div>
-      <p style="margin:6px 0 14px 0;line-height:1.55;">Partagez votre lien à un collègue restaurateur. Il profite de <b>14 jours d'essai gratuit</b>, et dès qu'il s'abonne, <b>vous gagnez un mois</b> de votre forfait, déduit automatiquement de votre prochaine facture. Jusqu'à ${d.maxPerYear} mois offerts par an.</p>
+      <p style="margin:6px 0 8px 0;line-height:1.55;">Partagez votre lien à un collègue restaurateur. Il profite de <b>14 jours d'essai gratuit</b>, et quand il est abonné depuis ${d.delayDays||30} jours, <b>vous gagnez un mois</b> de votre forfait, déduit automatiquement de votre prochaine facture. Jusqu'à ${d.maxPerYear} mois offerts par an.</p>
+      <p class="small muted" style="margin:0 0 14px 0;line-height:1.5;">Le mois offert ne dépasse pas ce que paie votre filleul. Il s'agit de parrainer un autre restaurant : un compte au même nom, avec la même carte bancaire ou les mêmes coordonnées que le vôtre ne compte pas.</p>
       <div class="field"><label>Votre lien personnel</label>
         <div class="flex gap8" style="flex-wrap:wrap;">
           <input id="referral-link" value="${escapeHtml(d.link)}" readonly style="flex:1;min-width:220px;" onclick="this.select()">
@@ -16476,7 +16563,7 @@ function viewReferralTab(){
         ${waiting ? `<span class="tag tag-neutral">${waiting} en essai</span>` : ''}
       </div>
       ${d.referrals.length ? `<table class="stack-mobile"><tr><th>Restaurateur</th><th>Inscrit le</th><th>Statut</th></tr>
-        ${d.referrals.map(r=>`<tr><td data-label="Restaurateur">${escapeHtml(r.firstName)}</td><td data-label="Inscrit le">${new Date(r.joinedAt).toLocaleDateString('fr-FR')}</td><td data-label="Statut">${r.status==='recompense' ? `✅ Mois offert crédité${r.amountCents ? ' ('+fmtEurPrecise(r.amountCents/100)+')' : ''}` : r.status==='en_attente' ? '⏳ Abonné — crédit en cours' : '🕒 En essai — pas encore abonné'}</td></tr>`).join('')}
+        ${d.referrals.map(r=>`<tr><td data-label="Restaurateur">${escapeHtml(r.firstName)}</td><td data-label="Inscrit le">${new Date(r.joinedAt).toLocaleDateString('fr-FR')}</td><td data-label="Statut">${r.status==='recompense' ? `✅ Mois offert crédité${r.amountCents ? ' ('+fmtEurPrecise(r.amountCents/100)+')' : ''}` : r.status==='en_attente' ? `⏳ Abonné — mois offert prévu vers le ${r.eligibleAt ? new Date(r.eligibleAt).toLocaleDateString('fr-FR') : '…'}` : r.status==='attente_parrain' ? '⏳ Crédité dès que vous serez abonné' : r.status==='non_eligible' ? '— Non éligible' : '🕒 En essai — pas encore abonné'}</td></tr>`).join('')}
       </table>` : emptyState("Personne pour le moment — partagez votre lien pour commencer.")}
     </div>`;
 }
