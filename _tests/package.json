@@ -1,0 +1,13 @@
+{
+  "name": "mise-et-sure-site-tests",
+  "private": true,
+  "description": "Tests automatiques du site Mise & Sûre (sans serveur : pages publiques, démo, code)",
+  "scripts": {
+    "test": "node lancer-les-tests.js"
+  },
+  "devDependencies": {
+    "eslint": "8.57.1",
+    "html-minifier-terser": "7.2.0",
+    "playwright": "1.63.0"
+  }
+}

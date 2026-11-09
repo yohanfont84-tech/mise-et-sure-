@@ -1,0 +1,31 @@
+# Tests automatiques du site : à chaque envoi sur GitHub, le site est servi comme sur
+# GitHub Pages et vérifié dans un vrai navigateur (pages publiques, démo complète, code).
+# Résultat dans l'onglet « Actions » : pastille verte ✅ ou rouge ❌ à côté de chaque modification.
+# Les tests avec le vrai serveur (paiements, parrainage, équipe…) sont dans le dépôt du serveur.
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installer les outils de test (navigateur Chromium)
+        working-directory: _tests
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Lancer tous les tests
+        working-directory: _tests
+        run: node lancer-les-tests.js

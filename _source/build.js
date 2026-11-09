@@ -15,7 +15,8 @@ const { minify } = require('html-minifier-terser');
 
 (async () => {
   const srcPath = path.join(__dirname, 'index.html');
-  const outPath = path.join(__dirname, '..', 'index.html');
+  // Chemin de sortie facultatif (utilisé par les tests pour comparer sans rien écraser).
+  const outPath = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, '..', 'index.html');
   const src = fs.readFileSync(srcPath, 'utf8');
   const out = await minify(src, {
     removeComments: true,

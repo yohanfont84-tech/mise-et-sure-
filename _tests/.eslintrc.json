@@ -1,0 +1,4 @@
+{ "root": true, "env": { "browser": true, "es2022": true },
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "script" },
+  "globals": { "Chart":"readonly","L":"readonly","jspdf":"readonly","XLSX":"readonly","umami":"readonly","plausible":"readonly" },
+  "rules": { "no-undef":"error","no-redeclare":"error","no-dupe-keys":"error","no-dupe-else-if":"error","no-duplicate-case":"error","no-self-assign":"error","no-const-assign":"error","no-func-assign":"error","no-unused-vars":["warn",{"vars":"local","args":"none"}] } }
