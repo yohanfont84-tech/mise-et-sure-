@@ -15728,6 +15728,7 @@ function render(){
     renderInner();
     enhanceAccessibility(document.getElementById('app'));
     trackCurrentPage();
+    saveNavSnapshot();
   } catch(err){
     // Filet de sécurité : si un affichage plante pour une raison imprévue, on montre un message
     // clair avec un bouton pour recharger, plutôt qu'une page blanche silencieuse qui donne
@@ -15884,6 +15885,52 @@ async function loadTeamInvite(token){
     goToSite('marketing');
   }
 }
+// ============================================================
+// ACTUALISER SANS PERDRE SA PAGE — après chaque affichage, on note dans l'onglet (sessionStorage)
+// la page en cours : page publique, page de l'application, personne connectée, établissement.
+// Au rechargement, checkExistingSession() s'en sert pour revenir exactement au même endroit au
+// lieu de l'accueil ou de l'écran de connexion rapide.
+// Sécurité : sessionStorage ne vit que dans CET onglet — fermer l'onglet (ou le navigateur)
+// efface tout, et la prochaine ouverture redemande bien la connexion. Rien de secret n'y est
+// stocké (ni mot de passe, ni jeton) : la session elle-même reste vérifiée par le serveur.
+// ============================================================
+var NAV_SNAPSHOT_READY = false; // pas d'écriture avant la fin de la reprise (sinon le premier affichage écraserait la page à reprendre)
+function readNavSnapshot(){
+  if(window.__BOOT_NAV === undefined){
+    try{ window.__BOOT_NAV = JSON.parse(sessionStorage.getItem('mise_et_sure_nav') || 'null'); }
+    catch(e){ window.__BOOT_NAV = null; }
+  }
+  return window.__BOOT_NAV;
+}
+readNavSnapshot();
+function saveNavSnapshot(){
+  if(!NAV_SNAPSHOT_READY) return;
+  try{
+    if(state.isDemoMode){ sessionStorage.removeItem('mise_et_sure_nav'); return; }
+    const resto = RESTOS.find(r=>r.id===state.resto);
+    sessionStorage.setItem('mise_et_sure_nav', JSON.stringify({
+      site: state.site,
+      view: state.loggedIn ? state.view : null,
+      identity: state.loggedIn ? state.identity : null,
+      role: state.loggedIn ? state.role : null,
+      employeeId: state.loggedIn ? state.loggedInEmployeeId : null,
+      restoRemoteId: resto && resto.remoteId ? resto.remoteId : null,
+      adminTab: state.site==='admin' ? state.adminTab : null,
+    }));
+  } catch(e){}
+}
+// Pages publiques qu'on peut rouvrir telles quelles après un rechargement.
+const RESTORABLE_PUBLIC_SITES = ['marketing','pricing','mentions-legales','confidentialite','cgu'];
+// Remet la personne connectée sur sa page (et son établissement) d'avant le rechargement.
+function restoreLoggedInNav(snap){
+  if(!snap || !snap.identity || !NAV[snap.identity]) return false;
+  const hadPendingView = !!window.__PENDING_VIEW; // arrivée par une notification : elle a priorité
+  login(snap.identity, snap.employeeId || null);
+  if(snap.identity==='patron' && snap.role && snap.role!=='patron' && NAV[snap.role]) state.role = snap.role;
+  if(!hadPendingView && snap.view && NAV[state.role] && NAV[state.role].some(n=>n.id===snap.view)) state.view = snap.view;
+  if(RESTORABLE_PUBLIC_SITES.includes(snap.site)) state.site = snap.site;
+  return true;
+}
 async function checkExistingSession(){
   // Fixe tout de suite (avant toute action async) l'état associé à cette toute première page de
   // l'historique — sinon, si la personne navigue (ex : clique sur "Tarifs") avant la fin de cette
@@ -15901,11 +15948,15 @@ async function checkExistingSession(){
   const checkoutCancelled = urlParams.get('checkout') === 'cancelled';
   const checkoutSuccess = urlParams.get('checkout') === 'success';
   const equipeToken = urlParams.get('equipe');
+  // Un retour de Google/Apple, de Stripe ou un lien d'équipe décide lui-même de la page : dans
+  // ces cas-là on ne reprend pas la page mémorisée.
+  const bootNav = (tokenFromUrl || oauthError || checkoutCancelled || checkoutSuccess || equipeToken) ? null : readNavSnapshot();
   if(equipeToken){
     // Lien personnel d'un membre de l'équipe : ce chemin est totalement indépendant du compte
     // du patron (aucun email, aucun abonnement) — on saute directement à l'écran de connexion
     // de son établissement précis.
     window.history.replaceState({}, document.title, window.location.pathname);
+    NAV_SNAPSHOT_READY = true;
     await loadTeamInvite(equipeToken);
     return;
   }
@@ -15969,16 +16020,31 @@ async function checkExistingSession(){
           remoteId: r.id,
         }));
         RESTOS.forEach(r => ensureRestoData(r.id));
-        state.resto = RESTOS[0].id;
-        loadRestoData(RESTOS[0].id);
-        syncRestoOperationalData(RESTOS[0].id);
+        // Après un rechargement, on rouvre l'établissement sur lequel on était (s'il en a plusieurs).
+        const rememberedResto = bootNav && bootNav.restoRemoteId ? RESTOS.find(r=>r.remoteId===bootNav.restoRemoteId) : null;
+        state.resto = (rememberedResto || RESTOS[0]).id;
+        loadRestoData(state.resto);
+        syncRestoOperationalData(state.resto);
+        // Rechargement en pleine utilisation : on revient directement sur la même page, sans
+        // repasser par l'écran de connexion rapide.
+        const restoredLogin = restoreLoggedInNav(bootNav);
+        if(bootNav && bootNav.site==='admin' && ACCOUNT.is_admin){
+          // Panneau d'administration : on y revient, sur le même onglet.
+          NAV_SNAPSHOT_READY = true;
+          await goToAdminPage();
+          // L'espace Banking, lui, reste verrouillé : on revient au tableau de bord plutôt que d'y rouvrir.
+          if(bootNav.adminTab && !['dashboard','banking'].includes(bootNav.adminTab)) await setAdminTab(bootNav.adminTab);
+          return;
+        }
+        if(!restoredLogin && bootNav && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) state.site = bootNav.site;
       }
     } catch(restoErr){
       if(restoErr.code === 'SUBSCRIPTION_REQUIRED'){
         // Compte connecté mais pas encore payé : on le laisse sur la page d'accueil, il ira
         // sur "Tarifs" et choisira de payer quand il le souhaite — jamais de redirection forcée.
-        state.site = 'marketing';
+        state.site = (bootNav && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) ? bootNav.site : 'marketing';
         window.history.replaceState({ site: state.site }, '', window.location.pathname);
+        NAV_SNAPSHOT_READY = true;
         render();
         return;
       }
@@ -16013,8 +16079,9 @@ async function checkExistingSession(){
         loadRestoData(localId);
         state.site = 'team-login';
         login(identityForTeamRole(data.member.role), localEmployeeId);
-        const lastView = localStorage.getItem('mise_et_sure_last_view');
-        if(lastView) state.view = lastView;
+        const lastView = (bootNav && bootNav.view) || localStorage.getItem('mise_et_sure_last_view');
+        if(lastView && NAV[state.role] && NAV[state.role].some(n=>n.id===lastView)) state.view = lastView;
+        if(bootNav && RESTORABLE_PUBLIC_SITES.includes(bootNav.site)) state.site = bootNav.site;
         await syncRestoOperationalData(localId);
       } catch(teamErr){
         // Jeton expiré ou invalide : reste sur 'marketing', la personne devra rouvrir son lien.
@@ -16022,8 +16089,14 @@ async function checkExistingSession(){
         localStorage.removeItem(TEAM_TOKEN_KEY);
       }
     }
+    // Simple visiteur (aucune session) : on rouvre la page publique où il était (Tarifs,
+    // mentions légales, connexion...).
+    if(!state.loggedIn && state.site==='marketing' && bootNav && (RESTORABLE_PUBLIC_SITES.includes(bootNav.site) || bootNav.site==='account-auth')){
+      state.site = bootNav.site;
+    }
   }
   window.history.replaceState({ site: state.site }, '', window.location.pathname);
+  NAV_SNAPSHOT_READY = true;
   render();
 }
 checkExistingSession();
